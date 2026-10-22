@@ -16,9 +16,25 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) {
         expected_revision: document.revision,
         origin: OperationOrigin::User,
         rationale: Some("Milestone 1 demonstration".into()),
+        allow_invalid_placement: false,
         payload,
     };
     apply_operation(document, request).expect("valid demonstration operation");
+}
+
+fn apply_allowing_invalid(
+    document: &mut ProjectDocument,
+    payload: OperationPayload,
+) -> perfboard_project::OperationResult {
+    let request = OperationRequest {
+        operation_id: OperationId::new(),
+        expected_revision: document.revision,
+        origin: OperationOrigin::User,
+        rationale: Some("Temporary placement state".into()),
+        allow_invalid_placement: true,
+        payload,
+    };
+    apply_operation(document, request).expect("structurally valid manual placement operation")
 }
 
 #[test]
@@ -63,18 +79,24 @@ fn place_move_rotate_save_and_reopen_example_components() {
             },
         },
     );
+    let temporary_rotation = apply_allowing_invalid(
+        &mut document,
+        OperationPayload::RotateComponent {
+            instance_id: nano_id,
+            rotation: Rotation::Deg90,
+        },
+    );
+    assert!(
+        temporary_rotation
+            .validation
+            .iter()
+            .any(|item| item.code.0 == "placement.out_of_bounds")
+    );
     apply(
         &mut document,
         OperationPayload::MoveComponent {
             instance_id: nano_id,
             position: HolePos::new(17, 2),
-        },
-    );
-    apply(
-        &mut document,
-        OperationPayload::RotateComponent {
-            instance_id: nano_id,
-            rotation: Rotation::Deg90,
         },
     );
     apply(
@@ -118,6 +140,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
         expected_revision: document.revision,
         origin: OperationOrigin::User,
         rationale: None,
+        allow_invalid_placement: false,
         payload: OperationPayload::MoveComponent {
             instance_id: nano_id,
             position: HolePos::new(0, 0),
@@ -133,6 +156,33 @@ fn place_move_rotate_save_and_reopen_example_components() {
             .any(|item| item.code.0 == "placement.out_of_bounds")
     );
     assert_eq!(document, before_invalid_move);
+
+    let permissive_move = OperationRequest {
+        operation_id: OperationId::new(),
+        expected_revision: document.revision,
+        origin: OperationOrigin::User,
+        rationale: Some("Temporary state before repositioning".into()),
+        allow_invalid_placement: true,
+        payload: OperationPayload::MoveComponent {
+            instance_id: nano_id,
+            position: HolePos::new(0, 0),
+        },
+    };
+    let result = apply_operation(&mut document, permissive_move).unwrap();
+    assert!(
+        result
+            .validation
+            .iter()
+            .any(|item| item.code.0 == "placement.out_of_bounds")
+    );
+
+    let invalid_path = std::env::temp_dir().join(format!(
+        "milestone1-invalid-{}.perfboard.json",
+        Uuid::new_v4()
+    ));
+    save_project_atomic(&document, &invalid_path).unwrap();
+    assert_eq!(load_project(&invalid_path).unwrap(), document);
+    std::fs::remove_file(invalid_path).unwrap();
 
     let path = std::env::temp_dir().join(format!("milestone1-{}.perfboard.json", Uuid::new_v4()));
     save_project_atomic(&document, &path).unwrap();

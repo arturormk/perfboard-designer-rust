@@ -67,8 +67,13 @@ pub enum DocumentError {
     ComponentDefinitionKeyMismatch { key: String, id: String },
     #[error("component instance map key does not match its embedded id")]
     ComponentInstanceKeyMismatch,
-    #[error("project contains invalid placements")]
-    InvalidPlacement,
+    #[error("component instance `{instance_id}` refers to missing definition `{definition_id}`")]
+    MissingComponentDefinition {
+        instance_id: String,
+        definition_id: String,
+    },
+    #[error("component instance `{instance_id}` uses a rotation its definition does not allow")]
+    InvalidInstanceRotation { instance_id: String },
     #[error("stored validation report is stale")]
     StaleValidation,
     #[error("invalid project JSON: {0}")]
@@ -139,13 +144,22 @@ impl ProjectDocument {
         {
             return Err(DocumentError::ComponentInstanceKeyMismatch);
         }
-        let calculated = self.calculate_validation();
-        if calculated
-            .iter()
-            .any(|item| item.severity == perfboard_core::DiagnosticSeverity::Error)
-        {
-            return Err(DocumentError::InvalidPlacement);
+        for (id, instance) in &self.design.components {
+            let definition = self
+                .design
+                .component_definitions
+                .get(&instance.definition_id)
+                .ok_or_else(|| DocumentError::MissingComponentDefinition {
+                    instance_id: id.to_string(),
+                    definition_id: instance.definition_id.clone(),
+                })?;
+            if !definition.allowed_rotations.contains(&instance.rotation) {
+                return Err(DocumentError::InvalidInstanceRotation {
+                    instance_id: id.to_string(),
+                });
+            }
         }
+        let calculated = self.calculate_validation();
         if self.validation != calculated {
             return Err(DocumentError::StaleValidation);
         }

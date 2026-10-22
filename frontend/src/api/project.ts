@@ -118,6 +118,7 @@ export function applyOperation(
       operation_id: crypto.randomUUID(),
       expected_revision: revision,
       origin: "user",
+      allow_invalid_placement: true,
       payload: undefined,
       ...payload,
     },

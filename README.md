@@ -54,6 +54,10 @@ and save/reopen. Bundled Nano-like and RS-485 breakout definitions are
 available from the component palette. The populated example lives at
 `examples/nano-rs485.perfboard.json`.
 
+Manual edits may temporarily leave a component out of bounds, overlapping, or
+blocking a required access region. The editor preserves the edit and reports
+the placement problem until a later move or rotation resolves it.
+
 ## Current limitations
 
 Nets and physical wires begin in Milestone 2. Passing placement validation

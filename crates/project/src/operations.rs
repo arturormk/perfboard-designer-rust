@@ -25,6 +25,9 @@ pub struct OperationRequest {
     pub origin: OperationOrigin,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rationale: Option<String>,
+    /// Accept placement diagnostics while preserving structural invariants.
+    #[serde(default)]
+    pub allow_invalid_placement: bool,
     #[serde(flatten)]
     pub payload: OperationPayload,
 }
@@ -200,10 +203,11 @@ pub fn apply_operation(
         }
     };
     next.validation = next.calculate_validation();
-    if next
-        .validation
-        .iter()
-        .any(|item| item.severity == DiagnosticSeverity::Error)
+    if !request.allow_invalid_placement
+        && next
+            .validation
+            .iter()
+            .any(|item| item.severity == DiagnosticSeverity::Error)
     {
         return Err(OperationError::InvalidPlacement {
             diagnostics: next.validation,
@@ -242,6 +246,7 @@ mod tests {
             expected_revision: DocumentRevision(1),
             origin: OperationOrigin::User,
             rationale: None,
+            allow_invalid_placement: false,
             payload: OperationPayload::RemoveComponent {
                 instance_id: ComponentInstanceId::new(),
             },

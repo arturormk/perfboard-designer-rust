@@ -42,7 +42,10 @@ definition ID; and a `components` map keyed by instance UUID. Every used
 definition is embedded in full so external library edits cannot change the
 project. Instance data includes canonical anchor position, rotation, user name,
 properties, and notes. A cached `validation` array is stored when non-empty and
-must match deterministic validation on load.
+must match deterministic validation on load. Placement diagnostics may be
+stored in an otherwise structurally valid project: the graphical editor uses
+this to allow temporary out-of-bounds or overlapping states while a component
+is being rotated and repositioned.
 
 The permanent populated example is
 [`examples/nano-rs485.perfboard.json`](../../examples/nano-rs485.perfboard.json).
