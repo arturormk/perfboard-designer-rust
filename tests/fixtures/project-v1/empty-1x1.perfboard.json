@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "project_id": "018f1000-0000-7000-8000-000000000001",
+  "name": "Empty fixture",
+  "revision": 0,
+  "design": {
+    "board": {
+      "name": "1x1 perfboard",
+      "holes_x": 1,
+      "holes_y": 1,
+      "pitch_mm": 2.54
+    }
+  }
+}
