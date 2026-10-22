@@ -2151,6 +2151,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "toml 0.8.2",
  "uuid",
 ]
 
@@ -2158,8 +2159,10 @@ dependencies = [
 name = "perfboard-designer-app"
 version = "0.1.0"
 dependencies = [
+ "perfboard-core",
  "perfboard-project",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
 ]

@@ -1,6 +1,6 @@
 # Project format v1
 
-Status: draft contract for Milestone 0
+Status: implemented through Milestone 1
 
 Perfboard Designer project files are UTF-8 JSON. The suggested suffix is
 `.perfboard.json`. Writers emit two-space-indented JSON with one trailing
@@ -36,11 +36,17 @@ order so fixtures and revisions remain deterministic.
 - `pitch_mm` must be positive and finite. JSON is not permitted to contain
   non-finite numeric values.
 
-The only v1 content currently implemented is an empty design with a rectangular
-board. Later milestones will extend the `design` object with component
-snapshots, instances, circuit data, layout data, constraints, and authoritative
-user notes. Additions to version 1 must remain backward-compatible or be
-introduced through a documented migration.
+Milestone 1 adds optional board `margins_mm`, `mounting_holes`,
+`forbidden_areas`, and `notes`; a `component_definitions` map keyed by stable
+definition ID; and a `components` map keyed by instance UUID. Every used
+definition is embedded in full so external library edits cannot change the
+project. Instance data includes canonical anchor position, rotation, user name,
+properties, and notes. A cached `validation` array is stored when non-empty and
+must match deterministic validation on load.
+
+The permanent populated example is
+[`examples/nano-rs485.perfboard.json`](../../examples/nano-rs485.perfboard.json).
+It records the result of the Milestone 1 add, move, and rotate demonstration.
 
 All coordinates stored in a project are canonical component-side coordinates.
 A solder-side view is a presentation transform and is never persisted as

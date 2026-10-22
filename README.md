@@ -1,8 +1,9 @@
 # Perfboard Designer
 
 Perfboard Designer is a local-first desktop application for designing small
-circuits on isolated-pad perfboard. The project is under active development;
-Milestone 0 establishes the development skeleton and data contracts.
+circuits on isolated-pad perfboard. The project is under active development.
+Milestone 1 provides the board and component placement editor, validated Rust
+operations, component snapshots, and atomic project persistence.
 
 ## Prerequisites
 
@@ -45,11 +46,19 @@ npm --prefix frontend run build
 The authoritative product scope is in [the blueprint](docs/BLUEPRINT.md), and
 the milestone sequence is in [the development plan](docs/plan/DEVELOPMENT_PLAN.md).
 
+## Milestone 1 editor
+
+The desktop editor renders a canonical SVG board and supports component
+selection, drag placement, rotation, property editing, zoom/pan, validation,
+and save/reopen. Bundled Nano-like and RS-485 breakout definitions are
+available from the component palette. The populated example lives at
+`examples/nano-rs485.perfboard.json`.
+
 ## Current limitations
 
-This bootstrap does not yet provide board editing. Passing validation will mean
-that project data is internally consistent; it will never be a guarantee of
-electrical correctness or safety.
+Nets and physical wires begin in Milestone 2. Passing placement validation
+means that project geometry is internally consistent; it is never a guarantee
+of electrical correctness or safety.
 
 ## License
 

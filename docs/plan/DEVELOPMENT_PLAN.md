@@ -1,6 +1,6 @@
 # Perfboard Designer development plan
 
-Status: proposed  
+Status: active
 Source of truth: [`docs/BLUEPRINT.md`](../BLUEPRINT.md)  
 Scope: version 1, implemented as a sequence of demonstrable vertical slices
 
@@ -200,6 +200,8 @@ Crossings, route measurements, general validation reports, revision diffs, and a
 
 ### Milestone 0 — Bootstrap and contracts
 
+Status: complete (2026-10-22)
+
 Goal: create a reliable development skeleton and settle the formats that Milestone 1 needs.
 
 Work:
@@ -220,6 +222,8 @@ Exit criteria:
 - A serialized empty project round-trips without loss.
 
 ### Milestone 1 — Core model and simple graphical board
+
+Status: complete (2026-10-22)
 
 Goal: create, render, edit, save, and reopen a board with placed components.
 

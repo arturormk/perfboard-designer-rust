@@ -1,0 +1,53 @@
+schema_version = 1
+id = "dev.perfboard.rs485-breakout"
+definition_version = "1.0.0"
+name = "RS-485 breakout"
+description = "Small MAX485-style transceiver breakout"
+allowed_rotations = ["deg0", "deg90", "deg180", "deg270"]
+
+[body]
+x = -1.0
+y = -1.0
+width = 20.0
+height = 16.0
+
+[[pins]]
+id = "vcc"
+name = "VCC"
+x = 0
+y = 0
+functions = ["power"]
+
+[[pins]]
+id = "gnd"
+name = "GND"
+x = 0
+y = 3
+functions = ["ground"]
+
+[[pins]]
+id = "ro"
+name = "RO"
+x = 6
+y = 0
+functions = ["receiver_output"]
+
+[[pins]]
+id = "di"
+name = "DI"
+x = 6
+y = 3
+functions = ["driver_input"]
+
+[[keepouts]]
+label = "Breakout body"
+min = { x = 0, y = 0 }
+max = { x = 6, y = 3 }
+
+[[access]]
+label = "A/B screw terminal"
+min = { x = 7, y = 0 }
+max = { x = 8, y = 3 }
+direction = "east"
+required = true
+allow_board_overhang = false

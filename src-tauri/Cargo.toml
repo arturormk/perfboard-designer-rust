@@ -18,8 +18,10 @@ path = "src/main.rs"
 tauri-build = { version = "2.5", features = [] }
 
 [dependencies]
+perfboard-core.workspace = true
 perfboard-project.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 tauri = { version = "2.10", features = [] }
 
 [lints]

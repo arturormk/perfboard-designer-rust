@@ -1,11 +1,18 @@
 //! Schema-versioned project documents and deterministic serialization.
 
 pub mod document;
+pub mod operations;
+pub mod persistence;
 
 pub use document::{
     Board, Design, DocumentError, DocumentRevision, PROJECT_SCHEMA_VERSION, ProjectDocument,
     SchemaVersion,
 };
+pub use operations::{
+    OperationError, OperationOrigin, OperationPayload, OperationRequest, OperationResult,
+    apply_operation,
+};
+pub use persistence::{PersistenceError, load_project, save_project_atomic};
 
 /// Serialize values in the canonical human-readable snapshot format.
 ///

@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "project_id": "018f1000-0000-7000-8000-000000000100",
+  "name": "Nano RS-485 controller",
+  "revision": 6,
+  "design": {
+    "board": {
+      "name": "25x18 isolated-pad perfboard",
+      "holes_x": 25,
+      "holes_y": 18,
+      "pitch_mm": 2.54
+    },
+    "component_definitions": {
+      "dev.perfboard.nano-like": {
+        "schema_version": 1,
+        "id": "dev.perfboard.nano-like",
+        "definition_version": "1.0.0",
+        "name": "Arduino Nano-like",
+        "description": "Generic 30-pin Nano-compatible controller module",
+        "origin_x": 0,
+        "origin_y": 0,
+        "body": { "x": -1.5, "y": -1.5, "width": 18.0, "height": 45.0 },
+        "allowed_rotations": ["deg0", "deg90", "deg180", "deg270"],
+        "pins": [
+          { "id": "d0", "name": "D0 / RX", "x": 0, "y": 0, "aliases": ["RX"], "functions": ["gpio", "uart_rx"] },
+          { "id": "d1", "name": "D1 / TX", "x": 0, "y": 1, "aliases": ["TX"], "functions": ["gpio", "uart_tx"] },
+          { "id": "gnd", "name": "GND", "x": 6, "y": 0, "functions": ["ground"] },
+          { "id": "vin", "name": "VIN", "x": 6, "y": 14, "functions": ["power"] }
+        ],
+        "occupied_holes": [{ "x": 0, "y": 14 }, { "x": 6, "y": 1 }],
+        "keepouts": [{ "min": { "x": 0, "y": 0 }, "max": { "x": 6, "y": 14 }, "label": "Module body" }],
+        "access": [{ "min": { "x": 1, "y": -2 }, "max": { "x": 5, "y": -1 }, "direction": "north", "label": "USB connector", "required": true, "allow_board_overhang": true }],
+        "documentation": ""
+      },
+      "dev.perfboard.rs485-breakout": {
+        "schema_version": 1,
+        "id": "dev.perfboard.rs485-breakout",
+        "definition_version": "1.0.0",
+        "name": "RS-485 breakout",
+        "description": "Small MAX485-style transceiver breakout",
+        "origin_x": 0,
+        "origin_y": 0,
+        "body": { "x": -1.0, "y": -1.0, "width": 20.0, "height": 16.0 },
+        "allowed_rotations": ["deg0", "deg90", "deg180", "deg270"],
+        "pins": [
+          { "id": "vcc", "name": "VCC", "x": 0, "y": 0, "functions": ["power"] },
+          { "id": "gnd", "name": "GND", "x": 0, "y": 3, "functions": ["ground"] },
+          { "id": "ro", "name": "RO", "x": 6, "y": 0, "functions": ["receiver_output"] },
+          { "id": "di", "name": "DI", "x": 6, "y": 3, "functions": ["driver_input"] }
+        ],
+        "keepouts": [{ "min": { "x": 0, "y": 0 }, "max": { "x": 6, "y": 3 }, "label": "Breakout body" }],
+        "access": [{ "min": { "x": 7, "y": 0 }, "max": { "x": 8, "y": 3 }, "direction": "east", "label": "A/B screw terminal", "required": true, "allow_board_overhang": false }],
+        "documentation": ""
+      }
+    },
+    "components": {
+      "018f1000-0000-7000-8000-000000000101": {
+        "id": "018f1000-0000-7000-8000-000000000101",
+        "definition_id": "dev.perfboard.nano-like",
+        "name": "Controller",
+        "position": { "x": 17, "y": 2 },
+        "rotation": "deg90",
+        "properties": { "socketed": "true" },
+        "notes": "USB faces the board edge"
+      },
+      "018f1000-0000-7000-8000-000000000102": {
+        "id": "018f1000-0000-7000-8000-000000000102",
+        "definition_id": "dev.perfboard.rs485-breakout",
+        "name": "RS-485 transceiver",
+        "position": { "x": 16, "y": 14 },
+        "rotation": "deg180",
+        "notes": "Keep terminal reachable"
+      }
+    }
+  }
+}

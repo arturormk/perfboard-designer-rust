@@ -1,0 +1,63 @@
+schema_version = 1
+id = "dev.perfboard.nano-like"
+definition_version = "1.0.0"
+name = "Arduino Nano-like"
+description = "Generic 30-pin Nano-compatible controller module"
+allowed_rotations = ["deg0", "deg90", "deg180", "deg270"]
+
+[body]
+x = -1.5
+y = -1.5
+width = 18.0
+height = 45.0
+
+[[pins]]
+id = "d0"
+name = "D0 / RX"
+x = 0
+y = 0
+aliases = ["RX"]
+functions = ["gpio", "uart_rx"]
+
+[[pins]]
+id = "d1"
+name = "D1 / TX"
+x = 0
+y = 1
+aliases = ["TX"]
+functions = ["gpio", "uart_tx"]
+
+[[pins]]
+id = "gnd"
+name = "GND"
+x = 6
+y = 0
+functions = ["ground"]
+
+[[pins]]
+id = "vin"
+name = "VIN"
+x = 6
+y = 14
+functions = ["power"]
+
+[[occupied_holes]]
+x = 0
+y = 14
+
+[[occupied_holes]]
+x = 6
+y = 1
+
+[[keepouts]]
+label = "Module body"
+min = { x = 0, y = 0 }
+max = { x = 6, y = 14 }
+
+[[access]]
+label = "USB connector"
+min = { x = 1, y = -2 }
+max = { x = 5, y = -1 }
+direction = "north"
+required = true
+allow_board_overhang = true

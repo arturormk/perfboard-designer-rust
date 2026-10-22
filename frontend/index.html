@@ -7,10 +7,43 @@
     <title>Perfboard Designer</title>
   </head>
   <body>
-    <main id="app" aria-live="polite">
-      <p class="eyebrow">Local-first electronics design</p>
-      <h1>Perfboard Designer</h1>
-      <p id="status">Connecting to the Rust design engine…</p>
+    <main id="app">
+      <header>
+        <div>
+          <p class="eyebrow">Local-first electronics design</p>
+          <h1>Perfboard Designer</h1>
+        </div>
+        <p id="status">Connecting to the Rust design engine…</p>
+      </header>
+      <section class="toolbar" aria-label="Project controls">
+        <button id="new-project">New 25 × 18</button>
+        <label
+          >Project file
+          <input id="project-path" value="nano-rs485.perfboard.json"
+        /></label>
+        <button id="open-project">Open</button>
+        <button id="save-project">Save</button>
+        <button id="zoom-out" aria-label="Zoom out">−</button>
+        <button id="zoom-in" aria-label="Zoom in">+</button>
+        <button id="zoom-reset">Fit</button>
+      </section>
+      <div class="workspace">
+        <aside class="panel">
+          <h2>Components</h2>
+          <div id="library"></div>
+          <h2>Placed</h2>
+          <div id="component-list"></div>
+        </aside>
+        <section id="canvas" aria-label="Board editor">
+          <div class="empty">Loading board…</div>
+        </section>
+        <aside class="panel">
+          <h2>Properties</h2>
+          <div id="inspector"><p>Select a component.</p></div>
+          <h2>Validation</h2>
+          <div id="validation"></div>
+        </aside>
+      </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
