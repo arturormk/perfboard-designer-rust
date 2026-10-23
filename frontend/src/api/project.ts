@@ -16,6 +16,8 @@ export interface PinDefinition {
   name: string;
   x: number;
   y: number;
+  aliases?: string[];
+  functions?: string[];
 }
 export interface LocalRect {
   min: HolePos;

@@ -1,6 +1,6 @@
 schema_version = 1
 id = "dev.perfboard.rs485-breakout"
-definition_version = "1.0.0"
+definition_version = "1.1.0"
 name = "RS-485 breakout"
 description = "Small MAX485-style transceiver breakout"
 allowed_rotations = ["deg0", "deg90", "deg180", "deg270"]
@@ -19,6 +19,22 @@ y = 0
 functions = ["power"]
 
 [[pins]]
+id = "b"
+name = "B / D−"
+x = 0
+y = 1
+aliases = ["D-"]
+functions = ["rs485_bus"]
+
+[[pins]]
+id = "a"
+name = "A / D+"
+x = 0
+y = 2
+aliases = ["D+"]
+functions = ["rs485_bus"]
+
+[[pins]]
 id = "gnd"
 name = "GND"
 x = 0
@@ -31,6 +47,21 @@ name = "RO"
 x = 6
 y = 0
 functions = ["receiver_output"]
+
+[[pins]]
+id = "re"
+name = "RE̅"
+x = 6
+y = 1
+aliases = ["/RE"]
+functions = ["receiver_enable_active_low"]
+
+[[pins]]
+id = "de"
+name = "DE"
+x = 6
+y = 2
+functions = ["driver_enable"]
 
 [[pins]]
 id = "di"

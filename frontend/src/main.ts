@@ -13,6 +13,7 @@ import {
   type Rotation,
 } from "./api/project";
 import { renderBoardSvg } from "./editor/renderer";
+import { snappedDragPosition } from "./editor/drag";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -23,7 +24,17 @@ let project: ProjectDocument;
 let library: ComponentDefinition[] = [];
 let selectedId: string | undefined;
 let viewBox: [number, number, number, number] | undefined;
-let dragId: string | undefined;
+let drag:
+  | {
+      id: string;
+      pointerId: number;
+      pointerStart: { x: number; y: number };
+      initialPosition: { x: number; y: number };
+      position: { x: number; y: number };
+      element: SVGGraphicsElement;
+    }
+  | undefined;
+let suppressClick = false;
 let panStart:
   | { x: number; y: number; viewBox: [number, number, number, number] }
   | undefined;
@@ -99,6 +110,10 @@ function svgPoint(event: PointerEvent): { x: number; y: number } | undefined {
 }
 
 $("#app").addEventListener("click", (event) => {
+  if (suppressClick) {
+    suppressClick = false;
+    return;
+  }
   const target = event.target as HTMLElement;
   const component = target.closest<HTMLElement>(
     "[data-component-id], [data-select-id]",
@@ -115,11 +130,13 @@ $("#app").addEventListener("click", (event) => {
     );
     if (!definition) return;
     const count = Object.keys(project.design.components ?? {}).length;
+    const instanceId = crypto.randomUUID();
+    selectedId = instanceId;
     void mutate({
       type: "add_component",
       definition,
       instance: {
-        id: crypto.randomUUID(),
+        id: instanceId,
         definition_id: definition.id,
         name: `${definition.name} ${count + 1}`,
         position: { x: 2 + count * 8, y: 2 },
@@ -132,12 +149,28 @@ $("#app").addEventListener("click", (event) => {
 });
 $("#canvas").addEventListener("pointerdown", (event) => {
   const pointer = event as PointerEvent;
+  if (!pointer.isPrimary || pointer.button !== 0 || drag) return;
   const component = (pointer.target as Element).closest<HTMLElement>(
     "[data-component-id]",
   );
   if (component?.dataset.componentId) {
-    dragId = component.dataset.componentId;
-    selectedId = dragId;
+    const point = svgPoint(pointer);
+    const instance = project.design.components?.[component.dataset.componentId];
+    if (!point || !instance) return;
+    drag = {
+      id: instance.id,
+      pointerId: pointer.pointerId,
+      pointerStart: point,
+      initialPosition: { ...instance.position },
+      position: { ...instance.position },
+      element: component as unknown as SVGGraphicsElement,
+    };
+    selectedId = instance.id;
+    document
+      .querySelectorAll(".component.selected")
+      .forEach((item) => item.classList.remove("selected"));
+    component.classList.add("selected", "dragging");
+    pointer.preventDefault();
   } else {
     const svg = $("#board") as SVGSVGElement;
     const values = (svg.getAttribute("viewBox") ?? "0 0 25 18")
@@ -145,10 +178,27 @@ $("#canvas").addEventListener("pointerdown", (event) => {
       .map(Number) as [number, number, number, number];
     panStart = { x: pointer.clientX, y: pointer.clientY, viewBox: values };
   }
-  (pointer.target as Element).setPointerCapture?.(pointer.pointerId);
+  (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
 });
 $("#canvas").addEventListener("pointermove", (event) => {
   const pointer = event as PointerEvent;
+  if (drag) {
+    if (pointer.pointerId !== drag.pointerId) return;
+    const point = svgPoint(pointer);
+    if (!point) return;
+    drag.position = snappedDragPosition(
+      drag.initialPosition,
+      drag.pointerStart,
+      point,
+    );
+    const rotation = drag.element.dataset.rotationDegrees ?? "0";
+    drag.element.setAttribute(
+      "transform",
+      `translate(${drag.position.x} ${drag.position.y}) rotate(${rotation})`,
+    );
+    setStatus(`Move to ${drag.position.x}, ${drag.position.y}`);
+    return;
+  }
   if (!panStart) return;
   const svg = $("#board") as SVGSVGElement;
   const rect = svg.getBoundingClientRect();
@@ -165,20 +215,35 @@ $("#canvas").addEventListener("pointermove", (event) => {
   svg.setAttribute("viewBox", viewBox.join(" "));
 });
 $("#canvas").addEventListener("pointerup", (event) => {
-  const pointer = event as PointerEvent;
-  if (dragId) {
-    const point = svgPoint(pointer);
-    const id = dragId;
-    dragId = undefined;
-    if (point)
+  if (drag) {
+    if ((event as PointerEvent).pointerId !== drag.pointerId) return;
+    const finished = drag;
+    drag = undefined;
+    finished.element.classList.remove("dragging");
+    const moved =
+      finished.position.x !== finished.initialPosition.x ||
+      finished.position.y !== finished.initialPosition.y;
+    suppressClick = moved;
+    if (moved) window.setTimeout(() => (suppressClick = false), 0);
+    if (moved)
       void mutate({
         type: "move_component",
-        instance_id: id,
-        position: {
-          x: Math.max(0, Math.round(point.x)),
-          y: Math.max(0, Math.round(point.y)),
-        },
+        instance_id: finished.id,
+        position: finished.position,
       });
+  }
+  panStart = undefined;
+});
+$("#canvas").addEventListener("pointercancel", (event) => {
+  if (drag) {
+    if ((event as PointerEvent).pointerId !== drag.pointerId) return;
+    const rotation = drag.element.dataset.rotationDegrees ?? "0";
+    drag.element.setAttribute(
+      "transform",
+      `translate(${drag.initialPosition.x} ${drag.initialPosition.y}) rotate(${rotation})`,
+    );
+    drag.element.classList.remove("dragging");
+    drag = undefined;
   }
   panStart = undefined;
 });

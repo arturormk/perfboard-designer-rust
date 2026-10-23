@@ -140,7 +140,12 @@ textarea {
   stroke-width: 0.1;
 }
 .component {
-  cursor: move;
+  cursor: grab;
+  touch-action: none;
+}
+.component.dragging {
+  cursor: grabbing;
+  opacity: 0.82;
 }
 .body {
   fill: #263641;
@@ -155,6 +160,11 @@ textarea {
   fill: #e8bd64;
   stroke: #4d3814;
   stroke-width: 0.06;
+}
+.pin:hover circle {
+  fill: #fff3a1;
+  stroke: #fff;
+  stroke-width: 0.1;
 }
 .orientation {
   fill: #e77363;

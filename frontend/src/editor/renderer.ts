@@ -16,6 +16,13 @@ function escape(value: string): string {
 function degrees(rotation: ComponentInstance["rotation"]): number {
   return { deg0: 0, deg90: 90, deg180: 180, deg270: 270 }[rotation];
 }
+function pinTooltip(pin: ComponentDefinition["pins"][number]): string {
+  const details = [`${pin.name} (${pin.id})`];
+  if (pin.aliases?.length) details.push(`Aliases: ${pin.aliases.join(", ")}`);
+  if (pin.functions?.length)
+    details.push(`Functions: ${pin.functions.join(", ")}`);
+  return details.join(" · ");
+}
 function rectPoints(
   min: { x: number; y: number },
   max: { x: number; y: number },
@@ -32,7 +39,7 @@ function renderComponent(
   const pins = definition.pins
     .map(
       (pin) =>
-        `<g class="pin"><circle cx="${pin.x}" cy="${pin.y}" r=".22"/><title>${escape(pin.name)}</title></g>`,
+        `<g class="pin" data-pin-id="${escape(pin.id)}"><circle cx="${pin.x}" cy="${pin.y}" r=".22"/><title>${escape(pinTooltip(pin))}</title></g>`,
     )
     .join("");
   const keepouts = (definition.keepouts ?? [])
@@ -52,7 +59,7 @@ function renderComponent(
       return `<g class="access"><rect x="${x}" y="${y}" width="${width}" height="${height}"/><text x="${middleX}" y="${middleY + 0.25}">${arrow}</text><title>${escape(area.label)}</title></g>`;
     })
     .join("");
-  return `<g class="component${selected ? " selected" : ""}" data-component-id="${instance.id}" transform="translate(${instance.position.x} ${instance.position.y}) rotate(${degrees(instance.rotation)})">${keepouts}<rect class="body" x="${body.x / pitch}" y="${body.y / pitch}" width="${body.width / pitch}" height="${body.height / pitch}" rx=".35"/><path class="orientation" d="M .25 .25 L 1 .25 L .25 1 Z"/>${pins}${access}<text class="component-label" x=".5" y="1.45">${escape(instance.name)}</text></g>`;
+  return `<g class="component${selected ? " selected" : ""}" data-component-id="${instance.id}" data-rotation-degrees="${degrees(instance.rotation)}" transform="translate(${instance.position.x} ${instance.position.y}) rotate(${degrees(instance.rotation)})">${keepouts}<rect class="body" x="${body.x / pitch}" y="${body.y / pitch}" width="${body.width / pitch}" height="${body.height / pitch}" rx=".35"/><path class="orientation" d="M .25 .25 L 1 .25 L .25 1 Z"><title>Component orientation</title></path>${pins}${access}<text class="component-label" x=".5" y="1.45">${escape(instance.name)}</text></g>`;
 }
 export function renderBoardSvg(
   document: ProjectDocument,
@@ -80,6 +87,11 @@ export function renderBoardSvg(
     )
     .join("");
   const components = Object.values(document.design.components ?? {})
+    .sort((left, right) => {
+      if (left.id === selectedId) return 1;
+      if (right.id === selectedId) return -1;
+      return 0;
+    })
     .map((instance) => {
       const definition = definitions[instance.definition_id];
       return definition
