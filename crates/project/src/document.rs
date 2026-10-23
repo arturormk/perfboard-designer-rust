@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use perfboard_core::{
     BoardFeatures, BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId,
-    Diagnostic, ProjectId, validate_design_placements,
+    Diagnostic, ElectricalNet, Junction, JunctionId, NetId, ProjectId, Wire, WireId,
+    validate_design_placements,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -35,6 +36,12 @@ pub struct Design {
     pub component_definitions: BTreeMap<String, ComponentDefinition>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub components: BTreeMap<ComponentInstanceId, ComponentInstance>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub nets: BTreeMap<NetId, ElectricalNet>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub junctions: BTreeMap<JunctionId, Junction>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub wires: BTreeMap<WireId, Wire>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -74,6 +81,14 @@ pub enum DocumentError {
     },
     #[error("component instance `{instance_id}` uses a rotation its definition does not allow")]
     InvalidInstanceRotation { instance_id: String },
+    #[error("net map key does not match its embedded id")]
+    NetKeyMismatch,
+    #[error("junction map key does not match its embedded id")]
+    JunctionKeyMismatch,
+    #[error("wire map key does not match its embedded id")]
+    WireKeyMismatch,
+    #[error("invalid circuit or route: {0}")]
+    InvalidCircuit(String),
     #[error("stored validation report is stale")]
     StaleValidation,
     #[error("invalid project JSON: {0}")]
@@ -92,6 +107,9 @@ impl ProjectDocument {
                 board,
                 component_definitions: BTreeMap::new(),
                 components: BTreeMap::new(),
+                nets: BTreeMap::new(),
+                junctions: BTreeMap::new(),
+                wires: BTreeMap::new(),
             },
             validation: Vec::new(),
         }
@@ -99,12 +117,19 @@ impl ProjectDocument {
 
     #[must_use]
     pub fn calculate_validation(&self) -> Vec<Diagnostic> {
-        validate_design_placements(
+        let mut diagnostics = validate_design_placements(
             self.design.board.size,
             &self.design.board.features,
             &self.design.component_definitions,
             &self.design.components,
-        )
+        );
+        diagnostics.extend(crate::connectivity::diagnostics(&self.design));
+        diagnostics.sort_by(|left, right| {
+            left.code
+                .cmp(&right.code)
+                .then(left.message.cmp(&right.message))
+        });
+        diagnostics
     }
 
     /// Validates the schema envelope and all implemented domain invariants.
@@ -159,6 +184,22 @@ impl ProjectDocument {
                 });
             }
         }
+        if self.design.nets.iter().any(|(id, value)| id != &value.id) {
+            return Err(DocumentError::NetKeyMismatch);
+        }
+        if self
+            .design
+            .junctions
+            .iter()
+            .any(|(id, value)| id != &value.id)
+        {
+            return Err(DocumentError::JunctionKeyMismatch);
+        }
+        if self.design.wires.iter().any(|(id, value)| id != &value.id) {
+            return Err(DocumentError::WireKeyMismatch);
+        }
+        crate::connectivity::validate_structure(&self.design)
+            .map_err(DocumentError::InvalidCircuit)?;
         let calculated = self.calculate_validation();
         if self.validation != calculated {
             return Err(DocumentError::StaleValidation);

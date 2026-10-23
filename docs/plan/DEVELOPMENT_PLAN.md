@@ -256,6 +256,8 @@ Exit criteria:
 
 ### Milestone 2 — Nets and manual routing
 
+Status: complete (2026-10-23)
+
 Goal: describe intended connectivity and manually route insulated wires on either face.
 
 Core and project work:

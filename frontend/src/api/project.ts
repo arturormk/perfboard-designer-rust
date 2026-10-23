@@ -13,6 +13,7 @@ export interface Diagnostic {
 }
 export interface PinDefinition {
   id: string;
+  number: string;
   name: string;
   x: number;
   y: number;
@@ -51,6 +52,42 @@ export interface ComponentInstance {
   properties?: Record<string, string>;
   notes?: string;
 }
+export type Side = "component" | "solder";
+export type ConnectionState = "proposed" | "accepted";
+export interface PinRef {
+  component_id: string;
+  pin_id: string;
+}
+export type TerminalRef =
+  | { kind: "pin"; component_id: string; pin_id: string }
+  | { kind: "junction"; junction_id: string };
+export interface ElectricalNet {
+  id: string;
+  name: string;
+  state: ConnectionState;
+  pins?: PinRef[];
+  notes?: string;
+}
+export type WireColor =
+  | "red"
+  | "black"
+  | "yellow"
+  | "white"
+  | "green"
+  | "blue"
+  | "orange"
+  | { other: string };
+export interface Wire {
+  id: string;
+  net_id: string;
+  start: TerminalRef;
+  end: TerminalRef;
+  side: Side;
+  color: WireColor;
+  vertices: Array<{ x2: number; y2: number }>;
+  locked?: boolean;
+  notes?: string;
+}
 export interface ProjectDocument {
   project_id: string;
   name: string;
@@ -76,6 +113,8 @@ export interface ProjectDocument {
     };
     component_definitions?: Record<string, ComponentDefinition>;
     components?: Record<string, ComponentInstance>;
+    nets?: Record<string, ElectricalNet>;
+    wires?: Record<string, Wire>;
   };
   validation?: Diagnostic[];
 }
@@ -95,7 +134,23 @@ export type OperationPayload =
       name: string;
       properties: Record<string, string>;
       notes: string;
-    };
+    }
+  | { type: "define_net"; net: ElectricalNet }
+  | { type: "remove_net"; net_id: string }
+  | { type: "assign_pin"; net_id: string; pin: PinRef }
+  | { type: "unassign_pin"; net_id: string; pin: PinRef }
+  | { type: "accept_net_proposal"; net_id: string }
+  | { type: "reject_net_proposal"; net_id: string }
+  | { type: "add_wire"; wire: Wire }
+  | { type: "remove_wire"; wire_id: string }
+  | {
+      type: "modify_wire_path";
+      wire_id: string;
+      vertices: Array<{ x2: number; y2: number }>;
+    }
+  | { type: "set_wire_color"; wire_id: string; color: WireColor }
+  | { type: "set_wire_side"; wire_id: string; side: Side }
+  | { type: "set_wire_lock"; wire_id: string; locked: boolean };
 
 export function getProject(): Promise<ProjectDocument> {
   return invoke("get_project");

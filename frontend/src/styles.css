@@ -15,8 +15,84 @@ body {
 }
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
+}
+.stacked {
+  display: block;
+  margin: 0.45rem 0;
+  color: #bac6bd;
+  font-size: 0.78rem;
+}
+.stacked input,
+.stacked select {
+  margin-top: 0.25rem;
+}
+#net-list {
+  margin-top: 0.5rem;
+}
+.tool-hint {
+  color: #afbbb2;
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+.net-item {
+  padding: 0.4rem;
+  margin-bottom: 0.35rem;
+  border-left: 3px solid #76b58a;
+  background: #202c24;
+  font-size: 0.78rem;
+}
+.net-item.proposed {
+  border-color: #d9a84e;
+}
+.net-item button {
+  padding: 0.2rem 0.35rem;
+  margin: 0.25rem 0.2rem 0 0;
+  font-size: 0.7rem;
+}
+.wire polyline {
+  fill: none;
+  stroke: var(--wire-color);
+  stroke-width: 0.18;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: stroke;
+}
+.wire.opposite-side polyline {
+  stroke-dasharray: 0.25 0.18;
+  opacity: 0.35;
+}
+.wire.selected polyline {
+  stroke-width: 0.3;
+  filter: drop-shadow(0 0 0.1px white);
+}
+.wire text {
+  fill: white;
+  font-size: 0.42px;
+  paint-order: stroke;
+  stroke: #111;
+  stroke-width: 0.1px;
+  pointer-events: none;
+}
+.pin.assignable circle {
+  stroke: #fff56b;
+  stroke-width: 0.12;
+}
+.pin.wire-target circle {
+  stroke: #7cffff;
+  stroke-width: 0.15;
+}
+.wire-vertex {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+  margin-bottom: 0.35rem;
+}
+.wire-vertex button {
+  grid-column: 1 / -1;
+  padding: 0.25rem;
 }
 button {
   color: #e8ece8;
@@ -58,6 +134,29 @@ h2 {
   color: #a8c4af;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+h3 {
+  margin: 1rem 0 0.4rem;
+  color: #a8c4af;
+  font-size: 0.76rem;
+}
+.pin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+.pin-table th,
+.pin-table td {
+  padding: 0.25rem 0.35rem;
+  border-bottom: 1px solid #34473a;
+  text-align: left;
+  vertical-align: top;
+}
+.pin-table th:first-child,
+.pin-table td:first-child {
+  width: 2.5rem;
+  color: #e8bd64;
+  font-variant-numeric: tabular-nums;
 }
 #status {
   margin: 0;
@@ -145,10 +244,10 @@ textarea {
 }
 .component.dragging {
   cursor: grabbing;
-  opacity: 0.82;
+  opacity: 0.55;
 }
 .body {
-  fill: #263641;
+  fill: rgb(38 54 65 / 82%);
   stroke: #b4cedc;
   stroke-width: 0.1;
 }
@@ -165,6 +264,14 @@ textarea {
   fill: #fff3a1;
   stroke: #fff;
   stroke-width: 0.1;
+}
+.pin-label {
+  fill: #2a1d08;
+  font-size: 0.18px;
+  font-weight: 800;
+  text-anchor: middle;
+  dominant-baseline: central;
+  pointer-events: none;
 }
 .orientation {
   fill: #e77363;

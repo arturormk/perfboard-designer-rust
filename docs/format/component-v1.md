@@ -1,6 +1,6 @@
 # Component definition format v1
 
-Status: implemented in Milestone 1
+Status: implemented through Milestone 2
 
 A library component lives in its own directory:
 
@@ -34,6 +34,7 @@ height = 45.0
 
 [[pins]]
 id = "d0"
+number = "1"
 name = "D0 / RX"
 x = 0
 y = 0
@@ -61,8 +62,10 @@ allow_board_overhang = true
   content hash identifies the exact definition revision.
 - Body measurements use millimetres. Pin and mounting positions use signed
   integer local grid coordinates, allowing negative overhangs.
-- Pin IDs are stable and unique within a definition. Body geometry and pin
-  locations are independent.
+- Pin IDs and authored physical pin numbers are stable and unique within a
+  definition. `number` is a string because markings may be alphanumeric and
+  must never be inferred from array order. Body geometry and pin locations are
+  independent.
 - Rotations are restricted to `deg0`, `deg90`, `deg180`, and `deg270`.
 - `occupied_holes` adds occupied local grid positions beyond pins. `keepouts`
   are inclusive local-grid rectangles. `access` tables are inclusive regions
@@ -71,4 +74,5 @@ allow_board_overhang = true
   readers must not silently reinterpret an unknown schema version.
 
 The bundled definitions under `components/` are permanent parsing and example
-fixtures. Definition IDs and pin IDs must be unique in their respective scope.
+fixtures. Definition IDs, pin IDs, and pin numbers must be unique in their
+respective scope.

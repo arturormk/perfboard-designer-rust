@@ -2,6 +2,7 @@ import type {
   ComponentDefinition,
   ComponentInstance,
   ProjectDocument,
+  Side,
 } from "../api/project";
 const PAD = 2;
 function escape(value: string): string {
@@ -16,8 +17,28 @@ function escape(value: string): string {
 function degrees(rotation: ComponentInstance["rotation"]): number {
   return { deg0: 0, deg90: 90, deg180: 180, deg270: 270 }[rotation];
 }
-function pinTooltip(pin: ComponentDefinition["pins"][number]): string {
-  const details = [`${pin.name} (${pin.id})`];
+function rotateLocal(
+  rotation: ComponentInstance["rotation"],
+  x: number,
+  y: number,
+): [number, number] {
+  return {
+    deg0: [x, y],
+    deg90: [-y, x],
+    deg180: [-x, -y],
+    deg270: [y, -x],
+  }[rotation] as [number, number];
+}
+function pinLabel(id: string, x: number, y: number): string {
+  const fit =
+    id.length > 3 ? ' textLength=".42" lengthAdjust="spacingAndGlyphs"' : "";
+  return `<text class="pin-label readable-label" x="${x}" y="${y}"${fit}>${escape(id)}</text>`;
+}
+function pinTooltip(
+  pin: ComponentDefinition["pins"][number],
+  pinNumber: string,
+): string {
+  const details = [`Pin ${pinNumber}: ${pin.name} (${pin.id})`];
   if (pin.aliases?.length) details.push(`Aliases: ${pin.aliases.join(", ")}`);
   if (pin.functions?.length)
     details.push(`Functions: ${pin.functions.join(", ")}`);
@@ -34,12 +55,13 @@ function renderComponent(
   definition: ComponentDefinition,
   selected: boolean,
   pitch: number,
+  showLabel = true,
 ): string {
   const body = definition.body;
   const pins = definition.pins
     .map(
       (pin) =>
-        `<g class="pin" data-pin-id="${escape(pin.id)}"><circle cx="${pin.x}" cy="${pin.y}" r=".22"/><title>${escape(pinTooltip(pin))}</title></g>`,
+        `<g class="pin" data-pin-id="${escape(pin.id)}" data-pin-number="${escape(pin.number)}"><circle cx="${pin.x}" cy="${pin.y}" r=".27"/><title>${escape(pinTooltip(pin, pin.number))}</title></g>`,
     )
     .join("");
   const keepouts = (definition.keepouts ?? [])
@@ -59,12 +81,16 @@ function renderComponent(
       return `<g class="access"><rect x="${x}" y="${y}" width="${width}" height="${height}"/><text x="${middleX}" y="${middleY + 0.25}">${arrow}</text><title>${escape(area.label)}</title></g>`;
     })
     .join("");
-  return `<g class="component${selected ? " selected" : ""}" data-component-id="${instance.id}" data-rotation-degrees="${degrees(instance.rotation)}" transform="translate(${instance.position.x} ${instance.position.y}) rotate(${degrees(instance.rotation)})">${keepouts}<rect class="body" x="${body.x / pitch}" y="${body.y / pitch}" width="${body.width / pitch}" height="${body.height / pitch}" rx=".35"/><path class="orientation" d="M .25 .25 L 1 .25 L .25 1 Z"><title>Component orientation</title></path>${pins}${access}<text class="component-label" x=".5" y="1.45">${escape(instance.name)}</text></g>`;
+  return `<g class="component${selected ? " selected" : ""}" data-component-id="${instance.id}" data-rotation-degrees="${degrees(instance.rotation)}" transform="translate(${instance.position.x} ${instance.position.y}) rotate(${degrees(instance.rotation)})">${keepouts}<rect class="body" x="${body.x / pitch}" y="${body.y / pitch}" width="${body.width / pitch}" height="${body.height / pitch}" rx=".35"/><path class="orientation" d="M .25 .25 L 1 .25 L .25 1 Z"><title>Component orientation</title></path>${pins}${access}${showLabel ? `<text class="component-label" x=".5" y="1.45">${escape(instance.name)}</text>` : ""}</g>`;
+}
+function wireColor(color: import("../api/project").WireColor): string {
+  return typeof color === "string" ? color : color.other;
 }
 export function renderBoardSvg(
   document: ProjectDocument,
   selectedId?: string,
   viewBox?: string,
+  side: Side = "component",
 ): string {
   const board = document.design.board;
   const definitions = document.design.component_definitions ?? {};
@@ -86,7 +112,8 @@ export function renderBoardSvg(
         `<circle class="mounting-hole" cx="${hole.position.x}" cy="${hole.position.y}" r="${hole.diameter_mm / board.pitch_mm / 2}"><title>${escape(hole.label)}</title></circle>`,
     )
     .join("");
-  const components = Object.values(document.design.components ?? {})
+  const componentValues = Object.values(document.design.components ?? {});
+  const components = componentValues
     .sort((left, right) => {
       if (left.id === selectedId) return 1;
       if (right.id === selectedId) return -1;
@@ -100,8 +127,19 @@ export function renderBoardSvg(
             definition,
             instance.id === selectedId,
             board.pitch_mm,
+            side === "component",
           )
         : "";
+    })
+    .join("");
+  const wires = Object.values(document.design.wires ?? {})
+    .map((wire, index) => {
+      const points = wire.vertices
+        .map((point) => `${point.x2 / 2},${point.y2 / 2}`)
+        .join(" ");
+      const hiddenSide = wire.side !== side ? " opposite-side" : "";
+      const selected = wire.id === selectedId ? " selected" : "";
+      return `<g class="wire${hiddenSide}${selected}" data-wire-id="${wire.id}"><polyline points="${points}" style="--wire-color:${escape(wireColor(wire.color))}"/><text x="${wire.vertices[0]!.x2 / 2 + 0.2}" y="${wire.vertices[0]!.y2 / 2 - 0.2}">W${index + 1}</text></g>`;
     })
     .join("");
   const defaultViewBox = `${-PAD} ${-PAD} ${board.holes_x - 1 + PAD * 2} ${board.holes_y - 1 + PAD * 2}`;
@@ -112,5 +150,29 @@ export function renderBoardSvg(
     board.holes_x - 1 + (margins.left + margins.right) / board.pitch_mm;
   const height =
     board.holes_y - 1 + (margins.top + margins.bottom) / board.pitch_mm;
-  return `<svg id="board" aria-label="${escape(board.name)}" role="img" viewBox="${viewBox ?? defaultViewBox}" data-default-view-box="${defaultViewBox}"><rect class="board-outline" x="${-left}" y="${-top}" width="${width}" height="${height}" rx=".5"/><g class="holes">${holes}</g>${mountingHoles}${forbidden}<g class="components">${components}</g></svg>`;
+  const mirror =
+    side === "solder" ? `translate(${board.holes_x - 1} 0) scale(-1 1)` : "";
+  const componentLabels =
+    side === "solder"
+      ? componentValues
+          .map(
+            (instance) =>
+              `<text class="component-label readable-label" x="${board.holes_x - 1 - instance.position.x + 0.5}" y="${instance.position.y + 1.45}">${escape(instance.name)}</text>`,
+          )
+          .join("")
+      : "";
+  const pinLabels = componentValues
+    .flatMap((instance) => {
+      const definition = definitions[instance.definition_id];
+      if (!definition) return [];
+      return definition.pins.map((pin) => {
+        const [localX, localY] = rotateLocal(instance.rotation, pin.x, pin.y);
+        const canonicalX = instance.position.x + localX;
+        const x =
+          side === "solder" ? board.holes_x - 1 - canonicalX : canonicalX;
+        return pinLabel(pin.number, x, instance.position.y + localY);
+      });
+    })
+    .join("");
+  return `<svg id="board" aria-label="${escape(board.name)}, ${side} side" role="img" viewBox="${viewBox ?? defaultViewBox}" data-default-view-box="${defaultViewBox}" data-side="${side}"><rect class="board-outline" x="${-left}" y="${-top}" width="${width}" height="${height}" rx=".5"/><g class="board-geometry" transform="${mirror}"><g class="holes">${holes}</g>${mountingHoles}${forbidden}<g class="wires">${wires}</g><g class="components">${components}</g></g>${componentLabels}<g class="pin-labels">${pinLabels}</g></svg>`;
 }

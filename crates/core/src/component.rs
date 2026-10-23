@@ -31,6 +31,8 @@ pub struct RectMm {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct PinDefinition {
     pub id: String,
+    /// Author-provided physical pin marking; not inferred from array order.
+    pub number: String,
     pub name: String,
     pub x: i32,
     pub y: i32,
@@ -113,6 +115,10 @@ pub enum ComponentDefinitionError {
     InvalidRotations,
     #[error("duplicate pin id `{0}`")]
     DuplicatePinId(String),
+    #[error("duplicate pin number `{0}`")]
+    DuplicatePinNumber(String),
+    #[error("pin `{0}` has a blank number")]
+    BlankPinNumber(String),
     #[error("duplicate component definition id `{0}`")]
     DuplicateDefinitionId(String),
     #[error("pin `{0}` has a blank name")]
@@ -187,12 +193,21 @@ impl ComponentDefinition {
             return Err(ComponentDefinitionError::InvalidRotations);
         }
         let mut pin_ids = BTreeSet::new();
+        let mut pin_numbers = BTreeSet::new();
         for pin in &self.pins {
             if pin.id.trim().is_empty() || !pin_ids.insert(pin.id.as_str()) {
                 return Err(ComponentDefinitionError::DuplicatePinId(pin.id.clone()));
             }
             if pin.name.trim().is_empty() {
                 return Err(ComponentDefinitionError::BlankPinName(pin.id.clone()));
+            }
+            if pin.number.trim().is_empty() {
+                return Err(ComponentDefinitionError::BlankPinNumber(pin.id.clone()));
+            }
+            if !pin_numbers.insert(pin.number.as_str()) {
+                return Err(ComponentDefinitionError::DuplicatePinNumber(
+                    pin.number.clone(),
+                ));
             }
         }
         for keepout in &self.keepouts {
@@ -251,6 +266,7 @@ mod tests {
             allowed_rotations: vec![Rotation::Deg0, Rotation::Deg90],
             pins: vec![PinDefinition {
                 id: "1".into(),
+                number: "1".into(),
                 name: "Pin 1".into(),
                 x: 0,
                 y: 0,
@@ -275,8 +291,20 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_physical_pin_numbers_are_rejected() {
+        let mut value = definition();
+        let mut duplicate = value.pins[0].clone();
+        duplicate.id = "other".into();
+        value.pins.push(duplicate);
+        assert_eq!(
+            value.validate(),
+            Err(ComponentDefinitionError::DuplicatePinNumber("1".into()))
+        );
+    }
+
+    #[test]
     fn malformed_pin_locations_fail_toml_parsing() {
-        let source = "schema_version=1\nid='x'\ndefinition_version='1'\nname='x'\nallowed_rotations=['deg0']\n[body]\nx=0\ny=0\nwidth=1\nheight=1\n[[pins]]\nid='1'\nname='one'\nx='left'\ny=0";
+        let source = "schema_version=1\nid='x'\ndefinition_version='1'\nname='x'\nallowed_rotations=['deg0']\n[body]\nx=0\ny=0\nwidth=1\nheight=1\n[[pins]]\nid='1'\nnumber='1'\nname='one'\nx='left'\ny=0";
         assert!(matches!(
             ComponentDefinition::from_toml(source),
             Err(ComponentDefinitionError::InvalidToml(_))

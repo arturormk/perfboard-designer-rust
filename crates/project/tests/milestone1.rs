@@ -132,7 +132,17 @@ fn place_move_rotate_save_and_reopen_example_components() {
     assert_eq!(document.revision, DocumentRevision(6));
     assert_eq!(document.validation, Vec::new());
     let example = include_str!("../../../examples/nano-rs485.perfboard.json");
-    assert_eq!(ProjectDocument::from_json(example).unwrap(), document);
+    let milestone2_example = ProjectDocument::from_json(example).unwrap();
+    assert_eq!(milestone2_example.project_id, document.project_id);
+    assert_eq!(milestone2_example.design.board, document.design.board);
+    assert_eq!(
+        milestone2_example.design.components,
+        document.design.components
+    );
+    assert_eq!(
+        milestone2_example.design.component_definitions,
+        document.design.component_definitions
+    );
 
     let before_invalid_move = document.clone();
     let invalid_move = OperationRequest {

@@ -1,6 +1,6 @@
 schema_version = 1
 id = "dev.perfboard.nano-like"
-definition_version = "1.1.0"
+definition_version = "1.2.0"
 name = "Arduino Nano-like"
 description = "Generic 30-pin Nano-compatible controller module"
 allowed_rotations = ["deg0", "deg90", "deg180", "deg270"]
@@ -13,6 +13,7 @@ height = 45.0
 
 [[pins]]
 id = "d13"
+number = "1"
 name = "D13 / SCK / LED"
 x = 0
 y = 0
@@ -21,6 +22,7 @@ functions = ["gpio", "spi_clock"]
 
 [[pins]]
 id = "3v3"
+number = "2"
 name = "3.3V"
 x = 0
 y = 1
@@ -28,6 +30,7 @@ functions = ["power"]
 
 [[pins]]
 id = "aref"
+number = "3"
 name = "AREF"
 x = 0
 y = 2
@@ -35,6 +38,7 @@ functions = ["analog_reference"]
 
 [[pins]]
 id = "a0"
+number = "4"
 name = "A0 / D14"
 x = 0
 y = 3
@@ -42,6 +46,7 @@ functions = ["gpio", "analog_input"]
 
 [[pins]]
 id = "a1"
+number = "5"
 name = "A1 / D15"
 x = 0
 y = 4
@@ -49,6 +54,7 @@ functions = ["gpio", "analog_input"]
 
 [[pins]]
 id = "a2"
+number = "6"
 name = "A2 / D16"
 x = 0
 y = 5
@@ -56,6 +62,7 @@ functions = ["gpio", "analog_input"]
 
 [[pins]]
 id = "a3"
+number = "7"
 name = "A3 / D17"
 x = 0
 y = 6
@@ -63,6 +70,7 @@ functions = ["gpio", "analog_input"]
 
 [[pins]]
 id = "a4"
+number = "8"
 name = "A4 / D18 / SDA"
 x = 0
 y = 7
@@ -71,6 +79,7 @@ functions = ["gpio", "analog_input", "i2c_data"]
 
 [[pins]]
 id = "a5"
+number = "9"
 name = "A5 / D19 / SCL"
 x = 0
 y = 8
@@ -79,6 +88,7 @@ functions = ["gpio", "analog_input", "i2c_clock"]
 
 [[pins]]
 id = "a6"
+number = "10"
 name = "A6"
 x = 0
 y = 9
@@ -86,6 +96,7 @@ functions = ["analog_input"]
 
 [[pins]]
 id = "a7"
+number = "11"
 name = "A7"
 x = 0
 y = 10
@@ -93,6 +104,7 @@ functions = ["analog_input"]
 
 [[pins]]
 id = "5v"
+number = "12"
 name = "5V"
 x = 0
 y = 11
@@ -100,6 +112,7 @@ functions = ["power"]
 
 [[pins]]
 id = "reset_left"
+number = "13"
 name = "RESET"
 x = 0
 y = 12
@@ -107,6 +120,7 @@ functions = ["reset"]
 
 [[pins]]
 id = "gnd_left"
+number = "14"
 name = "GND"
 x = 0
 y = 13
@@ -114,6 +128,7 @@ functions = ["ground"]
 
 [[pins]]
 id = "vin"
+number = "15"
 name = "VIN"
 x = 0
 y = 14
@@ -121,6 +136,7 @@ functions = ["power_input"]
 
 [[pins]]
 id = "d12"
+number = "30"
 name = "D12 / CIPO"
 x = 6
 y = 0
@@ -129,6 +145,7 @@ functions = ["gpio", "spi_data"]
 
 [[pins]]
 id = "d11"
+number = "29"
 name = "D11 / COPI / PWM"
 x = 6
 y = 1
@@ -137,6 +154,7 @@ functions = ["gpio", "pwm", "spi_data"]
 
 [[pins]]
 id = "d10"
+number = "28"
 name = "D10 / SS / PWM"
 x = 6
 y = 2
@@ -145,6 +163,7 @@ functions = ["gpio", "pwm", "spi_select"]
 
 [[pins]]
 id = "d9"
+number = "27"
 name = "D9 / PWM"
 x = 6
 y = 3
@@ -152,6 +171,7 @@ functions = ["gpio", "pwm"]
 
 [[pins]]
 id = "d8"
+number = "26"
 name = "D8"
 x = 6
 y = 4
@@ -159,6 +179,7 @@ functions = ["gpio"]
 
 [[pins]]
 id = "d7"
+number = "25"
 name = "D7"
 x = 6
 y = 5
@@ -166,6 +187,7 @@ functions = ["gpio"]
 
 [[pins]]
 id = "d6"
+number = "24"
 name = "D6 / PWM"
 x = 6
 y = 6
@@ -173,6 +195,7 @@ functions = ["gpio", "pwm"]
 
 [[pins]]
 id = "d5"
+number = "23"
 name = "D5 / PWM"
 x = 6
 y = 7
@@ -180,6 +203,7 @@ functions = ["gpio", "pwm"]
 
 [[pins]]
 id = "d4"
+number = "22"
 name = "D4"
 x = 6
 y = 8
@@ -187,6 +211,7 @@ functions = ["gpio"]
 
 [[pins]]
 id = "d3"
+number = "21"
 name = "D3 / PWM"
 x = 6
 y = 9
@@ -194,6 +219,7 @@ functions = ["gpio", "pwm"]
 
 [[pins]]
 id = "d2"
+number = "20"
 name = "D2"
 x = 6
 y = 10
@@ -201,6 +227,7 @@ functions = ["gpio"]
 
 [[pins]]
 id = "gnd_right"
+number = "19"
 name = "GND"
 x = 6
 y = 11
@@ -208,6 +235,7 @@ functions = ["ground"]
 
 [[pins]]
 id = "reset_right"
+number = "18"
 name = "RESET"
 x = 6
 y = 12
@@ -215,6 +243,7 @@ functions = ["reset"]
 
 [[pins]]
 id = "d0"
+number = "17"
 name = "D0 / RX"
 x = 6
 y = 13
@@ -223,6 +252,7 @@ functions = ["gpio", "uart_rx"]
 
 [[pins]]
 id = "d1"
+number = "16"
 name = "D1 / TX"
 x = 6
 y = 14

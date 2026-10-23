@@ -1,6 +1,6 @@
 # Project format v1
 
-Status: implemented through Milestone 1
+Status: implemented through Milestone 2
 
 Perfboard Designer project files are UTF-8 JSON. The suggested suffix is
 `.perfboard.json`. Writers emit two-space-indented JSON with one trailing
@@ -54,6 +54,17 @@ It records the result of the Milestone 1 add, move, and rotate demonstration.
 All coordinates stored in a project are canonical component-side coordinates.
 A solder-side view is a presentation transform and is never persisted as
 mirrored geometry.
+
+Milestone 2 adds `nets`, `junctions`, and `wires`, all deterministic maps keyed
+by typed UUIDs. A net records its accepted/proposed state and a set of stable
+component-pin references. A pin can belong to at most one net. Junctions name a
+hole and explicitly state whether they form a through-hole transition. Wires
+reference two terminals, one net and one board side; their ordered `vertices`
+use canonical half-grid coordinates (`x2`, `y2`). Wire color, lock state and
+notes are authoritative, while length, bends and connectivity diagnostics are
+derived. Paths accept horizontal, vertical and 45-degree segments. A geometric
+crossing never joins two wires; connectivity exists only through shared
+terminal references.
 
 The permanent minimal fixture is
 [`tests/fixtures/project-v1/empty-1x1.perfboard.json`](../../tests/fixtures/project-v1/empty-1x1.perfboard.json).

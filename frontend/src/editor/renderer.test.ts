@@ -19,6 +19,7 @@ const fixture: ProjectDocument = {
         pins: [
           {
             id: "1",
+            number: "1",
             name: "Pin 1",
             x: 0,
             y: 0,
@@ -46,9 +47,13 @@ describe("board SVG", () => {
     expect(svg).toContain('class="component selected"');
     expect(svg).toContain("translate(2 1) rotate(90)");
     expect(svg).toContain('class="orientation"');
-    expect(svg).toContain("Pin 1");
+    expect(svg).toContain("Pin 1: Pin 1");
     expect(svg).toContain("Aliases: P1 · Functions: gpio");
     expect(svg).toContain('data-pin-id="1"');
+    expect(svg).toContain('data-pin-number="1"');
+    expect(svg).toContain(
+      '<text class="pin-label readable-label" x="2" y="1">1</text>',
+    );
   });
   it("keeps the unrotated component in canonical coordinates", () => {
     const unrotated = structuredClone(fixture);
@@ -67,5 +72,38 @@ describe("board SVG", () => {
     expect(svg.indexOf('data-component-id="other"')).toBeLessThan(
       svg.indexOf('data-component-id="instance"'),
     );
+  });
+
+  it("mirrors solder-side geometry while keeping labels readable", () => {
+    const svg = renderBoardSvg(fixture, undefined, undefined, "solder");
+    expect(svg).toContain('transform="translate(3 0) scale(-1 1)"');
+    expect(svg).toContain('class="component-label readable-label"');
+    expect(svg).toContain('x="1.5"');
+    expect(svg).toContain('data-side="solder"');
+    expect(svg).toContain(
+      '<text class="pin-label readable-label" x="1" y="1">1</text>',
+    );
+  });
+
+  it("renders wires with identifiers and non-color side patterns", () => {
+    const routed = structuredClone(fixture);
+    routed.design.wires = {
+      wire: {
+        id: "wire",
+        net_id: "net",
+        start: { kind: "pin", component_id: "instance", pin_id: "1" },
+        end: { kind: "pin", component_id: "instance", pin_id: "2" },
+        side: "solder",
+        color: "green",
+        vertices: [
+          { x2: 0, y2: 0 },
+          { x2: 2, y2: 2 },
+        ],
+      },
+    };
+    const svg = renderBoardSvg(routed, undefined, undefined, "component");
+    expect(svg).toContain('class="wire opposite-side"');
+    expect(svg).toContain("W1");
+    expect(svg).toContain("--wire-color:green");
   });
 });

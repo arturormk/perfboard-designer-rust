@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
-    ComponentDefinition, ComponentInstance, ComponentInstanceId, Diagnostic, DiagnosticSeverity,
-    HolePos, OperationId, Rotation,
+    ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState, Diagnostic,
+    DiagnosticSeverity, ElectricalNet, HolePos, Junction, JunctionId, NetId, OperationId, PinRef,
+    Rotation, RoutePos, Side, Wire, WireColor, WireId,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -57,6 +58,54 @@ pub enum OperationPayload {
         properties: BTreeMap<String, String>,
         notes: String,
     },
+    DefineNet {
+        net: ElectricalNet,
+    },
+    RemoveNet {
+        net_id: NetId,
+    },
+    AssignPin {
+        net_id: NetId,
+        pin: PinRef,
+    },
+    UnassignPin {
+        net_id: NetId,
+        pin: PinRef,
+    },
+    AcceptNetProposal {
+        net_id: NetId,
+    },
+    RejectNetProposal {
+        net_id: NetId,
+    },
+    AddJunction {
+        junction: Junction,
+    },
+    RemoveJunction {
+        junction_id: JunctionId,
+    },
+    AddWire {
+        wire: Wire,
+    },
+    RemoveWire {
+        wire_id: WireId,
+    },
+    ModifyWirePath {
+        wire_id: WireId,
+        vertices: Vec<RoutePos>,
+    },
+    SetWireColor {
+        wire_id: WireId,
+        color: WireColor,
+    },
+    SetWireSide {
+        wire_id: WireId,
+        side: Side,
+    },
+    SetWireLock {
+        wire_id: WireId,
+        locked: bool,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -65,6 +114,8 @@ pub struct OperationResult {
     pub revision: DocumentRevision,
     pub normalized_payload: OperationPayload,
     pub affected_component_ids: BTreeSet<ComponentInstanceId>,
+    pub affected_net_ids: BTreeSet<NetId>,
+    pub affected_wire_ids: BTreeSet<WireId>,
     pub validation: Vec<Diagnostic>,
     pub change_summary: String,
 }
@@ -88,6 +139,22 @@ pub enum OperationError {
     RotationNotAllowed,
     #[error("operation would create an invalid placement")]
     InvalidPlacement { diagnostics: Vec<Diagnostic> },
+    #[error("net already exists")]
+    DuplicateNet,
+    #[error("net was not found")]
+    NetNotFound,
+    #[error("wire already exists")]
+    DuplicateWire,
+    #[error("wire was not found")]
+    WireNotFound,
+    #[error("junction already exists")]
+    DuplicateJunction,
+    #[error("junction was not found")]
+    JunctionNotFound,
+    #[error("object is still referenced by circuit or routing data")]
+    ObjectInUse,
+    #[error("only proposed nets can be accepted or rejected")]
+    NotAProposal,
     #[error(transparent)]
     InvalidDocument(#[from] DocumentError),
 }
@@ -96,7 +163,7 @@ pub enum OperationError {
 ///
 /// # Errors
 /// Returns a typed conflict or invariant error without changing `document`.
-#[allow(clippy::too_many_lines)] // The match is the auditable registry of Milestone 1 mutations.
+#[allow(clippy::too_many_lines, clippy::similar_names)] // The match is the auditable operation registry.
 pub fn apply_operation(
     document: &mut ProjectDocument,
     request: OperationRequest,
@@ -109,6 +176,8 @@ pub fn apply_operation(
     }
     let mut next = document.clone();
     let mut affected = BTreeSet::new();
+    let mut affected_nets = BTreeSet::new();
+    let mut affected_wires = BTreeSet::new();
     let summary = match &request.payload {
         OperationPayload::AddComponent {
             definition,
@@ -142,6 +211,14 @@ pub fn apply_operation(
             format!("Added {}", instance.name)
         }
         OperationPayload::RemoveComponent { instance_id } => {
+            if next
+                .design
+                .nets
+                .values()
+                .any(|net| net.pins.iter().any(|pin| pin.component_id == *instance_id))
+            {
+                return Err(OperationError::ObjectInUse);
+            }
             let removed = next
                 .design
                 .components
@@ -201,6 +278,185 @@ pub fn apply_operation(
             affected.insert(*instance_id);
             format!("Updated {} properties", instance.name)
         }
+        OperationPayload::DefineNet { net } => {
+            if next.design.nets.contains_key(&net.id) {
+                return Err(OperationError::DuplicateNet);
+            }
+            next.design.nets.insert(net.id, net.clone());
+            affected_nets.insert(net.id);
+            format!("Defined net {}", net.name)
+        }
+        OperationPayload::RemoveNet { net_id } => {
+            if next
+                .design
+                .wires
+                .values()
+                .any(|wire| wire.net_id == *net_id)
+                || next
+                    .design
+                    .junctions
+                    .values()
+                    .any(|junction| junction.net_id == *net_id)
+            {
+                return Err(OperationError::ObjectInUse);
+            }
+            let net = next
+                .design
+                .nets
+                .remove(net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            affected_nets.insert(*net_id);
+            format!("Removed net {}", net.name)
+        }
+        OperationPayload::AssignPin { net_id, pin } => {
+            let net = next
+                .design
+                .nets
+                .get_mut(net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            net.pins.insert(pin.clone());
+            affected_nets.insert(*net_id);
+            format!("Assigned pin to net {}", net.name)
+        }
+        OperationPayload::UnassignPin { net_id, pin } => {
+            if next.design.wires.values().any(|wire| {
+                wire.net_id == *net_id
+                    && [wire.start.clone(), wire.end.clone()].contains(&pin.clone().into())
+            }) {
+                return Err(OperationError::ObjectInUse);
+            }
+            let net = next
+                .design
+                .nets
+                .get_mut(net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            net.pins.remove(pin);
+            affected_nets.insert(*net_id);
+            format!("Unassigned pin from net {}", net.name)
+        }
+        OperationPayload::AcceptNetProposal { net_id } => {
+            let net = next
+                .design
+                .nets
+                .get_mut(net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            if net.state != ConnectionState::Proposed {
+                return Err(OperationError::NotAProposal);
+            }
+            net.state = ConnectionState::Accepted;
+            affected_nets.insert(*net_id);
+            format!("Accepted net proposal {}", net.name)
+        }
+        OperationPayload::RejectNetProposal { net_id } => {
+            let net = next
+                .design
+                .nets
+                .get(net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            if net.state != ConnectionState::Proposed {
+                return Err(OperationError::NotAProposal);
+            }
+            if next
+                .design
+                .wires
+                .values()
+                .any(|wire| wire.net_id == *net_id)
+            {
+                return Err(OperationError::ObjectInUse);
+            }
+            let name = net.name.clone();
+            next.design
+                .junctions
+                .retain(|_, junction| junction.net_id != *net_id);
+            next.design.nets.remove(net_id);
+            affected_nets.insert(*net_id);
+            format!("Rejected net proposal {name}")
+        }
+        OperationPayload::AddJunction { junction } => {
+            if next
+                .design
+                .junctions
+                .insert(junction.id, junction.clone())
+                .is_some()
+            {
+                return Err(OperationError::DuplicateJunction);
+            }
+            affected_nets.insert(junction.net_id);
+            format!("Added junction {}", junction.id)
+        }
+        OperationPayload::RemoveJunction { junction_id } => {
+            if next.design.wires.values().any(|wire| matches!(&wire.start, perfboard_core::TerminalRef::Junction { junction_id: id } if id == junction_id) || matches!(&wire.end, perfboard_core::TerminalRef::Junction { junction_id: id } if id == junction_id)) { return Err(OperationError::ObjectInUse); }
+            let junction = next
+                .design
+                .junctions
+                .remove(junction_id)
+                .ok_or(OperationError::JunctionNotFound)?;
+            affected_nets.insert(junction.net_id);
+            format!("Removed junction {junction_id}")
+        }
+        OperationPayload::AddWire { wire } => {
+            if next.design.wires.contains_key(&wire.id) {
+                return Err(OperationError::DuplicateWire);
+            }
+            next.design.wires.insert(wire.id, wire.clone());
+            affected_nets.insert(wire.net_id);
+            affected_wires.insert(wire.id);
+            format!("Added wire {}", wire.id)
+        }
+        OperationPayload::RemoveWire { wire_id } => {
+            let wire = next
+                .design
+                .wires
+                .remove(wire_id)
+                .ok_or(OperationError::WireNotFound)?;
+            affected_nets.insert(wire.net_id);
+            affected_wires.insert(*wire_id);
+            format!("Removed wire {wire_id}")
+        }
+        OperationPayload::ModifyWirePath { wire_id, vertices } => {
+            let wire = next
+                .design
+                .wires
+                .get_mut(wire_id)
+                .ok_or(OperationError::WireNotFound)?;
+            wire.vertices.clone_from(vertices);
+            affected_nets.insert(wire.net_id);
+            affected_wires.insert(*wire_id);
+            format!("Edited wire {wire_id} path")
+        }
+        OperationPayload::SetWireColor { wire_id, color } => {
+            let wire = next
+                .design
+                .wires
+                .get_mut(wire_id)
+                .ok_or(OperationError::WireNotFound)?;
+            wire.color.clone_from(color);
+            affected_wires.insert(*wire_id);
+            format!("Changed wire {wire_id} color")
+        }
+        OperationPayload::SetWireSide { wire_id, side } => {
+            let wire = next
+                .design
+                .wires
+                .get_mut(wire_id)
+                .ok_or(OperationError::WireNotFound)?;
+            wire.side = *side;
+            affected_wires.insert(*wire_id);
+            format!("Changed wire {wire_id} side")
+        }
+        OperationPayload::SetWireLock { wire_id, locked } => {
+            let wire = next
+                .design
+                .wires
+                .get_mut(wire_id)
+                .ok_or(OperationError::WireNotFound)?;
+            wire.locked = *locked;
+            affected_wires.insert(*wire_id);
+            format!(
+                "{} wire {wire_id}",
+                if *locked { "Locked" } else { "Unlocked" }
+            )
+        }
     };
     next.validation = next.calculate_validation();
     if !request.allow_invalid_placement
@@ -221,6 +477,8 @@ pub fn apply_operation(
         revision: document.revision,
         normalized_payload: request.payload,
         affected_component_ids: affected,
+        affected_net_ids: affected_nets,
+        affected_wire_ids: affected_wires,
         validation: document.validation.clone(),
         change_summary: summary,
     })

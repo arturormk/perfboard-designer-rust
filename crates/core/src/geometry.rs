@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use thiserror::Error;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct HolePos {
     pub x: u32,
     pub y: u32,
@@ -59,7 +59,7 @@ impl Rotation {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Side {
     Component,

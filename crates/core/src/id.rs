@@ -56,6 +56,7 @@ typed_id!(ComponentInstanceId);
 typed_id!(PinId);
 typed_id!(NetId);
 typed_id!(WireId);
+typed_id!(JunctionId);
 typed_id!(ConstraintId);
 typed_id!(OperationId);
 typed_id!(CommitId);

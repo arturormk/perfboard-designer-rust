@@ -2,8 +2,9 @@
 
 Perfboard Designer is a local-first desktop application for designing small
 circuits on isolated-pad perfboard. The project is under active development.
-Milestone 1 provides the board and component placement editor, validated Rust
-operations, component snapshots, and atomic project persistence.
+Milestone 2 provides the board and component placement editor, named electrical
+nets, accepted/proposed connectivity, and manual insulated-wire routing on
+either board face through validated Rust operations.
 
 ## Prerequisites
 
@@ -46,7 +47,7 @@ npm --prefix frontend run build
 The authoritative product scope is in [the blueprint](docs/BLUEPRINT.md), and
 the milestone sequence is in [the development plan](docs/plan/DEVELOPMENT_PLAN.md).
 
-## Milestone 1 editor
+## Milestone 2 editor
 
 The desktop editor renders a canonical SVG board and supports component
 selection, drag placement, rotation, property editing, zoom/pan, validation,
@@ -54,15 +55,22 @@ and save/reopen. Bundled Nano-like and RS-485 breakout definitions are
 available from the component palette. The populated example lives at
 `examples/nano-rs485.perfboard.json`.
 
+Create an accepted net (or a proposal requiring explicit acceptance), select it,
+then click component pins to assign them. Manual wire mode connects assigned
+pins with half-grid bend points. Existing bends can be edited numerically or
+removed from the wire inspector. The component/solder view toggle mirrors only
+presentation geometry, so all saved and edited coordinates remain canonical.
+
 Manual edits may temporarily leave a component out of bounds, overlapping, or
 blocking a required access region. The editor preserves the edit and reports
 the placement problem until a later move or rotation resolves it.
 
 ## Current limitations
 
-Nets and physical wires begin in Milestone 2. Passing placement validation
-means that project geometry is internally consistent; it is never a guarantee
-of electrical correctness or safety.
+Automatic route suggestions, crossing-order decisions, and jumper-stock
+matching begin in Milestone 4. Passing validation means that project geometry
+and basic connectivity are internally consistent; it is never a guarantee of
+electrical correctness or safety.
 
 ## License
 

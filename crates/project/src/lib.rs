@@ -27,3 +27,4 @@ pub fn to_snapshot_json<T: serde::Serialize>(value: &T) -> Result<String, serde_
     json.push('\n');
     Ok(json)
 }
+mod connectivity;

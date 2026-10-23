@@ -2,7 +2,7 @@
   "schema_version": 1,
   "project_id": "018f1000-0000-7000-8000-000000000100",
   "name": "Nano RS-485 controller",
-  "revision": 6,
+  "revision": 14,
   "design": {
     "board": {
       "name": "25x18 isolated-pad perfboard",
@@ -14,7 +14,7 @@
       "dev.perfboard.nano-like": {
         "schema_version": 1,
         "id": "dev.perfboard.nano-like",
-        "definition_version": "1.1.0",
+        "definition_version": "1.2.0",
         "name": "Arduino Nano-like",
         "description": "Generic 30-pin Nano-compatible controller module",
         "origin_x": 0,
@@ -22,36 +22,36 @@
         "body": { "x": -1.5, "y": -1.5, "width": 18.0, "height": 45.0 },
         "allowed_rotations": ["deg0", "deg90", "deg180", "deg270"],
         "pins": [
-          { "id": "d13", "name": "D13 / SCK / LED", "x": 0, "y": 0, "aliases": ["SCK", "LED_BUILTIN"], "functions": ["gpio", "spi_clock"] },
-          { "id": "3v3", "name": "3.3V", "x": 0, "y": 1, "functions": ["power"] },
-          { "id": "aref", "name": "AREF", "x": 0, "y": 2, "functions": ["analog_reference"] },
-          { "id": "a0", "name": "A0 / D14", "x": 0, "y": 3, "functions": ["gpio", "analog_input"] },
-          { "id": "a1", "name": "A1 / D15", "x": 0, "y": 4, "functions": ["gpio", "analog_input"] },
-          { "id": "a2", "name": "A2 / D16", "x": 0, "y": 5, "functions": ["gpio", "analog_input"] },
-          { "id": "a3", "name": "A3 / D17", "x": 0, "y": 6, "functions": ["gpio", "analog_input"] },
-          { "id": "a4", "name": "A4 / D18 / SDA", "x": 0, "y": 7, "aliases": ["SDA"], "functions": ["gpio", "analog_input", "i2c_data"] },
-          { "id": "a5", "name": "A5 / D19 / SCL", "x": 0, "y": 8, "aliases": ["SCL"], "functions": ["gpio", "analog_input", "i2c_clock"] },
-          { "id": "a6", "name": "A6", "x": 0, "y": 9, "functions": ["analog_input"] },
-          { "id": "a7", "name": "A7", "x": 0, "y": 10, "functions": ["analog_input"] },
-          { "id": "5v", "name": "5V", "x": 0, "y": 11, "functions": ["power"] },
-          { "id": "reset_left", "name": "RESET", "x": 0, "y": 12, "functions": ["reset"] },
-          { "id": "gnd_left", "name": "GND", "x": 0, "y": 13, "functions": ["ground"] },
-          { "id": "vin", "name": "VIN", "x": 0, "y": 14, "functions": ["power_input"] },
-          { "id": "d12", "name": "D12 / CIPO", "x": 6, "y": 0, "aliases": ["MISO", "CIPO"], "functions": ["gpio", "spi_data"] },
-          { "id": "d11", "name": "D11 / COPI / PWM", "x": 6, "y": 1, "aliases": ["MOSI", "COPI"], "functions": ["gpio", "pwm", "spi_data"] },
-          { "id": "d10", "name": "D10 / SS / PWM", "x": 6, "y": 2, "aliases": ["SS"], "functions": ["gpio", "pwm", "spi_select"] },
-          { "id": "d9", "name": "D9 / PWM", "x": 6, "y": 3, "functions": ["gpio", "pwm"] },
-          { "id": "d8", "name": "D8", "x": 6, "y": 4, "functions": ["gpio"] },
-          { "id": "d7", "name": "D7", "x": 6, "y": 5, "functions": ["gpio"] },
-          { "id": "d6", "name": "D6 / PWM", "x": 6, "y": 6, "functions": ["gpio", "pwm"] },
-          { "id": "d5", "name": "D5 / PWM", "x": 6, "y": 7, "functions": ["gpio", "pwm"] },
-          { "id": "d4", "name": "D4", "x": 6, "y": 8, "functions": ["gpio"] },
-          { "id": "d3", "name": "D3 / PWM", "x": 6, "y": 9, "functions": ["gpio", "pwm"] },
-          { "id": "d2", "name": "D2", "x": 6, "y": 10, "functions": ["gpio"] },
-          { "id": "gnd_right", "name": "GND", "x": 6, "y": 11, "functions": ["ground"] },
-          { "id": "reset_right", "name": "RESET", "x": 6, "y": 12, "functions": ["reset"] },
-          { "id": "d0", "name": "D0 / RX", "x": 6, "y": 13, "aliases": ["RX"], "functions": ["gpio", "uart_rx"] },
-          { "id": "d1", "name": "D1 / TX", "x": 6, "y": 14, "aliases": ["TX"], "functions": ["gpio", "uart_tx"] }
+          { "id": "d13", "number": "1", "name": "D13 / SCK / LED", "x": 0, "y": 0, "aliases": ["SCK", "LED_BUILTIN"], "functions": ["gpio", "spi_clock"] },
+          { "id": "3v3", "number": "2", "name": "3.3V", "x": 0, "y": 1, "functions": ["power"] },
+          { "id": "aref", "number": "3", "name": "AREF", "x": 0, "y": 2, "functions": ["analog_reference"] },
+          { "id": "a0", "number": "4", "name": "A0 / D14", "x": 0, "y": 3, "functions": ["gpio", "analog_input"] },
+          { "id": "a1", "number": "5", "name": "A1 / D15", "x": 0, "y": 4, "functions": ["gpio", "analog_input"] },
+          { "id": "a2", "number": "6", "name": "A2 / D16", "x": 0, "y": 5, "functions": ["gpio", "analog_input"] },
+          { "id": "a3", "number": "7", "name": "A3 / D17", "x": 0, "y": 6, "functions": ["gpio", "analog_input"] },
+          { "id": "a4", "number": "8", "name": "A4 / D18 / SDA", "x": 0, "y": 7, "aliases": ["SDA"], "functions": ["gpio", "analog_input", "i2c_data"] },
+          { "id": "a5", "number": "9", "name": "A5 / D19 / SCL", "x": 0, "y": 8, "aliases": ["SCL"], "functions": ["gpio", "analog_input", "i2c_clock"] },
+          { "id": "a6", "number": "10", "name": "A6", "x": 0, "y": 9, "functions": ["analog_input"] },
+          { "id": "a7", "number": "11", "name": "A7", "x": 0, "y": 10, "functions": ["analog_input"] },
+          { "id": "5v", "number": "12", "name": "5V", "x": 0, "y": 11, "functions": ["power"] },
+          { "id": "reset_left", "number": "13", "name": "RESET", "x": 0, "y": 12, "functions": ["reset"] },
+          { "id": "gnd_left", "number": "14", "name": "GND", "x": 0, "y": 13, "functions": ["ground"] },
+          { "id": "vin", "number": "15", "name": "VIN", "x": 0, "y": 14, "functions": ["power_input"] },
+          { "id": "d12", "number": "30", "name": "D12 / CIPO", "x": 6, "y": 0, "aliases": ["MISO", "CIPO"], "functions": ["gpio", "spi_data"] },
+          { "id": "d11", "number": "29", "name": "D11 / COPI / PWM", "x": 6, "y": 1, "aliases": ["MOSI", "COPI"], "functions": ["gpio", "pwm", "spi_data"] },
+          { "id": "d10", "number": "28", "name": "D10 / SS / PWM", "x": 6, "y": 2, "aliases": ["SS"], "functions": ["gpio", "pwm", "spi_select"] },
+          { "id": "d9", "number": "27", "name": "D9 / PWM", "x": 6, "y": 3, "functions": ["gpio", "pwm"] },
+          { "id": "d8", "number": "26", "name": "D8", "x": 6, "y": 4, "functions": ["gpio"] },
+          { "id": "d7", "number": "25", "name": "D7", "x": 6, "y": 5, "functions": ["gpio"] },
+          { "id": "d6", "number": "24", "name": "D6 / PWM", "x": 6, "y": 6, "functions": ["gpio", "pwm"] },
+          { "id": "d5", "number": "23", "name": "D5 / PWM", "x": 6, "y": 7, "functions": ["gpio", "pwm"] },
+          { "id": "d4", "number": "22", "name": "D4", "x": 6, "y": 8, "functions": ["gpio"] },
+          { "id": "d3", "number": "21", "name": "D3 / PWM", "x": 6, "y": 9, "functions": ["gpio", "pwm"] },
+          { "id": "d2", "number": "20", "name": "D2", "x": 6, "y": 10, "functions": ["gpio"] },
+          { "id": "gnd_right", "number": "19", "name": "GND", "x": 6, "y": 11, "functions": ["ground"] },
+          { "id": "reset_right", "number": "18", "name": "RESET", "x": 6, "y": 12, "functions": ["reset"] },
+          { "id": "d0", "number": "17", "name": "D0 / RX", "x": 6, "y": 13, "aliases": ["RX"], "functions": ["gpio", "uart_rx"] },
+          { "id": "d1", "number": "16", "name": "D1 / TX", "x": 6, "y": 14, "aliases": ["TX"], "functions": ["gpio", "uart_tx"] }
         ],
         "keepouts": [{ "min": { "x": 0, "y": 0 }, "max": { "x": 6, "y": 14 }, "label": "Module body" }],
         "access": [{ "min": { "x": 1, "y": -2 }, "max": { "x": 5, "y": -1 }, "direction": "north", "label": "USB connector", "required": true, "allow_board_overhang": true }],
@@ -60,7 +60,7 @@
       "dev.perfboard.rs485-breakout": {
         "schema_version": 1,
         "id": "dev.perfboard.rs485-breakout",
-        "definition_version": "1.1.0",
+        "definition_version": "1.2.0",
         "name": "RS-485 breakout",
         "description": "Small MAX485-style transceiver breakout",
         "origin_x": 0,
@@ -68,14 +68,14 @@
         "body": { "x": -1.0, "y": -1.0, "width": 20.0, "height": 16.0 },
         "allowed_rotations": ["deg0", "deg90", "deg180", "deg270"],
         "pins": [
-          { "id": "vcc", "name": "VCC", "x": 0, "y": 0, "functions": ["power"] },
-          { "id": "b", "name": "B / D−", "x": 0, "y": 1, "aliases": ["D-"], "functions": ["rs485_bus"] },
-          { "id": "a", "name": "A / D+", "x": 0, "y": 2, "aliases": ["D+"], "functions": ["rs485_bus"] },
-          { "id": "gnd", "name": "GND", "x": 0, "y": 3, "functions": ["ground"] },
-          { "id": "ro", "name": "RO", "x": 6, "y": 0, "functions": ["receiver_output"] },
-          { "id": "re", "name": "RE̅", "x": 6, "y": 1, "aliases": ["/RE"], "functions": ["receiver_enable_active_low"] },
-          { "id": "de", "name": "DE", "x": 6, "y": 2, "functions": ["driver_enable"] },
-          { "id": "di", "name": "DI", "x": 6, "y": 3, "functions": ["driver_input"] }
+          { "id": "vcc", "number": "1", "name": "VCC", "x": 0, "y": 0, "functions": ["power"] },
+          { "id": "b", "number": "2", "name": "B / D−", "x": 0, "y": 1, "aliases": ["D-"], "functions": ["rs485_bus"] },
+          { "id": "a", "number": "3", "name": "A / D+", "x": 0, "y": 2, "aliases": ["D+"], "functions": ["rs485_bus"] },
+          { "id": "gnd", "number": "4", "name": "GND", "x": 0, "y": 3, "functions": ["ground"] },
+          { "id": "ro", "number": "8", "name": "RO", "x": 6, "y": 0, "functions": ["receiver_output"] },
+          { "id": "re", "number": "7", "name": "RE̅", "x": 6, "y": 1, "aliases": ["/RE"], "functions": ["receiver_enable_active_low"] },
+          { "id": "de", "number": "6", "name": "DE", "x": 6, "y": 2, "functions": ["driver_enable"] },
+          { "id": "di", "number": "5", "name": "DI", "x": 6, "y": 3, "functions": ["driver_input"] }
         ],
         "keepouts": [{ "min": { "x": 0, "y": 0 }, "max": { "x": 6, "y": 3 }, "label": "Breakout body" }],
         "access": [{ "min": { "x": 7, "y": 0 }, "max": { "x": 8, "y": 3 }, "direction": "east", "label": "A/B screw terminal", "required": true, "allow_board_overhang": false }],
@@ -99,6 +99,82 @@
         "position": { "x": 16, "y": 14 },
         "rotation": "deg180",
         "notes": "Keep terminal reachable"
+      }
+    },
+    "nets": {
+      "018f1000-0000-7000-8000-000000000201": {
+        "id": "018f1000-0000-7000-8000-000000000201",
+        "name": "VCC",
+        "state": "accepted",
+        "pins": [
+          { "component_id": "018f1000-0000-7000-8000-000000000101", "pin_id": "5v" },
+          { "component_id": "018f1000-0000-7000-8000-000000000102", "pin_id": "vcc" }
+        ]
+      },
+      "018f1000-0000-7000-8000-000000000202": {
+        "id": "018f1000-0000-7000-8000-000000000202",
+        "name": "GND",
+        "state": "accepted",
+        "pins": [
+          { "component_id": "018f1000-0000-7000-8000-000000000101", "pin_id": "gnd_left" },
+          { "component_id": "018f1000-0000-7000-8000-000000000102", "pin_id": "gnd" }
+        ]
+      },
+      "018f1000-0000-7000-8000-000000000203": {
+        "id": "018f1000-0000-7000-8000-000000000203",
+        "name": "UART_TX",
+        "state": "accepted",
+        "pins": [
+          { "component_id": "018f1000-0000-7000-8000-000000000101", "pin_id": "d1" },
+          { "component_id": "018f1000-0000-7000-8000-000000000102", "pin_id": "di" }
+        ]
+      },
+      "018f1000-0000-7000-8000-000000000204": {
+        "id": "018f1000-0000-7000-8000-000000000204",
+        "name": "UART_RX",
+        "state": "accepted",
+        "pins": [
+          { "component_id": "018f1000-0000-7000-8000-000000000101", "pin_id": "d0" },
+          { "component_id": "018f1000-0000-7000-8000-000000000102", "pin_id": "ro" }
+        ]
+      }
+    },
+    "wires": {
+      "018f1000-0000-7000-8000-000000000301": {
+        "id": "018f1000-0000-7000-8000-000000000301",
+        "net_id": "018f1000-0000-7000-8000-000000000201",
+        "start": { "kind": "pin", "component_id": "018f1000-0000-7000-8000-000000000101", "pin_id": "5v" },
+        "end": { "kind": "pin", "component_id": "018f1000-0000-7000-8000-000000000102", "pin_id": "vcc" },
+        "side": "solder", "color": "red",
+        "vertices": [{ "x2": 12, "y2": 4 }, { "x2": 12, "y2": 8 }, { "x2": 32, "y2": 28 }],
+        "locked": false
+      },
+      "018f1000-0000-7000-8000-000000000302": {
+        "id": "018f1000-0000-7000-8000-000000000302",
+        "net_id": "018f1000-0000-7000-8000-000000000202",
+        "start": { "kind": "pin", "component_id": "018f1000-0000-7000-8000-000000000101", "pin_id": "gnd_left" },
+        "end": { "kind": "pin", "component_id": "018f1000-0000-7000-8000-000000000102", "pin_id": "gnd" },
+        "side": "solder", "color": "black",
+        "vertices": [{ "x2": 8, "y2": 4 }, { "x2": 14, "y2": 4 }, { "x2": 32, "y2": 22 }],
+        "locked": false
+      },
+      "018f1000-0000-7000-8000-000000000303": {
+        "id": "018f1000-0000-7000-8000-000000000303",
+        "net_id": "018f1000-0000-7000-8000-000000000203",
+        "start": { "kind": "pin", "component_id": "018f1000-0000-7000-8000-000000000101", "pin_id": "d1" },
+        "end": { "kind": "pin", "component_id": "018f1000-0000-7000-8000-000000000102", "pin_id": "di" },
+        "side": "component", "color": "green",
+        "vertices": [{ "x2": 6, "y2": 16 }, { "x2": 14, "y2": 16 }, { "x2": 20, "y2": 22 }],
+        "locked": false
+      },
+      "018f1000-0000-7000-8000-000000000304": {
+        "id": "018f1000-0000-7000-8000-000000000304",
+        "net_id": "018f1000-0000-7000-8000-000000000204",
+        "start": { "kind": "pin", "component_id": "018f1000-0000-7000-8000-000000000101", "pin_id": "d0" },
+        "end": { "kind": "pin", "component_id": "018f1000-0000-7000-8000-000000000102", "pin_id": "ro" },
+        "side": "component", "color": "white",
+        "vertices": [{ "x2": 8, "y2": 16 }, { "x2": 20, "y2": 28 }],
+        "locked": false
       }
     }
   }

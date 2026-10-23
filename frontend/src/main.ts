@@ -11,6 +11,9 @@ import {
   type ComponentInstance,
   type ProjectDocument,
   type Rotation,
+  type Side,
+  type TerminalRef,
+  type WireColor,
 } from "./api/project";
 import { renderBoardSvg } from "./editor/renderer";
 import { snappedDragPosition } from "./editor/drag";
@@ -20,10 +23,30 @@ const $ = <T extends Element>(selector: string): T => {
   if (!element) throw new Error(`Missing UI element ${selector}`);
   return element;
 };
+const escapeHtml = (value: string): string =>
+  value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[character] ?? character,
+  );
 let project: ProjectDocument;
 let library: ComponentDefinition[] = [];
 let selectedId: string | undefined;
 let viewBox: [number, number, number, number] | undefined;
+let pendingWheelZoom = 1;
+let wheelZoomFrame: number | undefined;
+let viewSide: Side = "component";
+let activeNetId: string | undefined;
+let wireMode = false;
+let wireDraft:
+  | { start: TerminalRef; vertices: Array<{ x2: number; y2: number }> }
+  | undefined;
 let drag:
   | {
       id: string;
@@ -51,6 +74,7 @@ function render(): void {
     project,
     selectedId,
     viewBox?.join(" "),
+    viewSide,
   );
   $("#library").innerHTML = library
     .map(
@@ -65,10 +89,37 @@ function render(): void {
           `<button class="component-item${item.id === selectedId ? " active" : ""}" data-select-id="${item.id}">${item.name}<span>${item.position.x}, ${item.position.y} · ${item.rotation}</span></button>`,
       )
       .join("") || "<p>No components placed.</p>";
+  const nets = Object.values(project.design.nets ?? {});
+  if (!activeNetId || !project.design.nets?.[activeNetId])
+    activeNetId = nets[0]?.id;
+  $("#active-net").innerHTML = nets
+    .map(
+      (net) =>
+        `<option value="${net.id}"${net.id === activeNetId ? " selected" : ""}>${net.name} (${net.state})</option>`,
+    )
+    .join("");
+  $("#net-list").innerHTML =
+    nets
+      .map(
+        (net) =>
+          `<div class="net-item ${net.state}"><strong>${net.name}</strong> · ${net.pins?.length ?? 0} pins<div>${net.state === "proposed" ? `<button data-accept-net="${net.id}">Accept</button><button data-reject-net="${net.id}">Reject</button>` : `<button data-remove-net="${net.id}">Remove</button>`}</div></div>`,
+      )
+      .join("") || "<p>No nets defined.</p>";
+  $("#view-side").textContent = `View: ${viewSide}`;
+  $("#wire-mode").classList.toggle("active", wireMode);
   const instance = selected();
+  const wire = selectedId ? project.design.wires?.[selectedId] : undefined;
+  const selectedDefinition = instance
+    ? project.design.component_definitions?.[instance.definition_id]
+    : undefined;
+  const pinTable = selectedDefinition
+    ? `<h3>Pin reference</h3><table class="pin-table"><thead><tr><th>Pin</th><th>Name</th></tr></thead><tbody>${selectedDefinition.pins.map((pin) => `<tr><td>${escapeHtml(pin.number)}</td><td>${escapeHtml(pin.name)}</td></tr>`).join("")}</tbody></table>`
+    : "";
   $("#inspector").innerHTML = instance
-    ? `<label>Name <input id="instance-name" value="${instance.name.replaceAll('"', "&quot;")}" /></label><label>Notes <textarea id="instance-notes">${instance.notes ?? ""}</textarea></label><div class="button-row"><button id="rotate-component">Rotate 90°</button><button id="remove-component" class="danger">Remove</button></div><p>Anchor: ${instance.position.x}, ${instance.position.y}<br>Rotation: ${instance.rotation}</p>`
-    : "<p>Select a component.</p>";
+    ? `<label>Name <input id="instance-name" value="${escapeHtml(instance.name)}" /></label><label>Notes <textarea id="instance-notes">${escapeHtml(instance.notes ?? "")}</textarea></label><div class="button-row"><button id="rotate-component">Rotate 90°</button><button id="remove-component" class="danger">Remove</button></div><p>Anchor: ${instance.position.x}, ${instance.position.y}<br>Rotation: ${instance.rotation}</p>${pinTable}`
+    : wire
+      ? `<p>Wire ${wire.id.slice(0, 8)}</p><label>Side <select id="selected-wire-side"><option${wire.side === "component" ? " selected" : ""}>component</option><option${wire.side === "solder" ? " selected" : ""}>solder</option></select></label><label>Color <select id="selected-wire-color">${["green", "red", "black", "yellow", "white", "blue", "orange"].map((color) => `<option${wire.color === color ? " selected" : ""}>${color}</option>`).join("")}</select></label>${wire.vertices.map((point, index) => `<div class="wire-vertex"><label>x2 <input data-vertex-x="${index}" type="number" value="${point.x2}" /></label><label>y2 <input data-vertex-y="${index}" type="number" value="${point.y2}" /></label>${index > 0 && index < wire.vertices.length - 1 ? `<button data-remove-vertex="${index}">Remove bend</button>` : ""}</div>`).join("")}<div class="button-row"><button id="toggle-wire-lock">${wire.locked ? "Unlock" : "Lock"}</button><button id="remove-wire" class="danger">Remove wire</button></div>`
+      : "<p>Select a component or wire.</p>";
   const diagnostics = project.validation ?? [];
   $("#validation").innerHTML = diagnostics.length
     ? diagnostics
@@ -106,7 +157,126 @@ function svgPoint(event: PointerEvent): { x: number; y: number } | undefined {
   const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(
     matrix.inverse(),
   );
-  return { x: point.x, y: point.y };
+  return {
+    x:
+      viewSide === "solder"
+        ? project.design.board.holes_x - 1 - point.x
+        : point.x,
+    y: point.y,
+  };
+}
+
+function pinRoutePosition(
+  componentId: string,
+  pinId: string,
+): { x2: number; y2: number } | undefined {
+  const instance = project.design.components?.[componentId];
+  const definition =
+    instance && project.design.component_definitions?.[instance.definition_id];
+  const pin = definition?.pins.find((item) => item.id === pinId);
+  if (!instance || !pin) return undefined;
+  const rotated: Record<Rotation, [number, number]> = {
+    deg0: [pin.x, pin.y],
+    deg90: [-pin.y, pin.x],
+    deg180: [-pin.x, -pin.y],
+    deg270: [pin.y, -pin.x],
+  };
+  const [x, y] = rotated[instance.rotation];
+  return {
+    x2: (instance.position.x + x) * 2,
+    y2: (instance.position.y + y) * 2,
+  };
+}
+
+function appendRoutable(target: { x2: number; y2: number }): void {
+  if (!wireDraft) return;
+  const last = wireDraft.vertices.at(-1)!;
+  const dx = target.x2 - last.x2;
+  const dy = target.y2 - last.y2;
+  if (dx !== 0 && dy !== 0 && Math.abs(dx) !== Math.abs(dy)) {
+    const diagonal = Math.min(Math.abs(dx), Math.abs(dy));
+    wireDraft.vertices.push({
+      x2: last.x2 + Math.sign(dx) * diagonal,
+      y2: last.y2 + Math.sign(dy) * diagonal,
+    });
+  }
+  const end = wireDraft.vertices.at(-1)!;
+  if (end.x2 !== target.x2 || end.y2 !== target.y2)
+    wireDraft.vertices.push(target);
+}
+
+async function handleWirePin(
+  componentId: string,
+  pinId: string,
+): Promise<void> {
+  const netId = activeNetId;
+  const net = netId ? project.design.nets?.[netId] : undefined;
+  if (!net || !netId) {
+    setStatus("Create and select an accepted net first", "error");
+    return;
+  }
+  if (net.state !== "accepted") {
+    setStatus("Accept the active net proposal before routing it", "error");
+    return;
+  }
+  const ref = { component_id: componentId, pin_id: pinId };
+  const owner = Object.values(project.design.nets ?? {}).find((candidate) =>
+    candidate.pins?.some(
+      (pin) => pin.component_id === componentId && pin.pin_id === pinId,
+    ),
+  );
+  if (owner && owner.id !== netId) {
+    setStatus(`This pin already belongs to net ${owner.name}`, "error");
+    return;
+  }
+  if (!owner) {
+    try {
+      await applyOperation(project.revision, {
+        type: "assign_pin",
+        net_id: netId,
+        pin: ref,
+      });
+      await refresh();
+    } catch (error) {
+      setStatus(`Could not assign endpoint: ${String(error)}`, "error");
+      return;
+    }
+  }
+  const position = pinRoutePosition(componentId, pinId);
+  if (!position) return;
+  const terminal: TerminalRef = {
+    kind: "pin",
+    component_id: componentId,
+    pin_id: pinId,
+  };
+  if (!wireDraft) {
+    wireDraft = { start: terminal, vertices: [position] };
+    setStatus("Starting pin assigned. Add bends or click the ending pin.");
+    return;
+  }
+  if (JSON.stringify(terminal) === JSON.stringify(wireDraft.start)) {
+    setStatus("Choose a different ending pin", "error");
+    return;
+  }
+  appendRoutable(position);
+  const color = ($("#wire-color") as HTMLSelectElement).value as WireColor;
+  const draft = wireDraft;
+  wireDraft = undefined;
+  wireMode = false;
+  await mutate({
+    type: "add_wire",
+    wire: {
+      id: crypto.randomUUID(),
+      net_id: netId,
+      start: draft.start,
+      end: terminal,
+      side: viewSide,
+      color,
+      vertices: draft.vertices,
+      locked: false,
+      notes: "",
+    },
+  });
 }
 
 $("#app").addEventListener("click", (event) => {
@@ -115,6 +285,57 @@ $("#app").addEventListener("click", (event) => {
     return;
   }
   const target = event.target as HTMLElement;
+  const accept =
+    target.closest<HTMLElement>("[data-accept-net]")?.dataset.acceptNet;
+  if (accept) {
+    void mutate({ type: "accept_net_proposal", net_id: accept });
+    return;
+  }
+  const reject =
+    target.closest<HTMLElement>("[data-reject-net]")?.dataset.rejectNet;
+  if (reject) {
+    void mutate({ type: "reject_net_proposal", net_id: reject });
+    return;
+  }
+  const removeNet =
+    target.closest<HTMLElement>("[data-remove-net]")?.dataset.removeNet;
+  if (removeNet) {
+    void mutate({ type: "remove_net", net_id: removeNet });
+    return;
+  }
+  const selectedWire =
+    target.closest<HTMLElement>("[data-wire-id]")?.dataset.wireId;
+  if (selectedWire) {
+    selectedId = selectedWire;
+    render();
+    return;
+  }
+  const pin = target.closest<HTMLElement>("[data-pin-id]");
+  const pinComponent = pin?.closest<HTMLElement>("[data-component-id]")?.dataset
+    .componentId;
+  if (pin?.dataset.pinId && pinComponent) {
+    if (wireMode) {
+      void handleWirePin(pinComponent, pin.dataset.pinId);
+      return;
+    }
+    if (!activeNetId) {
+      setStatus("Create and select a net before assigning pins", "error");
+      return;
+    }
+    const ref = { component_id: pinComponent, pin_id: pin.dataset.pinId };
+    const net = project.design.nets?.[activeNetId];
+    if (!net) return;
+    const assigned = net.pins?.some(
+      (item) =>
+        item.component_id === ref.component_id && item.pin_id === ref.pin_id,
+    );
+    void mutate({
+      type: assigned ? "unassign_pin" : "assign_pin",
+      net_id: activeNetId,
+      pin: ref,
+    });
+    return;
+  }
   const component = target.closest<HTMLElement>(
     "[data-component-id], [data-select-id]",
   );
@@ -150,6 +371,22 @@ $("#app").addEventListener("click", (event) => {
 $("#canvas").addEventListener("pointerdown", (event) => {
   const pointer = event as PointerEvent;
   if (!pointer.isPrimary || pointer.button !== 0 || drag) return;
+  if (wireMode && (pointer.target as Element).closest("[data-pin-id]")) return;
+  if (
+    wireMode &&
+    wireDraft &&
+    !(pointer.target as Element).closest("[data-pin-id]")
+  ) {
+    const point = svgPoint(pointer);
+    if (point) {
+      appendRoutable({
+        x2: Math.round(point.x * 2),
+        y2: Math.round(point.y * 2),
+      });
+      setStatus(`${wireDraft.vertices.length - 1} bend point(s)`);
+    }
+    return;
+  }
   const component = (pointer.target as Element).closest<HTMLElement>(
     "[data-component-id]",
   );
@@ -249,8 +486,29 @@ $("#canvas").addEventListener("pointercancel", (event) => {
 });
 $("#inspector").addEventListener("click", (event) => {
   const instance = selected();
-  if (!instance) return;
   const target = event.target as HTMLElement;
+  const wire = selectedId ? project.design.wires?.[selectedId] : undefined;
+  if (wire) {
+    const removeIndex = target.closest<HTMLElement>("[data-remove-vertex]")
+      ?.dataset.removeVertex;
+    if (removeIndex) {
+      const vertices = wire.vertices.filter(
+        (_, index) => index !== Number(removeIndex),
+      );
+      void mutate({ type: "modify_wire_path", wire_id: wire.id, vertices });
+    } else if (target.id === "toggle-wire-lock") {
+      void mutate({
+        type: "set_wire_lock",
+        wire_id: wire.id,
+        locked: !wire.locked,
+      });
+    } else if (target.id === "remove-wire") {
+      selectedId = undefined;
+      void mutate({ type: "remove_wire", wire_id: wire.id });
+    }
+    return;
+  }
+  if (!instance) return;
   if (target.id === "rotate-component")
     void mutate({
       type: "rotate_component",
@@ -262,8 +520,46 @@ $("#inspector").addEventListener("click", (event) => {
     void mutate({ type: "remove_component", instance_id: instance.id });
   }
 });
-$("#inspector").addEventListener("change", () => {
+$("#inspector").addEventListener("change", (event) => {
   const instance = selected();
+  const wire = selectedId ? project.design.wires?.[selectedId] : undefined;
+  if (wire) {
+    const target = event.target as HTMLElement;
+    if (target.id === "selected-wire-side") {
+      void mutate({
+        type: "set_wire_side",
+        wire_id: wire.id,
+        side: (target as HTMLSelectElement).value as Side,
+      });
+      return;
+    }
+    if (target.id === "selected-wire-color") {
+      void mutate({
+        type: "set_wire_color",
+        wire_id: wire.id,
+        color: (target as HTMLSelectElement).value as WireColor,
+      });
+      return;
+    }
+    const vertices = wire.vertices.map((point, index) => ({
+      x2: Number(
+        (
+          document.querySelector(
+            `[data-vertex-x="${index}"]`,
+          ) as HTMLInputElement
+        )?.value ?? point.x2,
+      ),
+      y2: Number(
+        (
+          document.querySelector(
+            `[data-vertex-y="${index}"]`,
+          ) as HTMLInputElement
+        )?.value ?? point.y2,
+      ),
+    }));
+    void mutate({ type: "modify_wire_path", wire_id: wire.id, vertices });
+    return;
+  }
   if (!instance) return;
   const name = $("#instance-name") as HTMLInputElement;
   const notes = $("#instance-notes") as HTMLTextAreaElement;
@@ -312,17 +608,64 @@ function zoom(factor: number): void {
   ];
   svg.setAttribute("viewBox", viewBox.join(" "));
 }
+function scheduleWheelZoom(factor: number): void {
+  pendingWheelZoom *= factor;
+  if (wheelZoomFrame !== undefined) return;
+  wheelZoomFrame = window.requestAnimationFrame(() => {
+    const accumulatedFactor = pendingWheelZoom;
+    pendingWheelZoom = 1;
+    wheelZoomFrame = undefined;
+    zoom(accumulatedFactor);
+  });
+}
 $("#zoom-in").addEventListener("click", () => zoom(0.8));
 $("#zoom-out").addEventListener("click", () => zoom(1.25));
 $("#zoom-reset").addEventListener("click", () => {
   viewBox = undefined;
   render();
 });
+$("#view-side").addEventListener("click", () => {
+  viewSide = viewSide === "component" ? "solder" : "component";
+  render();
+});
+$("#active-net").addEventListener("change", (event) => {
+  activeNetId = (event.target as HTMLSelectElement).value;
+  wireDraft = undefined;
+  render();
+});
+function addNet(state: "accepted" | "proposed"): void {
+  const input = $("#net-name") as HTMLInputElement;
+  const name = input.value.trim();
+  if (!name) {
+    setStatus("Enter a net name", "error");
+    return;
+  }
+  const id = crypto.randomUUID();
+  activeNetId = id;
+  input.value = "";
+  void mutate({
+    type: "define_net",
+    net: { id, name, state, pins: [], notes: "" },
+  });
+}
+$("#add-net").addEventListener("click", () => addNet("accepted"));
+$("#propose-net").addEventListener("click", () => addNet("proposed"));
+$("#wire-mode").addEventListener("click", () => {
+  wireMode = true;
+  wireDraft = undefined;
+  setStatus("Click the starting pin for the active net");
+  render();
+});
+$("#cancel-wire").addEventListener("click", () => {
+  wireMode = false;
+  wireDraft = undefined;
+  render();
+});
 $("#canvas").addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
-    zoom((event as WheelEvent).deltaY > 0 ? 1.12 : 0.89);
+    scheduleWheelZoom((event as WheelEvent).deltaY > 0 ? 1.12 : 0.89);
   },
   { passive: false },
 );

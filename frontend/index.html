@@ -26,6 +26,7 @@
         <button id="zoom-out" aria-label="Zoom out">−</button>
         <button id="zoom-in" aria-label="Zoom in">+</button>
         <button id="zoom-reset">Fit</button>
+        <button id="view-side">View: component</button>
       </section>
       <div class="workspace">
         <aside class="panel">
@@ -33,6 +34,40 @@
           <div id="library"></div>
           <h2>Placed</h2>
           <div id="component-list"></div>
+          <h2>Nets</h2>
+          <label class="stacked"
+            >New net <input id="net-name" placeholder="e.g. GND"
+          /></label>
+          <div class="button-row">
+            <button id="add-net">Add accepted</button
+            ><button id="propose-net">Propose</button>
+          </div>
+          <label class="stacked"
+            >Active net
+            <select id="active-net"></select
+          ></label>
+          <div id="net-list"></div>
+          <p class="tool-hint">
+            Select an active net, then click <strong>Start wire</strong> and
+            choose two pins. Unassigned endpoint pins are added to the net
+            automatically. Outside wire mode, clicking a pin toggles its net
+            assignment.
+          </p>
+          <h2>Manual wire</h2>
+          <label class="stacked"
+            >Color
+            <select id="wire-color">
+              <option>green</option>
+              <option>red</option>
+              <option>black</option>
+              <option>yellow</option>
+              <option>white</option>
+              <option>blue</option>
+              <option>orange</option>
+            </select></label
+          >
+          <button id="wire-mode">Start wire</button>
+          <button id="cancel-wire">Cancel</button>
         </aside>
         <section id="canvas" aria-label="Board editor">
           <div class="empty">Loading board…</div>
