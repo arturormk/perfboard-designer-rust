@@ -1,16 +1,24 @@
 import "./styles.css";
+import { listen } from "@tauri-apps/api/event";
 import { getBootstrapInfo } from "./api/bootstrap";
 import {
   applyOperation,
+  commitProject,
+  compareProjectRevisions,
   createProject,
+  discardProjectChanges,
   getComponentLibrary,
   getProject,
   openProject,
+  redoProject,
+  restoreProjectCommit,
   saveProject,
+  undoProject,
   type ComponentDefinition,
   type ComponentInstance,
   type ProjectDocument,
   type Rotation,
+  type SemanticDiff,
   type Side,
   type TerminalRef,
   type WireColor,
@@ -36,6 +44,13 @@ const escapeHtml = (value: string): string =>
       })[character] ?? character,
   );
 let project: ProjectDocument;
+let comparison: SemanticDiff = {
+  components: [],
+  nets: [],
+  wires: [],
+  constraints: [],
+  routes: [],
+};
 let library: ComponentDefinition[] = [];
 let selectedId: string | undefined;
 let viewBox: [number, number, number, number] | undefined;
@@ -70,12 +85,33 @@ function selected(): ComponentInstance | undefined {
   return selectedId ? project.design.components?.[selectedId] : undefined;
 }
 function render(): void {
+  const changes = Object.fromEntries(
+    [...comparison.components, ...comparison.wires].map((item) => [
+      item.object_id,
+      item.kind,
+    ]),
+  );
   $("#canvas").innerHTML = renderBoardSvg(
     project,
     selectedId,
     viewBox?.join(" "),
     viewSide,
+    changes,
   );
+  const head = project.head_commit
+    ? project.commits?.[project.head_commit]
+    : undefined;
+  $("#committed-pane").classList.toggle("empty-commit", !head);
+  $("#committed-canvas").innerHTML = head
+    ? renderBoardSvg(
+        { ...project, design: head.design, validation: head.validation },
+        undefined,
+        undefined,
+        viewSide,
+        changes,
+        "committed-board",
+      )
+    : '<p class="tool-hint">No commit yet.</p>';
   $("#library").innerHTML = library
     .map(
       (item) =>
@@ -129,9 +165,58 @@ function render(): void {
         )
         .join("")
     : '<p class="valid">No placement problems.</p>';
+  const commits = [...(project.commit_order ?? [])].reverse();
+  $("#revision-history").innerHTML = commits.length
+    ? commits
+        .map((id) => {
+          const commit = project.commits?.[id];
+          if (!commit) return "";
+          const origins = (commit.changes ?? [])
+            .map(
+              (change) =>
+                `${change.origin}${change.rationale ? `: ${escapeHtml(change.rationale)}` : ""}`,
+            )
+            .join(" · ");
+          return `<article class="history-item"><strong>${escapeHtml(commit.name)}</strong><span>r${commit.source_revision} · ${new Date(commit.timestamp_ms).toLocaleString()}</span>${origins ? `<span>${origins}</span>` : ""}<div><button data-compare-commit="${id}">Compare</button><button data-restore-commit="${id}">Restore</button></div></article>`;
+        })
+        .join("")
+    : "<p>No commits yet.</p>";
+  const diffEntries = [
+    ...comparison.components,
+    ...comparison.nets,
+    ...comparison.wires,
+  ];
+  $("#semantic-diff").innerHTML = diffEntries.length
+    ? diffEntries
+        .map(
+          (item) =>
+            `<p class="diff-entry ${item.kind}"><span>${item.kind.replace("_", " ")}</span>${escapeHtml(item.summary)}</p>`,
+        )
+        .join("")
+    : "<p>No differences from the selected commit.</p>";
+  const workingChanges = project.undo_stack ?? [];
+  $("#operation-history").innerHTML = workingChanges.length
+    ? workingChanges
+        .slice()
+        .reverse()
+        .map(
+          (item) =>
+            `<article class="operation-item"><strong>${escapeHtml(item.summary)}</strong><span>${item.origin}${item.rationale ? ` · ${escapeHtml(item.rationale)}` : ""}</span></article>`,
+        )
+        .join("")
+    : "<p>No uncommitted operations.</p>";
+  ($("#undo-project") as HTMLButtonElement).disabled =
+    !project.undo_stack?.length;
+  ($("#redo-project") as HTMLButtonElement).disabled =
+    !project.redo_stack?.length;
+  ($("#discard-project") as HTMLButtonElement).disabled =
+    !project.undo_stack?.length;
 }
 async function refresh(): Promise<void> {
   project = await getProject();
+  comparison = project.head_commit
+    ? await compareProjectRevisions(project.head_commit)
+    : { components: [], nets: [], wires: [], constraints: [], routes: [] };
   render();
   setStatus(
     `Revision ${project.revision} · ${project.design.board.holes_x} × ${project.design.board.holes_y} holes`,
@@ -588,6 +673,60 @@ $("#open-project").addEventListener("click", async () => {
   render();
   setStatus("Project reopened");
 });
+async function runRevisionAction(
+  action: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await action();
+    await refresh();
+  } catch (error) {
+    setStatus(String(error), "error");
+  }
+}
+$("#undo-project").addEventListener("click", () => {
+  void runRevisionAction(() => undoProject(project.revision));
+});
+$("#redo-project").addEventListener("click", () => {
+  void runRevisionAction(() => redoProject(project.revision));
+});
+$("#discard-project").addEventListener("click", () => {
+  void runRevisionAction(() => discardProjectChanges(project.revision));
+});
+$("#commit-project").addEventListener("click", () => {
+  const name = ($("#commit-name") as HTMLInputElement).value.trim();
+  const description = ($("#commit-description") as HTMLTextAreaElement).value;
+  if (!name) {
+    setStatus("Enter a commit name", "error");
+    return;
+  }
+  void runRevisionAction(async () => {
+    await commitProject(project.revision, name, description);
+    ($("#commit-name") as HTMLInputElement).value = "";
+    ($("#commit-description") as HTMLTextAreaElement).value = "";
+  });
+});
+$("#revision-history").addEventListener("click", (event) => {
+  const target = event.target as HTMLElement;
+  const compareId = target.closest<HTMLElement>("[data-compare-commit]")
+    ?.dataset.compareCommit;
+  if (compareId) {
+    void compareProjectRevisions(compareId).then((diff) => {
+      comparison = diff;
+      render();
+      setStatus(
+        `Comparing commit ${compareId.slice(0, 8)} to the working copy`,
+      );
+    });
+    return;
+  }
+  const restoreId = target.closest<HTMLElement>("[data-restore-commit]")
+    ?.dataset.restoreCommit;
+  if (restoreId) {
+    void runRevisionAction(() =>
+      restoreProjectCommit(project.revision, restoreId),
+    );
+  }
+});
 function zoom(factor: number): void {
   const svg = $("#board") as SVGSVGElement;
   const current = (
@@ -670,11 +809,17 @@ $("#canvas").addEventListener(
   { passive: false },
 );
 Promise.all([getBootstrapInfo(), getProject(), getComponentLibrary()])
-  .then(([info, loadedProject, loadedLibrary]) => {
+  .then(async ([info, loadedProject, loadedLibrary]) => {
     project = loadedProject;
     library = loadedLibrary;
+    if (project.head_commit) {
+      comparison = await compareProjectRevisions(project.head_commit);
+    }
     render();
     setStatus(`Rust engine ready · schema v${info.schema_version}`);
+    await listen("project-changed", () => {
+      void refresh();
+    });
   })
   .catch((error: unknown) =>
     setStatus(`The desktop bridge is unavailable: ${String(error)}`, "error"),

@@ -1,9 +1,9 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
-    BoardFeatures, BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId,
-    Diagnostic, ElectricalNet, Junction, JunctionId, NetId, ProjectId, Wire, WireId,
-    validate_design_placements,
+    BoardFeatures, BoardSize, CommitId, ComponentDefinition, ComponentInstance,
+    ComponentInstanceId, Diagnostic, ElectricalNet, Junction, JunctionId, NetId, ProjectId, Wire,
+    WireId, validate_design_placements,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -27,6 +27,18 @@ pub struct ProjectDocument {
     pub design: Design,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub validation: Vec<Diagnostic>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub commits: BTreeMap<CommitId, crate::Commit>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_order: Vec<CommitId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_commit: Option<CommitId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working_base: Option<Design>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub undo_stack: Vec<crate::WorkingChange>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redo_stack: Vec<crate::WorkingChange>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -91,6 +103,8 @@ pub enum DocumentError {
     InvalidCircuit(String),
     #[error("stored validation report is stale")]
     StaleValidation,
+    #[error("invalid revision history: {0}")]
+    InvalidRevisionHistory(String),
     #[error("invalid project JSON: {0}")]
     InvalidJson(#[from] serde_json::Error),
 }
@@ -98,20 +112,27 @@ pub enum DocumentError {
 impl ProjectDocument {
     #[must_use]
     pub fn new(project_id: ProjectId, name: impl Into<String>, board: Board) -> Self {
+        let design = Design {
+            board,
+            component_definitions: BTreeMap::new(),
+            components: BTreeMap::new(),
+            nets: BTreeMap::new(),
+            junctions: BTreeMap::new(),
+            wires: BTreeMap::new(),
+        };
         Self {
             schema_version: PROJECT_SCHEMA_VERSION,
             project_id,
             name: name.into(),
             revision: DocumentRevision::default(),
-            design: Design {
-                board,
-                component_definitions: BTreeMap::new(),
-                components: BTreeMap::new(),
-                nets: BTreeMap::new(),
-                junctions: BTreeMap::new(),
-                wires: BTreeMap::new(),
-            },
+            working_base: None,
+            design,
             validation: Vec::new(),
+            commits: BTreeMap::new(),
+            commit_order: Vec::new(),
+            head_commit: None,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         }
     }
 
@@ -136,6 +157,7 @@ impl ProjectDocument {
     ///
     /// # Errors
     /// Returns a specific [`DocumentError`] for the first invalid invariant.
+    #[allow(clippy::too_many_lines)] // Keeping all deserialization-boundary checks together is auditable.
     pub fn validate(&self) -> Result<(), DocumentError> {
         if self.schema_version != PROJECT_SCHEMA_VERSION {
             return Err(DocumentError::UnsupportedSchema {
@@ -203,6 +225,64 @@ impl ProjectDocument {
         let calculated = self.calculate_validation();
         if self.validation != calculated {
             return Err(DocumentError::StaleValidation);
+        }
+        if self.commits.iter().any(|(id, commit)| id != &commit.id) {
+            return Err(DocumentError::InvalidRevisionHistory(
+                "commit map key does not match its embedded id".into(),
+            ));
+        }
+        let ordered_commits: BTreeSet<_> = self.commit_order.iter().copied().collect();
+        if self.commit_order.len() != self.commits.len()
+            || ordered_commits.len() != self.commit_order.len()
+            || self
+                .commit_order
+                .iter()
+                .any(|id| !self.commits.contains_key(id))
+        {
+            return Err(DocumentError::InvalidRevisionHistory(
+                "commit order does not contain every commit exactly once".into(),
+            ));
+        }
+        if self
+            .head_commit
+            .is_some_and(|id| !self.commits.contains_key(&id))
+        {
+            return Err(DocumentError::InvalidRevisionHistory(
+                "head commit does not exist".into(),
+            ));
+        }
+        let validate_snapshot = |design: &Design,
+                                 expected_validation: Option<&Vec<Diagnostic>>|
+         -> Result<(), DocumentError> {
+            let mut snapshot = Self {
+                schema_version: self.schema_version,
+                project_id: self.project_id,
+                name: self.name.clone(),
+                revision: self.revision,
+                design: design.clone(),
+                validation: Vec::new(),
+                commits: BTreeMap::new(),
+                commit_order: Vec::new(),
+                head_commit: None,
+                working_base: None,
+                undo_stack: Vec::new(),
+                redo_stack: Vec::new(),
+            };
+            snapshot.validation = snapshot.calculate_validation();
+            if expected_validation.is_some_and(|expected| expected != &snapshot.validation) {
+                return Err(DocumentError::StaleValidation);
+            }
+            snapshot.validate()
+        };
+        if let Some(base) = &self.working_base {
+            validate_snapshot(base, None)?;
+        }
+        for commit in self.commits.values() {
+            validate_snapshot(&commit.design, Some(&commit.validation))?;
+        }
+        for change in self.undo_stack.iter().chain(&self.redo_stack) {
+            validate_snapshot(&change.before, Some(&change.before_validation))?;
+            validate_snapshot(&change.after, Some(&change.after_validation))?;
         }
         Ok(())
     }

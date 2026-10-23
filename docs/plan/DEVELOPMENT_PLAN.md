@@ -287,6 +287,8 @@ Exit criteria:
 
 ### Milestone 3 — Operations, working copy, and revisions
 
+Status: complete (2026-10-23)
+
 Goal: make all editing recoverable, comparable, atomic, and safe under concurrent clients.
 
 Project work:

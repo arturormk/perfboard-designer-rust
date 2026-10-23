@@ -8,7 +8,7 @@ use perfboard_core::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{DocumentError, DocumentRevision, ProjectDocument};
+use crate::{DocumentError, DocumentRevision, ProjectDocument, WorkingChange};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -165,6 +165,33 @@ pub enum OperationError {
 /// Returns a typed conflict or invariant error without changing `document`.
 #[allow(clippy::too_many_lines, clippy::similar_names)] // The match is the auditable operation registry.
 pub fn apply_operation(
+    document: &mut ProjectDocument,
+    request: OperationRequest,
+) -> Result<OperationResult, OperationError> {
+    let before = document.design.clone();
+    let before_validation = document.validation.clone();
+    let metadata = request.clone();
+    let result = apply_operation_untracked(document, request)?;
+    if document.working_base.is_none() {
+        document.working_base = Some(before.clone());
+    }
+    document.undo_stack.push(WorkingChange {
+        operation_id: metadata.operation_id,
+        origin: metadata.origin,
+        rationale: metadata.rationale,
+        summary: result.change_summary.clone(),
+        payloads: vec![result.normalized_payload.clone()],
+        before,
+        after: document.design.clone(),
+        before_validation,
+        after_validation: document.validation.clone(),
+    });
+    document.redo_stack.clear();
+    Ok(result)
+}
+
+#[allow(clippy::too_many_lines, clippy::similar_names)] // This match is the auditable operation registry.
+pub(crate) fn apply_operation_untracked(
     document: &mut ProjectDocument,
     request: OperationRequest,
 ) -> Result<OperationResult, OperationError> {

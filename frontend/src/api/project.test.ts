@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { applyOperation } from "./project";
+import { applyOperation, applyTransaction } from "./project";
 
 describe("project operation boundary", () => {
   beforeEach(() => vi.mocked(invoke).mockReset());
@@ -25,6 +25,33 @@ describe("project operation boundary", () => {
         type: "rotate_component",
         instance_id: "component-id",
         rotation: "deg90",
+      }),
+    });
+  });
+
+  it("sends grouped changes through the atomic transaction command", async () => {
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    const operations = [
+      {
+        type: "move_component" as const,
+        instance_id: "component-id",
+        position: { x: 2, y: 3 },
+      },
+      {
+        type: "rotate_component" as const,
+        instance_id: "component-id",
+        rotation: "deg90" as const,
+      },
+    ];
+
+    await applyTransaction(7, operations, "Align module");
+
+    expect(invoke).toHaveBeenCalledWith("apply_project_transaction", {
+      request: expect.objectContaining({
+        expected_revision: 7,
+        origin: "user",
+        rationale: "Align module",
+        operations,
       }),
     });
   });

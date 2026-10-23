@@ -23,6 +23,9 @@
         /></label>
         <button id="open-project">Open</button>
         <button id="save-project">Save</button>
+        <button id="undo-project">Undo</button>
+        <button id="redo-project">Redo</button>
+        <button id="discard-project">Discard</button>
         <button id="zoom-out" aria-label="Zoom out">−</button>
         <button id="zoom-in" aria-label="Zoom in">+</button>
         <button id="zoom-reset">Fit</button>
@@ -69,14 +72,38 @@
           <button id="wire-mode">Start wire</button>
           <button id="cancel-wire">Cancel</button>
         </aside>
-        <section id="canvas" aria-label="Board editor">
-          <div class="empty">Loading board…</div>
+        <section class="design-panes" aria-label="Design comparison">
+          <article class="design-pane working-pane">
+            <h2>Working copy</h2>
+            <div id="canvas" aria-label="Working-copy board editor">
+              <div class="empty">Loading board…</div>
+            </div>
+          </article>
+          <article class="design-pane committed-pane" id="committed-pane">
+            <h2>Committed</h2>
+            <div id="committed-canvas" aria-label="Committed board view"></div>
+          </article>
         </section>
         <aside class="panel">
           <h2>Properties</h2>
           <div id="inspector"><p>Select a component.</p></div>
           <h2>Validation</h2>
           <div id="validation"></div>
+          <h2>Revision</h2>
+          <label class="stacked"
+            >Commit name
+            <input id="commit-name" placeholder="e.g. Routed power"
+          /></label>
+          <label class="stacked"
+            >Description <textarea id="commit-description"></textarea>
+          </label>
+          <button id="commit-project">Commit working copy</button>
+          <h2>History</h2>
+          <div id="revision-history"></div>
+          <h2>Changes</h2>
+          <div id="semantic-diff"></div>
+          <h2>Operations</h2>
+          <div id="operation-history"></div>
         </aside>
       </div>
     </main>

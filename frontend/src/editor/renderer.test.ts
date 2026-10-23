@@ -106,4 +106,17 @@ describe("board SVG", () => {
     expect(svg).toContain("W1");
     expect(svg).toContain("--wire-color:green");
   });
+
+  it("uses the same renderer for named comparison panes and change highlights", () => {
+    const svg = renderBoardSvg(
+      fixture,
+      undefined,
+      undefined,
+      "component",
+      { instance: "moved" },
+      "committed-board",
+    );
+    expect(svg).toContain('id="committed-board"');
+    expect(svg).toContain('class="component diff-moved"');
+  });
 });

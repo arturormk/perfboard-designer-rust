@@ -89,6 +89,7 @@ export interface Wire {
   notes?: string;
 }
 export interface ProjectDocument {
+  schema_version?: number;
   project_id: string;
   name: string;
   revision: number;
@@ -117,6 +118,48 @@ export interface ProjectDocument {
     wires?: Record<string, Wire>;
   };
   validation?: Diagnostic[];
+  commits?: Record<string, Commit>;
+  commit_order?: string[];
+  head_commit?: string;
+  working_base?: ProjectDocument["design"];
+  undo_stack?: WorkingChange[];
+  redo_stack?: WorkingChange[];
+}
+
+export interface Commit {
+  id: string;
+  parent?: string;
+  name: string;
+  description: string;
+  timestamp_ms: number;
+  source_revision: number;
+  design: ProjectDocument["design"];
+  validation?: Diagnostic[];
+  changes?: WorkingChange[];
+}
+export interface WorkingChange {
+  operation_id: string;
+  origin: "user" | "mcp" | "import" | "system_derived";
+  rationale?: string;
+  summary: string;
+  payloads: OperationPayload[];
+  before: ProjectDocument["design"];
+  after: ProjectDocument["design"];
+}
+export type ChangeKind =
+  "added" | "removed" | "modified" | "moved" | "rotated" | "route_changed";
+export interface DiffEntry {
+  object_type: string;
+  object_id: string;
+  kind: ChangeKind;
+  summary: string;
+}
+export interface SemanticDiff {
+  components: DiffEntry[];
+  nets: DiffEntry[];
+  wires: DiffEntry[];
+  constraints: DiffEntry[];
+  routes: DiffEntry[];
 }
 
 export type OperationPayload =
@@ -181,9 +224,53 @@ export function applyOperation(
     },
   });
 }
+export function applyTransaction(
+  revision: number,
+  operations: OperationPayload[],
+  rationale?: string,
+): Promise<void> {
+  return invoke("apply_project_transaction", {
+    request: {
+      operation_id: crypto.randomUUID(),
+      expected_revision: revision,
+      origin: "user",
+      rationale,
+      allow_invalid_placement: true,
+      operations,
+    },
+  });
+}
 export function saveProject(path: string): Promise<void> {
   return invoke("save_project", { path });
 }
 export function openProject(path: string): Promise<ProjectDocument> {
   return invoke("open_project", { path });
+}
+export function undoProject(expectedRevision: number): Promise<void> {
+  return invoke("undo_project", { expectedRevision });
+}
+export function redoProject(expectedRevision: number): Promise<void> {
+  return invoke("redo_project", { expectedRevision });
+}
+export function discardProjectChanges(expectedRevision: number): Promise<void> {
+  return invoke("discard_project_changes", { expectedRevision });
+}
+export function commitProject(
+  expectedRevision: number,
+  name: string,
+  description: string,
+): Promise<Commit> {
+  return invoke("commit_project", { expectedRevision, name, description });
+}
+export function restoreProjectCommit(
+  expectedRevision: number,
+  commitId: string,
+): Promise<void> {
+  return invoke("restore_project_commit", { expectedRevision, commitId });
+}
+export function compareProjectRevisions(
+  from?: string,
+  to?: string,
+): Promise<SemanticDiff> {
+  return invoke("compare_project_revisions", { from, to });
 }

@@ -167,7 +167,7 @@ h3 {
   color: #ffb4ab;
 }
 .toolbar {
-  height: 3.4rem;
+  min-height: 3.4rem;
   padding: 0.55rem 1rem;
   display: flex;
   align-items: center;
@@ -199,6 +199,29 @@ textarea {
   display: grid;
   grid-template-columns: 15rem minmax(20rem, 1fr) 17rem;
 }
+.design-panes {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: minmax(18rem, 2fr) minmax(10rem, 1fr);
+  overflow: hidden;
+}
+.design-pane {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+.design-pane > h2 {
+  margin: 0;
+  padding: 0.35rem 0.6rem;
+  background: #18221c;
+  border-bottom: 1px solid #34473a;
+}
+.committed-pane {
+  border-top: 2px solid #557260;
+}
+.empty-commit {
+  grid-template-rows: auto auto;
+}
 .panel {
   overflow: auto;
   padding: 0 0.8rem 1rem;
@@ -216,6 +239,73 @@ textarea {
   cursor: grab;
   background: radial-gradient(circle, #26332a 1px, transparent 1px);
   background-size: 18px 18px;
+}
+#committed-canvas {
+  min-height: 0;
+  overflow: hidden;
+  background: #151c18;
+}
+#committed-board {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+.component.diff-added .body,
+.component.diff-moved .body,
+.component.diff-rotated .body,
+.component.diff-modified .body {
+  stroke: #70e5ff;
+  stroke-width: 0.22;
+}
+.component.diff-removed .body {
+  stroke: #ff7d72;
+  stroke-width: 0.22;
+  stroke-dasharray: 0.25 0.15;
+}
+.wire.diff-added polyline,
+.wire.diff-route_changed polyline,
+.wire.diff-modified polyline {
+  filter: drop-shadow(0 0 0.15px #70e5ff);
+  stroke-width: 0.3;
+}
+.wire.diff-removed polyline {
+  opacity: 0.55;
+  stroke-dasharray: 0.25 0.15;
+}
+.history-item,
+.operation-item {
+  padding: 0.45rem;
+  margin-bottom: 0.4rem;
+  background: #202c24;
+  font-size: 0.75rem;
+}
+.history-item span,
+.operation-item span {
+  display: block;
+  color: #afbbb2;
+  margin: 0.2rem 0;
+}
+.history-item button {
+  padding: 0.2rem 0.35rem;
+  margin-right: 0.25rem;
+  font-size: 0.7rem;
+}
+.diff-entry {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+}
+.diff-entry span {
+  display: inline-block;
+  min-width: 4.7rem;
+  margin-right: 0.35rem;
+  color: #70e5ff;
+  text-transform: uppercase;
+  font-size: 0.62rem;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 #board {
   display: block;

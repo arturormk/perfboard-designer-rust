@@ -1,9 +1,13 @@
 //! Schema-versioned project documents and deterministic serialization.
 
+pub mod diff;
 pub mod document;
 pub mod operations;
 pub mod persistence;
+pub mod revisions;
+pub mod session;
 
+pub use diff::{ChangeKind, DiffEntry, SemanticDiff};
 pub use document::{
     Board, Design, DocumentError, DocumentRevision, PROJECT_SCHEMA_VERSION, ProjectDocument,
     SchemaVersion,
@@ -13,6 +17,10 @@ pub use operations::{
     apply_operation,
 };
 pub use persistence::{PersistenceError, load_project, save_project_atomic};
+pub use revisions::{Commit, HistoryActionResult, RevisionError, WorkingChange};
+pub use session::{
+    ProjectSession, SessionChangeEvent, SessionError, TransactionRequest, TransactionResult,
+};
 
 /// Serialize values in the canonical human-readable snapshot format.
 ///
