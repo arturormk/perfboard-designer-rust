@@ -71,6 +71,30 @@
           >
           <button id="wire-mode">Start wire</button>
           <button id="cancel-wire">Cancel</button>
+          <h2>Automatic route</h2>
+          <p class="tool-hint">
+            Uses the first two pins of the active accepted net. Existing routes
+            remain unchanged until you accept.
+          </p>
+          <button id="suggest-route">Suggest route</button>
+          <div id="route-proposal"><p>No active proposal.</p></div>
+          <h2>Jumper inventory</h2>
+          <label class="stacked"
+            >ID <input id="jumper-id" placeholder="red-5"
+          /></label>
+          <label class="stacked"
+            >Span (intervals)
+            <input id="jumper-span" type="number" min="0" value="5"
+          /></label>
+          <label class="stacked"
+            >Tolerance
+            <input id="jumper-tolerance" type="number" min="0" value="0"
+          /></label>
+          <label class="stacked"
+            >Color <input id="jumper-color" value="red"
+          /></label>
+          <button id="save-jumper">Add/update jumper</button>
+          <div id="jumper-list"></div>
         </aside>
         <section class="design-panes" aria-label="Design comparison">
           <article class="design-pane working-pane">
@@ -89,6 +113,21 @@
           <div id="inspector"><p>Select a component.</p></div>
           <h2>Validation</h2>
           <div id="validation"></div>
+          <h2>Constraints</h2>
+          <p class="tool-hint">
+            Typed constraint JSON; all fields are validated by Rust.
+          </p>
+          <textarea id="constraint-json" rows="8">
+{
+  "severity": "preferred",
+  "origin": "user",
+  "rationale": "Keep bends easy to form",
+  "annotation": "",
+  "type": "bend_spacing",
+  "min_half_grid_steps": 2
+}</textarea>
+          <button id="save-constraint">Add constraint</button>
+          <div id="constraint-list"></div>
           <h2>Revision</h2>
           <label class="stacked"
             >Commit name

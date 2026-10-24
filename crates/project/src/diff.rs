@@ -145,6 +145,32 @@ impl SemanticDiff {
                 });
             }
         }
+        let constraint_ids: BTreeSet<_> = before
+            .constraints
+            .keys()
+            .chain(after.constraints.keys())
+            .copied()
+            .collect();
+        for id in constraint_ids {
+            let old = before.constraints.get(&id);
+            let new = after.constraints.get(&id);
+            let entry = match (old, new) {
+                (None, Some(_)) => Some((ChangeKind::Added, format!("Added constraint {id}"))),
+                (Some(_), None) => Some((ChangeKind::Removed, format!("Removed constraint {id}"))),
+                (Some(_), Some(_)) if old != new => {
+                    Some((ChangeKind::Modified, format!("Modified constraint {id}")))
+                }
+                _ => None,
+            };
+            if let Some((kind, summary)) = entry {
+                result.constraints.push(DiffEntry {
+                    object_type: "constraint".into(),
+                    object_id: id.to_string(),
+                    kind,
+                    summary,
+                });
+            }
+        }
         result
     }
 }

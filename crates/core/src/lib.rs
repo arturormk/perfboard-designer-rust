@@ -3,6 +3,7 @@
 pub mod board;
 pub mod circuit;
 pub mod component;
+pub mod constraints;
 pub mod diagnostic;
 pub mod geometry;
 pub mod id;
@@ -16,6 +17,10 @@ pub use component::{
     AccessDirection, AccessRegion, ComponentDefinition, ComponentDefinitionError, Keepout,
     LocalPos, PinDefinition, RectMm, parse_component_library,
 };
+pub use constraints::{
+    Constraint, ConstraintKind, ConstraintOrigin, ConstraintSeverity, GridRect,
+    JumperInventoryEntry,
+};
 pub use diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity, ObjectReference};
 pub use geometry::{BoardSize, GeometryError, HolePos, Rotation, RoutePos, Side};
 pub use id::{
@@ -23,5 +28,8 @@ pub use id::{
     OperationId, PinId, ProjectId, WireId,
 };
 pub use layout::ComponentInstance;
-pub use routing::{RouteMeasurements, Wire, WireColor, measure_route};
+pub use routing::{
+    CrossingChoice, JumperMatch, JumperMatchKind, RouteCostBreakdown, RouteCrossing,
+    RouteMeasurements, RouteProposal, Wire, WireColor, measure_route,
+};
 pub use validation::{PlacementPolicy, validate_design_placements};

@@ -1,9 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
-    ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState, Diagnostic,
-    DiagnosticSeverity, ElectricalNet, HolePos, Junction, JunctionId, NetId, OperationId, PinRef,
-    Rotation, RoutePos, Side, Wire, WireColor, WireId,
+    ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState, Constraint,
+    ConstraintId, Diagnostic, DiagnosticSeverity, ElectricalNet, HolePos, JumperInventoryEntry,
+    Junction, JunctionId, NetId, OperationId, PinRef, Rotation, RoutePos, RouteProposal, Side,
+    Wire, WireColor, WireId,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -106,6 +107,32 @@ pub enum OperationPayload {
         wire_id: WireId,
         locked: bool,
     },
+    AddConstraint {
+        constraint: Constraint,
+    },
+    UpdateConstraint {
+        constraint: Constraint,
+    },
+    RemoveConstraint {
+        constraint_id: ConstraintId,
+    },
+    UpsertJumperInventory {
+        entry: JumperInventoryEntry,
+    },
+    RemoveJumperInventory {
+        inventory_id: String,
+    },
+    AcceptRouteProposal {
+        proposal: RouteProposal,
+        wire_id: WireId,
+        color: WireColor,
+        #[serde(default)]
+        notes: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        replace_wire_id: Option<WireId>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        new_route_over: Option<bool>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -116,6 +143,7 @@ pub struct OperationResult {
     pub affected_component_ids: BTreeSet<ComponentInstanceId>,
     pub affected_net_ids: BTreeSet<NetId>,
     pub affected_wire_ids: BTreeSet<WireId>,
+    pub affected_constraint_ids: BTreeSet<ConstraintId>,
     pub validation: Vec<Diagnostic>,
     pub change_summary: String,
 }
@@ -151,6 +179,16 @@ pub enum OperationError {
     DuplicateJunction,
     #[error("junction was not found")]
     JunctionNotFound,
+    #[error("constraint already exists")]
+    DuplicateConstraint,
+    #[error("constraint was not found")]
+    ConstraintNotFound,
+    #[error("jumper inventory entry was not found")]
+    JumperInventoryNotFound,
+    #[error("locked wire requires an explicit route replacement operation")]
+    LockedWire,
+    #[error("route proposal does not match the current design or its terminals")]
+    InvalidRouteProposal,
     #[error("object is still referenced by circuit or routing data")]
     ObjectInUse,
     #[error("only proposed nets can be accepted or rejected")]
@@ -205,6 +243,7 @@ pub(crate) fn apply_operation_untracked(
     let mut affected = BTreeSet::new();
     let mut affected_nets = BTreeSet::new();
     let mut affected_wires = BTreeSet::new();
+    let mut affected_constraints = BTreeSet::new();
     let summary = match &request.payload {
         OperationPayload::AddComponent {
             definition,
@@ -431,11 +470,22 @@ pub(crate) fn apply_operation_untracked(
             format!("Added wire {}", wire.id)
         }
         OperationPayload::RemoveWire { wire_id } => {
+            if next
+                .design
+                .wires
+                .get(wire_id)
+                .is_some_and(|wire| wire.locked)
+            {
+                return Err(OperationError::LockedWire);
+            }
             let wire = next
                 .design
                 .wires
                 .remove(wire_id)
                 .ok_or(OperationError::WireNotFound)?;
+            next.design.crossing_choices.retain(|_, choice| {
+                choice.first_wire_id != *wire_id && choice.second_wire_id != *wire_id
+            });
             affected_nets.insert(wire.net_id);
             affected_wires.insert(*wire_id);
             format!("Removed wire {wire_id}")
@@ -446,7 +496,13 @@ pub(crate) fn apply_operation_untracked(
                 .wires
                 .get_mut(wire_id)
                 .ok_or(OperationError::WireNotFound)?;
+            if wire.locked {
+                return Err(OperationError::LockedWire);
+            }
             wire.vertices.clone_from(vertices);
+            next.design.crossing_choices.retain(|_, choice| {
+                choice.first_wire_id != *wire_id && choice.second_wire_id != *wire_id
+            });
             affected_nets.insert(wire.net_id);
             affected_wires.insert(*wire_id);
             format!("Edited wire {wire_id} path")
@@ -467,7 +523,13 @@ pub(crate) fn apply_operation_untracked(
                 .wires
                 .get_mut(wire_id)
                 .ok_or(OperationError::WireNotFound)?;
+            if wire.locked {
+                return Err(OperationError::LockedWire);
+            }
             wire.side = *side;
+            next.design.crossing_choices.retain(|_, choice| {
+                choice.first_wire_id != *wire_id && choice.second_wire_id != *wire_id
+            });
             affected_wires.insert(*wire_id);
             format!("Changed wire {wire_id} side")
         }
@@ -484,13 +546,143 @@ pub(crate) fn apply_operation_untracked(
                 if *locked { "Locked" } else { "Unlocked" }
             )
         }
+        OperationPayload::AddConstraint { constraint } => {
+            if next
+                .design
+                .constraints
+                .insert(constraint.id, constraint.clone())
+                .is_some()
+            {
+                return Err(OperationError::DuplicateConstraint);
+            }
+            affected_constraints.insert(constraint.id);
+            format!("Added constraint {}", constraint.id)
+        }
+        OperationPayload::UpdateConstraint { constraint } => {
+            if !next.design.constraints.contains_key(&constraint.id) {
+                return Err(OperationError::ConstraintNotFound);
+            }
+            next.design
+                .constraints
+                .insert(constraint.id, constraint.clone());
+            affected_constraints.insert(constraint.id);
+            format!("Updated constraint {}", constraint.id)
+        }
+        OperationPayload::RemoveConstraint { constraint_id } => {
+            next.design
+                .constraints
+                .remove(constraint_id)
+                .ok_or(OperationError::ConstraintNotFound)?;
+            affected_constraints.insert(*constraint_id);
+            format!("Removed constraint {constraint_id}")
+        }
+        OperationPayload::UpsertJumperInventory { entry } => {
+            next.design
+                .jumper_inventory
+                .insert(entry.id.clone(), entry.clone());
+            format!("Updated jumper inventory {}", entry.id)
+        }
+        OperationPayload::RemoveJumperInventory { inventory_id } => {
+            next.design
+                .jumper_inventory
+                .remove(inventory_id)
+                .ok_or(OperationError::JumperInventoryNotFound)?;
+            format!("Removed jumper inventory {inventory_id}")
+        }
+        OperationPayload::AcceptRouteProposal {
+            proposal,
+            wire_id,
+            color,
+            notes,
+            replace_wire_id,
+            new_route_over,
+        } => {
+            let request = crate::RouteRequest {
+                net_id: proposal.net_id,
+                start: proposal.start.clone(),
+                end: proposal.end.clone(),
+                preferred_side: Some(proposal.side),
+                replace_wire_id: *replace_wire_id,
+            };
+            let evaluated = crate::evaluate_route(
+                &next.design,
+                &request,
+                proposal.side,
+                proposal.vertices.clone(),
+                &crate::RoutingCostConfig::default(),
+            );
+            if evaluated != *proposal {
+                return Err(OperationError::InvalidRouteProposal);
+            }
+            if next.design.wires.contains_key(wire_id) && Some(*wire_id) != *replace_wire_id {
+                return Err(OperationError::DuplicateWire);
+            }
+            if let Some(replaced) = replace_wire_id {
+                let removed = next
+                    .design
+                    .wires
+                    .remove(replaced)
+                    .ok_or(OperationError::WireNotFound)?;
+                next.design.crossing_choices.retain(|_, choice| {
+                    choice.first_wire_id != *replaced && choice.second_wire_id != *replaced
+                });
+                affected_wires.insert(removed.id);
+            }
+            next.design.wires.insert(
+                *wire_id,
+                Wire {
+                    id: *wire_id,
+                    net_id: proposal.net_id,
+                    start: proposal.start.clone(),
+                    end: proposal.end.clone(),
+                    side: proposal.side,
+                    color: color.clone(),
+                    vertices: proposal.vertices.clone(),
+                    locked: false,
+                    notes: notes.clone(),
+                },
+            );
+            if let Some(route_is_over) = new_route_over {
+                for crossing in &proposal.crossings {
+                    let (first, second) = if wire_id < &crossing.other_wire_id {
+                        (*wire_id, crossing.other_wire_id)
+                    } else {
+                        (crossing.other_wire_id, *wire_id)
+                    };
+                    let key = format!(
+                        "{first}:{second}:{}:{}",
+                        crossing.position.x2, crossing.position.y2
+                    );
+                    next.design.crossing_choices.insert(
+                        key,
+                        perfboard_core::CrossingChoice {
+                            first_wire_id: first,
+                            second_wire_id: second,
+                            over_wire_id: if *route_is_over {
+                                *wire_id
+                            } else {
+                                crossing.other_wire_id
+                            },
+                            position: crossing.position,
+                        },
+                    );
+                }
+            }
+            affected_nets.insert(proposal.net_id);
+            affected_wires.insert(*wire_id);
+            format!("Accepted route proposal as wire {wire_id}")
+        }
     };
     next.validation = next.calculate_validation();
-    if !request.allow_invalid_placement
+    if (!request.allow_invalid_placement
         && next
             .validation
             .iter()
-            .any(|item| item.severity == DiagnosticSeverity::Error)
+            .any(|item| item.severity == DiagnosticSeverity::Error))
+        || next
+            .validation
+            .iter()
+            .any(|item| item.code.0 == "constraint.required")
     {
         return Err(OperationError::InvalidPlacement {
             diagnostics: next.validation,
@@ -506,6 +698,7 @@ pub(crate) fn apply_operation_untracked(
         affected_component_ids: affected,
         affected_net_ids: affected_nets,
         affected_wire_ids: affected_wires,
+        affected_constraint_ids: affected_constraints,
         validation: document.validation.clone(),
         change_summary: summary,
     })

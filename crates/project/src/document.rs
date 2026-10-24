@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
     BoardFeatures, BoardSize, CommitId, ComponentDefinition, ComponentInstance,
-    ComponentInstanceId, Diagnostic, ElectricalNet, Junction, JunctionId, NetId, ProjectId, Wire,
-    WireId, validate_design_placements,
+    ComponentInstanceId, Constraint, ConstraintId, CrossingChoice, Diagnostic, ElectricalNet,
+    JumperInventoryEntry, Junction, JunctionId, NetId, ProjectId, Wire, WireId,
+    validate_design_placements,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -54,6 +55,12 @@ pub struct Design {
     pub junctions: BTreeMap<JunctionId, Junction>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub wires: BTreeMap<WireId, Wire>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub constraints: BTreeMap<ConstraintId, Constraint>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub jumper_inventory: BTreeMap<String, JumperInventoryEntry>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub crossing_choices: BTreeMap<String, CrossingChoice>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -99,6 +106,10 @@ pub enum DocumentError {
     JunctionKeyMismatch,
     #[error("wire map key does not match its embedded id")]
     WireKeyMismatch,
+    #[error("constraint map key does not match its embedded id")]
+    ConstraintKeyMismatch,
+    #[error("jumper inventory map key does not match its embedded id")]
+    JumperInventoryKeyMismatch,
     #[error("invalid circuit or route: {0}")]
     InvalidCircuit(String),
     #[error("stored validation report is stale")]
@@ -119,6 +130,9 @@ impl ProjectDocument {
             nets: BTreeMap::new(),
             junctions: BTreeMap::new(),
             wires: BTreeMap::new(),
+            constraints: BTreeMap::new(),
+            jumper_inventory: BTreeMap::new(),
+            crossing_choices: BTreeMap::new(),
         };
         Self {
             schema_version: PROJECT_SCHEMA_VERSION,
@@ -145,6 +159,7 @@ impl ProjectDocument {
             &self.design.components,
         );
         diagnostics.extend(crate::connectivity::diagnostics(&self.design));
+        diagnostics.extend(crate::constraints::diagnostics(&self.design));
         diagnostics.sort_by(|left, right| {
             left.code
                 .cmp(&right.code)
@@ -220,7 +235,25 @@ impl ProjectDocument {
         if self.design.wires.iter().any(|(id, value)| id != &value.id) {
             return Err(DocumentError::WireKeyMismatch);
         }
+        if self
+            .design
+            .constraints
+            .iter()
+            .any(|(id, value)| id != &value.id)
+        {
+            return Err(DocumentError::ConstraintKeyMismatch);
+        }
+        if self
+            .design
+            .jumper_inventory
+            .iter()
+            .any(|(id, value)| id != &value.id)
+        {
+            return Err(DocumentError::JumperInventoryKeyMismatch);
+        }
         crate::connectivity::validate_structure(&self.design)
+            .map_err(DocumentError::InvalidCircuit)?;
+        crate::constraints::validate_structure(&self.design)
             .map_err(DocumentError::InvalidCircuit)?;
         let calculated = self.calculate_validation();
         if self.validation != calculated {

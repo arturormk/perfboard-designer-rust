@@ -319,6 +319,8 @@ Exit criteria:
 
 ### Milestone 4 — Constraints, automatic routing, and jumper preferences
 
+Status: complete (2026-10-23)
+
 Goal: produce reproducible route proposals optimized for hand assembly, without disturbing accepted work.
 
 Constraint work:

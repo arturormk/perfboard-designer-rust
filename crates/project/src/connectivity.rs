@@ -235,7 +235,7 @@ fn pin_position(design: &Design, pin: &PinRef) -> Option<RoutePos> {
     ))
 }
 
-fn terminal_position(
+pub(crate) fn terminal_position(
     design: &Design,
     net_id: NetId,
     terminal: &TerminalRef,

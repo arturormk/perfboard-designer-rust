@@ -5,6 +5,7 @@ pub mod document;
 pub mod operations;
 pub mod persistence;
 pub mod revisions;
+pub mod routing;
 pub mod session;
 
 pub use diff::{ChangeKind, DiffEntry, SemanticDiff};
@@ -18,6 +19,7 @@ pub use operations::{
 };
 pub use persistence::{PersistenceError, load_project, save_project_atomic};
 pub use revisions::{Commit, HistoryActionResult, RevisionError, WorkingChange};
+pub use routing::{RouteError, RouteRequest, RoutingCostConfig, evaluate_route, suggest_route};
 pub use session::{
     ProjectSession, SessionChangeEvent, SessionError, TransactionRequest, TransactionResult,
 };
@@ -36,3 +38,4 @@ pub fn to_snapshot_json<T: serde::Serialize>(value: &T) -> Result<String, serde_
     Ok(json)
 }
 mod connectivity;
+mod constraints;

@@ -68,6 +68,21 @@ select {
   stroke-width: 0.3;
   filter: drop-shadow(0 0 0.1px white);
 }
+.wire[data-wire-id="route-proposal-preview"] polyline {
+  stroke-dasharray: 0.35 0.2;
+  animation: proposal-pulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes proposal-pulse {
+  to {
+    stroke-width: 0.36;
+    filter: drop-shadow(0 0 0.18px #ffcc66);
+  }
+}
+.route-result,
+.warning {
+  border-left: 3px solid #e7a93c;
+  padding-left: 0.5rem;
+}
 .wire text {
   fill: white;
   font-size: 0.42px;

@@ -88,6 +88,63 @@ export interface Wire {
   locked?: boolean;
   notes?: string;
 }
+export type ConstraintSeverity = "required" | "preferred" | "advisory";
+export type Constraint = {
+  id: string;
+  severity: ConstraintSeverity;
+  origin: "user" | "mcp" | "import" | "system_derived";
+  rationale?: string;
+  annotation?: string;
+  type: string;
+  [key: string]: unknown;
+};
+export interface JumperInventoryEntry {
+  id: string;
+  span_holes: number;
+  quantity?: number;
+  color: string;
+  wire_diameter_mm?: number;
+  body_height_mm?: number;
+  tolerance_holes: number;
+}
+export interface RouteRequest {
+  net_id: string;
+  start: TerminalRef;
+  end: TerminalRef;
+  preferred_side?: Side;
+  replace_wire_id?: string;
+}
+export interface RouteProposal {
+  net_id: string;
+  start: TerminalRef;
+  end: TerminalRef;
+  side: Side;
+  vertices: Array<{ x2: number; y2: number }>;
+  length_mm: number;
+  bend_count: number;
+  crossings: Array<{
+    other_wire_id: string;
+    position: { x2: number; y2: number };
+  }>;
+  jumper_match?: {
+    inventory_id: string;
+    requested_span_holes: number;
+    inventory_span_holes: number;
+    kind: "exact" | "approximate" | "reshaped";
+  };
+  cost: {
+    length: number;
+    bends: number;
+    cramped_bends: number;
+    crossings: number;
+    access: number;
+    side_transitions: number;
+    parallel_runs: number;
+    jumper_adjustment: number;
+    total: number;
+  };
+  warnings?: string[];
+}
 export interface ProjectDocument {
   schema_version?: number;
   project_id: string;
@@ -116,6 +173,17 @@ export interface ProjectDocument {
     components?: Record<string, ComponentInstance>;
     nets?: Record<string, ElectricalNet>;
     wires?: Record<string, Wire>;
+    constraints?: Record<string, Constraint>;
+    jumper_inventory?: Record<string, JumperInventoryEntry>;
+    crossing_choices?: Record<
+      string,
+      {
+        first_wire_id: string;
+        second_wire_id: string;
+        over_wire_id: string;
+        position: { x2: number; y2: number };
+      }
+    >;
   };
   validation?: Diagnostic[];
   commits?: Record<string, Commit>;
@@ -193,7 +261,21 @@ export type OperationPayload =
     }
   | { type: "set_wire_color"; wire_id: string; color: WireColor }
   | { type: "set_wire_side"; wire_id: string; side: Side }
-  | { type: "set_wire_lock"; wire_id: string; locked: boolean };
+  | { type: "set_wire_lock"; wire_id: string; locked: boolean }
+  | { type: "add_constraint"; constraint: Constraint }
+  | { type: "update_constraint"; constraint: Constraint }
+  | { type: "remove_constraint"; constraint_id: string }
+  | { type: "upsert_jumper_inventory"; entry: JumperInventoryEntry }
+  | { type: "remove_jumper_inventory"; inventory_id: string }
+  | {
+      type: "accept_route_proposal";
+      proposal: RouteProposal;
+      wire_id: string;
+      color: WireColor;
+      notes: string;
+      replace_wire_id?: string;
+      new_route_over?: boolean;
+    };
 
 export function getProject(): Promise<ProjectDocument> {
   return invoke("get_project");
@@ -273,4 +355,16 @@ export function compareProjectRevisions(
   to?: string,
 ): Promise<SemanticDiff> {
   return invoke("compare_project_revisions", { from, to });
+}
+export function suggestProjectRoute(
+  request: RouteRequest,
+): Promise<RouteProposal> {
+  return invoke("suggest_project_route", { request });
+}
+export function evaluateProjectRoute(
+  request: RouteRequest,
+  side: Side,
+  vertices: Array<{ x2: number; y2: number }>,
+): Promise<RouteProposal> {
+  return invoke("evaluate_project_route", { request, side, vertices });
 }

@@ -2,6 +2,66 @@ use serde::{Deserialize, Serialize};
 
 use crate::{NetId, RoutePos, Side, TerminalRef, WireId};
 
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct RouteCrossing {
+    pub other_wire_id: WireId,
+    pub position: RoutePos,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct CrossingChoice {
+    pub first_wire_id: WireId,
+    pub second_wire_id: WireId,
+    pub over_wire_id: WireId,
+    pub position: RoutePos,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct JumperMatch {
+    pub inventory_id: String,
+    pub requested_span_holes: u32,
+    pub inventory_span_holes: u32,
+    pub kind: JumperMatchKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum JumperMatchKind {
+    Exact,
+    Approximate,
+    Reshaped,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RouteCostBreakdown {
+    pub length: u64,
+    pub bends: u64,
+    pub cramped_bends: u64,
+    pub crossings: u64,
+    pub access: u64,
+    pub side_transitions: u64,
+    pub parallel_runs: u64,
+    pub jumper_adjustment: i64,
+    pub total: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RouteProposal {
+    pub net_id: NetId,
+    pub start: TerminalRef,
+    pub end: TerminalRef,
+    pub side: Side,
+    pub vertices: Vec<RoutePos>,
+    pub length_mm: f64,
+    pub bend_count: u32,
+    pub crossings: Vec<RouteCrossing>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub jumper_match: Option<JumperMatch>,
+    pub cost: RouteCostBreakdown,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WireColor {

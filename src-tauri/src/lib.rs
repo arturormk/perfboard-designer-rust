@@ -1,13 +1,15 @@
 use std::{path::PathBuf, sync::Mutex};
 
 use perfboard_core::{
-    BoardSize, CommitId, ComponentDefinition, ProjectId, parse_component_library,
+    BoardSize, CommitId, ComponentDefinition, ProjectId, RoutePos, RouteProposal, Side,
+    parse_component_library,
 };
 use perfboard_project::{
     Board, Commit, DocumentRevision, HistoryActionResult, OperationError, OperationOrigin,
     OperationRequest, OperationResult, ProjectDocument, ProjectSession, RevisionError,
-    SemanticDiff, SessionChangeEvent, SessionError, TransactionRequest, TransactionResult,
-    load_project, save_project_atomic,
+    RouteRequest, RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError,
+    TransactionRequest, TransactionResult, evaluate_route, load_project, save_project_atomic,
+    suggest_route,
 };
 use serde::Serialize;
 use tauri::Emitter;
@@ -230,6 +232,39 @@ fn compare_project_revisions(
 }
 
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn suggest_project_route(
+    state: tauri::State<'_, SessionState>,
+    request: RouteRequest,
+) -> Result<RouteProposal, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    suggest_route(
+        &session.document().design,
+        &request,
+        &RoutingCostConfig::default(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn evaluate_project_route(
+    state: tauri::State<'_, SessionState>,
+    request: RouteRequest,
+    side: Side,
+    vertices: Vec<RoutePos>,
+) -> Result<RouteProposal, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(evaluate_route(
+        &session.document().design,
+        &request,
+        side,
+        vertices,
+        &RoutingCostConfig::default(),
+    ))
+}
+
+#[tauri::command]
 fn get_component_library() -> Result<Vec<ComponentDefinition>, String> {
     parse_component_library([
         include_str!("../../components/arduino-nano-like/component.toml"),
@@ -296,6 +331,8 @@ pub fn run() {
             commit_project,
             restore_project_commit,
             compare_project_revisions,
+            suggest_project_route,
+            evaluate_project_route,
             get_component_library,
             save_project,
             open_project,

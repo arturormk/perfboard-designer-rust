@@ -1,6 +1,6 @@
 # Project format v1
 
-Status: implemented through Milestone 3
+Status: implemented through Milestone 4
 
 Perfboard Designer project files are UTF-8 JSON. The suggested suffix is
 `.perfboard.json`. Writers emit two-space-indented JSON with one trailing
@@ -89,3 +89,19 @@ caller's expected revision. A stale request returns the stable
 `revision.stale` transport code together with expected and actual revisions.
 Transactions apply to a temporary document and replace the active document
 only if every operation succeeds.
+
+Milestone 4 adds optional `constraints`, `jumper_inventory`, and
+`crossing_choices` maps. Constraints have a typed payload plus severity,
+origin, rationale, and an uninterpreted annotation. Required constraint
+violations cannot be accepted through the manual-placement override;
+preferred and advisory violations remain visible warnings. Jumper
+`span_holes` counts intervals, quantity is informational, and route generation
+never consumes it. Crossing choices record the two wire IDs, canonical
+half-grid position, and which wire passes over the other.
+
+Route proposals are derived transport values rather than project state. They
+contain canonical vertices, side, measurements, crossings, jumper match,
+named integer cost breakdown, and soft warnings. Only the explicit
+`accept_route_proposal` operation creates or replaces a wire. Its payload
+preserves the proposal in working history, and any replacement wire ID and
+over/under choice are explicit.

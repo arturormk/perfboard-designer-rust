@@ -7,17 +7,20 @@ import {
   compareProjectRevisions,
   createProject,
   discardProjectChanges,
+  evaluateProjectRoute,
   getComponentLibrary,
   getProject,
   openProject,
   redoProject,
   restoreProjectCommit,
   saveProject,
+  suggestProjectRoute,
   undoProject,
   type ComponentDefinition,
   type ComponentInstance,
   type ProjectDocument,
   type Rotation,
+  type RouteProposal,
   type SemanticDiff,
   type Side,
   type TerminalRef,
@@ -59,6 +62,7 @@ let wheelZoomFrame: number | undefined;
 let viewSide: Side = "component";
 let activeNetId: string | undefined;
 let wireMode = false;
+let routeProposal: RouteProposal | undefined;
 let wireDraft:
   | { start: TerminalRef; vertices: Array<{ x2: number; y2: number }> }
   | undefined;
@@ -91,8 +95,29 @@ function render(): void {
       item.kind,
     ]),
   );
+  const previewProject = routeProposal
+    ? {
+        ...project,
+        design: {
+          ...project.design,
+          wires: {
+            ...(project.design.wires ?? {}),
+            "route-proposal-preview": {
+              id: "route-proposal-preview",
+              net_id: routeProposal.net_id,
+              start: routeProposal.start,
+              end: routeProposal.end,
+              side: routeProposal.side,
+              color: "orange" as const,
+              vertices: routeProposal.vertices,
+              notes: "Route proposal",
+            },
+          },
+        },
+      }
+    : project;
   $("#canvas").innerHTML = renderBoardSvg(
-    project,
+    previewProject,
     selectedId,
     viewBox?.join(" "),
     viewSide,
@@ -141,6 +166,23 @@ function render(): void {
           `<div class="net-item ${net.state}"><strong>${net.name}</strong> · ${net.pins?.length ?? 0} pins<div>${net.state === "proposed" ? `<button data-accept-net="${net.id}">Accept</button><button data-reject-net="${net.id}">Reject</button>` : `<button data-remove-net="${net.id}">Remove</button>`}</div></div>`,
       )
       .join("") || "<p>No nets defined.</p>";
+  $("#route-proposal").innerHTML = routeProposal
+    ? `<article class="route-result"><strong>${routeProposal.length_mm.toFixed(2)} mm · ${routeProposal.bend_count} bends</strong><p>Cost ${routeProposal.cost.total}: length ${routeProposal.cost.length}, bends ${routeProposal.cost.bends}, crossings ${routeProposal.cost.crossings}, jumper ${routeProposal.cost.jumper_adjustment}</p>${routeProposal.jumper_match ? `<p>Jumper: ${escapeHtml(routeProposal.jumper_match.inventory_id)} (${routeProposal.jumper_match.kind})</p>` : ""}${(routeProposal.warnings ?? []).map((warning) => `<p class="warning">${escapeHtml(warning)}</p>`).join("")}${routeProposal.crossings.length ? '<label>At crossings <select id="crossing-order"><option value="over">New route over</option><option value="under">New route under</option></select></label>' : ""}<div class="button-row"><button id="accept-route">Accept</button><button id="reject-route">Reject</button></div></article>`
+    : "<p>No active proposal.</p>";
+  $("#jumper-list").innerHTML =
+    Object.values(project.design.jumper_inventory ?? {})
+      .map(
+        (item) =>
+          `<div class="net-item"><strong>${escapeHtml(item.id)}</strong> · ${item.span_holes} intervals ±${item.tolerance_holes} · ${escapeHtml(item.color)}${item.quantity === undefined ? "" : ` · qty ${item.quantity}`}<button data-remove-jumper="${escapeHtml(item.id)}">Remove</button></div>`,
+      )
+      .join("") || "<p>No preferred jumpers.</p>";
+  $("#constraint-list").innerHTML =
+    Object.values(project.design.constraints ?? {})
+      .map(
+        (item) =>
+          `<article class="operation-item"><strong>${escapeHtml(item.type.replaceAll("_", " "))}</strong><span>${item.severity} · ${escapeHtml(item.rationale ?? "No rationale")}</span><div><button data-edit-constraint="${item.id}">Edit</button><button data-remove-constraint="${item.id}">Remove</button></div></article>`,
+      )
+      .join("") || "<p>No constraints.</p>";
   $("#view-side").textContent = `View: ${viewSide}`;
   $("#wire-mode").classList.toggle("active", wireMode);
   const instance = selected();
@@ -154,7 +196,7 @@ function render(): void {
   $("#inspector").innerHTML = instance
     ? `<label>Name <input id="instance-name" value="${escapeHtml(instance.name)}" /></label><label>Notes <textarea id="instance-notes">${escapeHtml(instance.notes ?? "")}</textarea></label><div class="button-row"><button id="rotate-component">Rotate 90°</button><button id="remove-component" class="danger">Remove</button></div><p>Anchor: ${instance.position.x}, ${instance.position.y}<br>Rotation: ${instance.rotation}</p>${pinTable}`
     : wire
-      ? `<p>Wire ${wire.id.slice(0, 8)}</p><label>Side <select id="selected-wire-side"><option${wire.side === "component" ? " selected" : ""}>component</option><option${wire.side === "solder" ? " selected" : ""}>solder</option></select></label><label>Color <select id="selected-wire-color">${["green", "red", "black", "yellow", "white", "blue", "orange"].map((color) => `<option${wire.color === color ? " selected" : ""}>${color}</option>`).join("")}</select></label>${wire.vertices.map((point, index) => `<div class="wire-vertex"><label>x2 <input data-vertex-x="${index}" type="number" value="${point.x2}" /></label><label>y2 <input data-vertex-y="${index}" type="number" value="${point.y2}" /></label>${index > 0 && index < wire.vertices.length - 1 ? `<button data-remove-vertex="${index}">Remove bend</button>` : ""}</div>`).join("")}<div class="button-row"><button id="toggle-wire-lock">${wire.locked ? "Unlock" : "Lock"}</button><button id="remove-wire" class="danger">Remove wire</button></div>`
+      ? `<p>Wire ${wire.id.slice(0, 8)}</p><label>Side <select id="selected-wire-side"><option${wire.side === "component" ? " selected" : ""}>component</option><option${wire.side === "solder" ? " selected" : ""}>solder</option></select></label><label>Color <select id="selected-wire-color">${["green", "red", "black", "yellow", "white", "blue", "orange"].map((color) => `<option${wire.color === color ? " selected" : ""}>${color}</option>`).join("")}</select></label>${wire.vertices.map((point, index) => `<div class="wire-vertex"><label>x2 <input data-vertex-x="${index}" type="number" value="${point.x2}" /></label><label>y2 <input data-vertex-y="${index}" type="number" value="${point.y2}" /></label>${index > 0 && index < wire.vertices.length - 1 ? `<button data-remove-vertex="${index}">Remove bend</button>` : ""}</div>`).join("")}<div class="button-row"><button id="evaluate-wire">Evaluate</button><button id="toggle-wire-lock">${wire.locked ? "Unlock" : "Lock"}</button><button id="remove-wire" class="danger">Remove wire</button></div>`
       : "<p>Select a component or wire.</p>";
   const diagnostics = project.validation ?? [];
   $("#validation").innerHTML = diagnostics.length
@@ -185,6 +227,7 @@ function render(): void {
     ...comparison.components,
     ...comparison.nets,
     ...comparison.wires,
+    ...comparison.constraints,
   ];
   $("#semantic-diff").innerHTML = diffEntries.length
     ? diffEntries
@@ -213,6 +256,7 @@ function render(): void {
     !project.undo_stack?.length;
 }
 async function refresh(): Promise<void> {
+  routeProposal = undefined;
   project = await getProject();
   comparison = project.head_commit
     ? await compareProjectRevisions(project.head_commit)
@@ -370,6 +414,58 @@ $("#app").addEventListener("click", (event) => {
     return;
   }
   const target = event.target as HTMLElement;
+  if (target.id === "accept-route" && routeProposal) {
+    const proposal = routeProposal;
+    routeProposal = undefined;
+    void mutate({
+      type: "accept_route_proposal",
+      proposal,
+      wire_id: crypto.randomUUID(),
+      color: ($("#wire-color") as HTMLSelectElement).value as WireColor,
+      notes: "Accepted automatic route",
+      new_route_over: proposal.crossings.length
+        ? ($("#crossing-order") as HTMLSelectElement).value === "over"
+        : undefined,
+    });
+    return;
+  }
+  if (target.id === "reject-route") {
+    routeProposal = undefined;
+    render();
+    setStatus("Route proposal rejected; accepted wires were not changed");
+    return;
+  }
+  const removeJumper = target.closest<HTMLElement>("[data-remove-jumper]")
+    ?.dataset.removeJumper;
+  if (removeJumper) {
+    void mutate({
+      type: "remove_jumper_inventory",
+      inventory_id: removeJumper,
+    });
+    return;
+  }
+  const removeConstraint = target.closest<HTMLElement>(
+    "[data-remove-constraint]",
+  )?.dataset.removeConstraint;
+  if (removeConstraint) {
+    void mutate({ type: "remove_constraint", constraint_id: removeConstraint });
+    return;
+  }
+  const editConstraint = target.closest<HTMLElement>("[data-edit-constraint]")
+    ?.dataset.editConstraint;
+  if (editConstraint) {
+    const constraint = project.design.constraints?.[editConstraint];
+    if (constraint) {
+      ($("#constraint-json") as HTMLTextAreaElement).value = JSON.stringify(
+        constraint,
+        null,
+        2,
+      );
+      ($("#save-constraint") as HTMLButtonElement).textContent =
+        "Update constraint";
+    }
+    return;
+  }
   const accept =
     target.closest<HTMLElement>("[data-accept-net]")?.dataset.acceptNet;
   if (accept) {
@@ -576,7 +672,27 @@ $("#inspector").addEventListener("click", (event) => {
   if (wire) {
     const removeIndex = target.closest<HTMLElement>("[data-remove-vertex]")
       ?.dataset.removeVertex;
-    if (removeIndex) {
+    if (target.id === "evaluate-wire") {
+      void evaluateProjectRoute(
+        {
+          net_id: wire.net_id,
+          start: wire.start,
+          end: wire.end,
+          preferred_side: wire.side,
+          replace_wire_id: wire.id,
+        },
+        wire.side,
+        wire.vertices,
+      )
+        .then((evaluation) => {
+          const warning =
+            evaluation.warnings?.join(" · ") || "No soft warnings";
+          setStatus(
+            `Wire cost ${evaluation.cost.total} · ${evaluation.length_mm.toFixed(2)} mm · ${warning}`,
+          );
+        })
+        .catch((error: unknown) => setStatus(String(error), "error"));
+    } else if (removeIndex) {
       const vertices = wire.vertices.filter(
         (_, index) => index !== Number(removeIndex),
       );
@@ -799,6 +915,67 @@ $("#cancel-wire").addEventListener("click", () => {
   wireMode = false;
   wireDraft = undefined;
   render();
+});
+$("#suggest-route").addEventListener("click", () => {
+  const net = activeNetId ? project.design.nets?.[activeNetId] : undefined;
+  if (!net || net.state !== "accepted" || (net.pins?.length ?? 0) < 2) {
+    setStatus("Choose an accepted net with at least two pins", "error");
+    return;
+  }
+  const [start, end] = net.pins!;
+  void suggestProjectRoute({
+    net_id: net.id,
+    start: {
+      kind: "pin",
+      component_id: start!.component_id,
+      pin_id: start!.pin_id,
+    },
+    end: { kind: "pin", component_id: end!.component_id, pin_id: end!.pin_id },
+    preferred_side: viewSide,
+  })
+    .then((proposal) => {
+      routeProposal = proposal;
+      render();
+      setStatus(
+        "Route proposal ready; review its cost and warnings before accepting",
+      );
+    })
+    .catch((error: unknown) => setStatus(String(error), "error"));
+});
+$("#save-jumper").addEventListener("click", () => {
+  const id = ($("#jumper-id") as HTMLInputElement).value.trim();
+  const color = ($("#jumper-color") as HTMLInputElement).value.trim();
+  if (!id || !color) {
+    setStatus("Jumper ID and color are required", "error");
+    return;
+  }
+  void mutate({
+    type: "upsert_jumper_inventory",
+    entry: {
+      id,
+      span_holes: Number(($("#jumper-span") as HTMLInputElement).value),
+      tolerance_holes: Number(
+        ($("#jumper-tolerance") as HTMLInputElement).value,
+      ),
+      color,
+    },
+  });
+});
+$("#save-constraint").addEventListener("click", () => {
+  try {
+    const parsed = JSON.parse(
+      ($("#constraint-json") as HTMLTextAreaElement).value,
+    ) as import("./api/project").Constraint;
+    const exists = parsed.id && project.design.constraints?.[parsed.id];
+    parsed.id ||= crypto.randomUUID();
+    void mutate({
+      type: exists ? "update_constraint" : "add_constraint",
+      constraint: parsed,
+    });
+    ($("#save-constraint") as HTMLButtonElement).textContent = "Add constraint";
+  } catch (error) {
+    setStatus(`Invalid constraint JSON: ${String(error)}`, "error");
+  }
 });
 $("#canvas").addEventListener(
   "wheel",

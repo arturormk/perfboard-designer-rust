@@ -19,7 +19,7 @@ impl HolePos {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct RoutePos {
     pub x2: i64,
     pub y2: i64,
