@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "perfboard-designer": {
+      "type": "stdio",
+      "command": "cargo",
+      "args": [
+        "run",
+        "--quiet",
+        "--manifest-path",
+        "${CLAUDE_PROJECT_DIR:-.}/Cargo.toml",
+        "-p",
+        "perfboard-mcp-server",
+        "--"
+      ]
+    }
+  }
+}

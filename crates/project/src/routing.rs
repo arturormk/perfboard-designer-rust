@@ -7,12 +7,13 @@ use perfboard_core::{
     ConstraintKind, ConstraintSeverity, JumperMatch, JumperMatchKind, NetId, RouteCostBreakdown,
     RouteCrossing, RoutePos, RouteProposal, Side, TerminalRef, WireId, measure_route,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::Design;
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RouteRequest {
     pub net_id: NetId,
     pub start: TerminalRef,
@@ -23,7 +24,7 @@ pub struct RouteRequest {
     pub replace_wire_id: Option<WireId>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RoutingCostConfig {
     pub orthogonal_step: u64,
     pub diagonal_step: u64,
@@ -368,24 +369,22 @@ pub fn evaluate_route(
             net_id,
             max_length_mm,
         } = constraint.kind
+            && net_id == request.net_id
+            && measurements.length_mm > max_length_mm
         {
-            if net_id == request.net_id && measurements.length_mm > max_length_mm {
-                warnings.push(format!(
-                    "Route exceeds preferred maximum length of {max_length_mm:.2} mm"
-                ));
-            }
+            warnings.push(format!(
+                "Route exceeds preferred maximum length of {max_length_mm:.2} mm"
+            ));
         }
         if let ConstraintKind::WireSide {
             net_id,
             side: wanted,
         } = constraint.kind
+            && net_id == request.net_id
+            && wanted != side
+            && constraint.severity != ConstraintSeverity::Required
         {
-            if net_id == request.net_id
-                && wanted != side
-                && constraint.severity != ConstraintSeverity::Required
-            {
-                warnings.push(format!("Route does not use preferred {wanted:?} side"));
-            }
+            warnings.push(format!("Route does not use preferred {wanted:?} side"));
         }
     }
     RouteProposal {
@@ -425,12 +424,11 @@ fn blocked_positions(
         add_rect(&mut blocked, area.min, area.max);
     }
     for constraint in design.constraints.values() {
-        if constraint.severity == ConstraintSeverity::Required {
-            if let ConstraintKind::ReservedArea { area, .. }
+        if constraint.severity == ConstraintSeverity::Required
+            && let ConstraintKind::ReservedArea { area, .. }
             | ConstraintKind::AssemblyAccess { area, .. } = &constraint.kind
-            {
-                add_rect(&mut blocked, area.min, area.max);
-            }
+        {
+            add_rect(&mut blocked, area.min, area.max);
         }
     }
     if side == Side::Component {
@@ -495,12 +493,11 @@ fn blocked_positions(
 fn soft_area_positions(design: &Design) -> BTreeSet<RoutePos> {
     let mut result = BTreeSet::new();
     for constraint in design.constraints.values() {
-        if constraint.severity != ConstraintSeverity::Required {
-            if let ConstraintKind::ReservedArea { area, .. }
+        if constraint.severity != ConstraintSeverity::Required
+            && let ConstraintKind::ReservedArea { area, .. }
             | ConstraintKind::AssemblyAccess { area, .. } = &constraint.kind
-            {
-                add_rect(&mut result, area.min, area.max);
-            }
+        {
+            add_rect(&mut result, area.min, area.max);
         }
     }
     for instance in design.components.values() {

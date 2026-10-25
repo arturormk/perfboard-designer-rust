@@ -175,9 +175,11 @@ fn router_uses_diagonal_moves_when_they_are_clear() {
         &RoutingCostConfig::default(),
     )
     .unwrap();
+    assert_eq!(proposal.vertices.len(), 2);
+    let endpoints: BTreeSet<_> = proposal.vertices.into_iter().collect();
     assert_eq!(
-        proposal.vertices,
-        vec![RoutePos::new(2, 2), RoutePos::new(14, 14)]
+        endpoints,
+        BTreeSet::from([RoutePos::new(2, 2), RoutePos::new(14, 14)])
     );
 }
 

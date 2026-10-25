@@ -1,6 +1,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use perfboard_core::{CommitId, OperationId};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -10,7 +11,7 @@ use crate::{
     SemanticDiff, WorkingChange, operations::apply_operation_untracked,
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TransactionRequest {
     pub operation_id: OperationId,
     pub expected_revision: DocumentRevision,
@@ -22,7 +23,7 @@ pub struct TransactionRequest {
     pub operations: Vec<OperationPayload>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct TransactionResult {
     pub operation_id: OperationId,
     pub revision: DocumentRevision,
@@ -30,7 +31,7 @@ pub struct TransactionResult {
     pub change_summary: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SessionChangeEvent {
     pub revision: DocumentRevision,
     pub kind: String,

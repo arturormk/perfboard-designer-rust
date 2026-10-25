@@ -1,13 +1,20 @@
 [package]
 name = "perfboard-mcp-server"
-description = "MCP adapter placeholder for Perfboard Designer"
+description = "Local MCP adapter for Perfboard Designer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+perfboard-core.workspace = true
 perfboard-project.workspace = true
+perfboard-session-ipc = { path = "../session-ipc" }
+rmcp = { version = "3.7", features = ["server", "transport-io"] }
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
 
 [lints]
 workspace = true
@@ -15,3 +22,7 @@ workspace = true
 [[bin]]
 name = "perfboard-mcp-server"
 path = "src/main.rs"
+
+[dev-dependencies]
+rmcp = { version = "3.7", features = ["client", "transport-child-process"] }
+uuid.workspace = true

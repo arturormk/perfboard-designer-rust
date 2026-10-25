@@ -1,8 +1,11 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{ComponentInstanceId, ConstraintId, HolePos, NetId, Rotation, Side, WireId};
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ConstraintSeverity {
     Required,
@@ -10,7 +13,9 @@ pub enum ConstraintSeverity {
     Advisory,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ConstraintOrigin {
     User,
@@ -19,13 +24,13 @@ pub enum ConstraintOrigin {
     SystemDerived,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct GridRect {
     pub min: HolePos,
     pub max: HolePos,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ConstraintKind {
     FixedPlacement {
@@ -73,7 +78,7 @@ pub enum ConstraintKind {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Constraint {
     pub id: ConstraintId,
     pub severity: ConstraintSeverity,
@@ -86,7 +91,7 @@ pub struct Constraint {
     pub kind: ConstraintKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct JumperInventoryEntry {
     pub id: String,
     /// Number of board intervals bridged, not number of occupied holes.

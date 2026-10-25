@@ -1,0 +1,20 @@
+[package]
+name = "perfboard-session-ipc"
+description = "Authenticated local session protocol for Perfboard Designer adapters"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+directories = "6.0"
+perfboard-core.workspace = true
+perfboard-project.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[lints]
+workspace = true

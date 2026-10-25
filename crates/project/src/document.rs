@@ -6,20 +6,21 @@ use perfboard_core::{
     JumperInventoryEntry, Junction, JunctionId, NetId, ProjectId, Wire, WireId,
     validate_design_placements,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 pub const PROJECT_SCHEMA_VERSION: SchemaVersion = SchemaVersion(1);
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct SchemaVersion(pub u32);
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
 pub struct DocumentRevision(pub u64);
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ProjectDocument {
     pub schema_version: SchemaVersion,
     pub project_id: ProjectId,
@@ -42,7 +43,7 @@ pub struct ProjectDocument {
     pub redo_stack: Vec<crate::WorkingChange>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Design {
     pub board: Board,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -63,7 +64,7 @@ pub struct Design {
     pub crossing_choices: BTreeMap<String, CrossingChoice>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Board {
     pub name: String,
     #[serde(flatten)]

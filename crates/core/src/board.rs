@@ -1,8 +1,9 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::HolePos;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct MarginsMm {
     #[serde(default)]
     pub top: f64,
@@ -23,7 +24,7 @@ impl MarginsMm {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct MountingHole {
     pub position: HolePos,
     pub diameter_mm: f64,
@@ -31,7 +32,7 @@ pub struct MountingHole {
     pub label: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ForbiddenArea {
     pub min: HolePos,
     pub max: HolePos,
@@ -39,7 +40,7 @@ pub struct ForbiddenArea {
     pub label: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct BoardFeatures {
     #[serde(default)]
     pub margins_mm: MarginsMm,

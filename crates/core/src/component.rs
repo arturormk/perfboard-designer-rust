@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -7,7 +8,9 @@ use crate::Rotation;
 
 pub const COMPONENT_SCHEMA_VERSION: u32 = 1;
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
+)]
 pub struct LocalPos {
     pub x: i32,
     pub y: i32,
@@ -20,7 +23,7 @@ impl LocalPos {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RectMm {
     pub x: f64,
     pub y: f64,
@@ -28,7 +31,7 @@ pub struct RectMm {
     pub height: f64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct PinDefinition {
     pub id: String,
     /// Author-provided physical pin marking; not inferred from array order.
@@ -42,7 +45,7 @@ pub struct PinDefinition {
     pub functions: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Keepout {
     pub min: LocalPos,
     pub max: LocalPos,
@@ -50,7 +53,7 @@ pub struct Keepout {
     pub label: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum AccessDirection {
     North,
@@ -59,7 +62,7 @@ pub enum AccessDirection {
     West,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct AccessRegion {
     pub min: LocalPos,
     pub max: LocalPos,
@@ -76,7 +79,7 @@ const fn default_required() -> bool {
     true
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentDefinition {
     pub schema_version: u32,
     pub id: String,

@@ -411,19 +411,25 @@ button:disabled {
   stroke: #ff7d72;
   stroke-width: 0.08;
 }
-.library-item,
 .component-item {
   width: 100%;
   margin-bottom: 0.4rem;
   display: block;
   text-align: left;
 }
-.library-item span,
 .component-item span {
   display: block;
   margin-top: 0.2rem;
   color: #afbbb2;
   font-size: 0.72rem;
+}
+#component-library-select,
+#add-library-component {
+  width: 100%;
+}
+#component-library-description {
+  min-height: 2em;
+  margin: 0.35rem 0 0.55rem;
 }
 #inspector label {
   display: block;

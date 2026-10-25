@@ -6,12 +6,13 @@ use perfboard_core::{
     Junction, JunctionId, NetId, OperationId, PinRef, Rotation, RoutePos, RouteProposal, Side,
     Wire, WireColor, WireId,
 };
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{DocumentError, DocumentRevision, ProjectDocument, WorkingChange};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationOrigin {
     User,
@@ -20,7 +21,7 @@ pub enum OperationOrigin {
     SystemDerived,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct OperationRequest {
     pub operation_id: OperationId,
     pub expected_revision: DocumentRevision,
@@ -34,7 +35,7 @@ pub struct OperationRequest {
     pub payload: OperationPayload,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)] // Serialized DTO clarity is preferable to boxed fields.
 pub enum OperationPayload {
@@ -135,7 +136,7 @@ pub enum OperationPayload {
     },
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct OperationResult {
     pub operation_id: OperationId,
     pub revision: DocumentRevision,
@@ -255,10 +256,10 @@ pub(crate) fn apply_operation_untracked(
             if next.design.components.contains_key(&instance.id) {
                 return Err(OperationError::DuplicateInstance);
             }
-            if let Some(existing) = next.design.component_definitions.get(&definition.id) {
-                if existing != definition {
-                    return Err(OperationError::DefinitionConflict);
-                }
+            if let Some(existing) = next.design.component_definitions.get(&definition.id)
+                && existing != definition
+            {
+                return Err(OperationError::DefinitionConflict);
             }
             definition
                 .validate()

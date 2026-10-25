@@ -360,6 +360,8 @@ Exit criteria:
 
 ### Milestone 5 — MCP integration
 
+Status: complete (2026-10-24)
+
 Goal: let an external MCP client inspect and edit the active working copy with identical semantics to the UI.
 
 Architecture spike first:
@@ -373,6 +375,10 @@ Initial MCP tools:
 - Read: `get_project`, `get_design`, `get_validation_report`, `get_revision_history`, `compare_revisions`, `list_components`, `get_component_definition`, `get_component_documentation`, `list_constraints`, `get_jumper_inventory`, `get_assembly_plan`, `get_rendered_design`.
 - Write: one coherent `apply_operations` transaction tool plus focused helpers only where they improve discoverability, such as `suggest_routes`, `evaluate_route`, `accept_proposed_connections`, and `commit_design`.
 - Component creation should write only to explicitly selected library locations and should validate before replacement.
+
+Implementation note: `get_assembly_plan` remains unavailable until Milestone 6
+defines the authoritative derived plan. Component-library access is read-only in
+this milestone; safe creation and replacement remain Milestone 7 work.
 
 Behavior:
 

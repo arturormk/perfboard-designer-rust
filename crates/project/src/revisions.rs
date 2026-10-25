@@ -1,10 +1,11 @@
 use perfboard_core::{CommitId, Diagnostic, OperationId};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{Design, DocumentRevision, OperationOrigin, OperationPayload, ProjectDocument};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Commit {
     pub id: CommitId,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -21,7 +22,7 @@ pub struct Commit {
     pub changes: Vec<WorkingChange>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct WorkingChange {
     pub operation_id: OperationId,
     pub origin: OperationOrigin,
@@ -37,7 +38,7 @@ pub struct WorkingChange {
     pub after_validation: Vec<Diagnostic>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct HistoryActionResult {
     pub revision: DocumentRevision,
     pub summary: String,

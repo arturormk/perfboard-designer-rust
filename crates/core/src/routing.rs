@@ -1,14 +1,17 @@
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{NetId, RoutePos, Side, TerminalRef, WireId};
 
-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
+)]
 pub struct RouteCrossing {
     pub other_wire_id: WireId,
     pub position: RoutePos,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct CrossingChoice {
     pub first_wire_id: WireId,
     pub second_wire_id: WireId,
@@ -16,7 +19,7 @@ pub struct CrossingChoice {
     pub position: RoutePos,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct JumperMatch {
     pub inventory_id: String,
     pub requested_span_holes: u32,
@@ -24,7 +27,7 @@ pub struct JumperMatch {
     pub kind: JumperMatchKind,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum JumperMatchKind {
     Exact,
@@ -32,7 +35,7 @@ pub enum JumperMatchKind {
     Reshaped,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RouteCostBreakdown {
     pub length: u64,
     pub bends: u64,
@@ -45,7 +48,7 @@ pub struct RouteCostBreakdown {
     pub total: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RouteProposal {
     pub net_id: NetId,
     pub start: TerminalRef,
@@ -62,7 +65,7 @@ pub struct RouteProposal {
     pub warnings: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum WireColor {
     Red,
@@ -75,7 +78,7 @@ pub enum WireColor {
     Other(String),
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Wire {
     pub id: WireId,
     pub net_id: NetId,
@@ -90,7 +93,7 @@ pub struct Wire {
     pub notes: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RouteMeasurements {
     pub length_mm: f64,
     pub bend_count: u32,

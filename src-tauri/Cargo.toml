@@ -20,9 +20,11 @@ tauri-build = { version = "2.5", features = [] }
 [dependencies]
 perfboard-core.workspace = true
 perfboard-project.workspace = true
+perfboard-session-ipc = { path = "../crates/session-ipc" }
 serde.workspace = true
 serde_json.workspace = true
 tauri = { version = "2.10", features = [] }
+tokio.workspace = true
 
 [lints]
 workspace = true

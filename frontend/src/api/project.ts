@@ -280,6 +280,9 @@ export type OperationPayload =
 export function getProject(): Promise<ProjectDocument> {
   return invoke("get_project");
 }
+export function getProjectRevision(): Promise<number> {
+  return invoke("get_project_revision");
+}
 export function getComponentLibrary(): Promise<ComponentDefinition[]> {
   return invoke("get_component_library");
 }

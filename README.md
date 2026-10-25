@@ -2,13 +2,13 @@
 
 Perfboard Designer is a local-first desktop application for designing small
 circuits on isolated-pad perfboard. The project is under active development.
-Milestone 2 provides the board and component placement editor, named electrical
-nets, accepted/proposed connectivity, and manual insulated-wire routing on
-either board face through validated Rust operations.
+Milestone 5 provides the graphical editor, revisioned transactions,
+deterministic automatic routing, and local MCP access to the active desktop
+working copy from Codex or Claude Code.
 
 ## Prerequisites
 
-- Rust 1.85 or newer
+- Rust 1.90 or newer
 - Node.js 22 or newer and npm
 - The [Tauri 2 system dependencies](https://v2.tauri.app/start/prerequisites/)
   for your operating system
@@ -47,7 +47,7 @@ npm --prefix frontend run build
 The authoritative product scope is in [the blueprint](docs/BLUEPRINT.md), and
 the milestone sequence is in [the development plan](docs/plan/DEVELOPMENT_PLAN.md).
 
-## Milestone 2 editor
+## Editor
 
 The desktop editor renders a canonical SVG board and supports component
 selection, drag placement, rotation, property editing, zoom/pan, validation,
@@ -65,12 +65,59 @@ Manual edits may temporarily leave a component out of bounds, overlapping, or
 blocking a required access region. The editor preserves the edit and reports
 the placement problem until a later move or rotation resolves it.
 
+## MCP access from Codex and Claude Code
+
+Start the desktop app first with `cargo tauri dev`. The repository includes a
+trusted-project Codex configuration in `.codex/config.toml` and a Claude Code
+project configuration in `.mcp.json`. On first use, review and trust the project
+configuration. Both clients start the stdio adapter with Cargo; the adapter then
+discovers and authenticates to the active desktop session.
+
+From the repository root, verify the Codex registration with:
+
+```sh
+codex mcp list
+```
+
+Claude Code reads `.mcp.json` automatically. Verify it with:
+
+```sh
+claude mcp get perfboard-designer
+```
+
+The first adapter startup can take longer while Cargo compiles dependencies.
+For a faster reusable executable, run
+`cargo build --release -p perfboard-mcp-server`, then replace the configuration
+command with the absolute path to `target/release/perfboard-mcp-server`.
+Restart Codex after changing `.codex/config.toml`; the checked-in configuration
+forwards the per-user runtime directory used by the desktop session host.
+
+Every write tool requires the revision returned by a fresh read. Codex is
+configured to approve writes while allowing annotated read tools normally;
+Claude Code applies its own MCP permission policy. If more than one desktop
+session is running, set `PERFBOARD_DESIGNER_SESSION_ID` in the MCP server's
+environment to the session named by the ambiguity error.
+
+The UI listens for session change events and also checks the authoritative
+revision while visible, so successful MCP writes should appear without a page
+reload. A `session.unreachable` error means a descriptor was found but the MCP
+process cannot access its authenticated loopback endpoint; unlike
+`app.not_running`, it does not mean that no desktop session was discovered.
+
+The bridge binds only to IPv4 loopback and authenticates every request with an
+ephemeral per-launch token stored in the user's runtime directory. It exposes no
+arbitrary file or shell tools. Component Markdown returned through MCP is
+untrusted reference material, not instructions. See
+[ADR 0007](docs/adr/0007-local-mcp-session-bridge.md) for the full lifecycle and
+threat boundary.
+
 ## Current limitations
 
-Automatic route suggestions, crossing-order decisions, and jumper-stock
-matching begin in Milestone 4. Passing validation means that project geometry
-and basic connectivity are internally consistent; it is never a guarantee of
-electrical correctness or safety.
+Assembly planning begins in Milestone 6, and component-library authoring remains
+read-only through MCP until the safe component editor work in Milestone 7.
+Passing validation means that project geometry and basic connectivity are
+internally consistent; it is never a guarantee of electrical correctness or
+safety.
 
 ## License
 

@@ -93,18 +93,18 @@ pub fn validate_design_placements(
             for x in keepout.min.x..=keepout.max.x {
                 for y in keepout.min.y..=keepout.max.y {
                     let point = transform(instance, LocalPos::new(x, y));
-                    if let Some(other) = keepout_points.insert(point, *id) {
-                        if other != *id {
-                            diagnostics.push(Diagnostic {
-                                code: DiagnosticCode("placement.keepout_overlap".into()),
-                                severity: DiagnosticSeverity::Error,
-                                message: format!(
-                                    "{} overlaps another component keepout",
-                                    instance.name
-                                ),
-                                objects: vec![object(*id), object(other)],
-                            });
-                        }
+                    if let Some(other) = keepout_points.insert(point, *id)
+                        && other != *id
+                    {
+                        diagnostics.push(Diagnostic {
+                            code: DiagnosticCode("placement.keepout_overlap".into()),
+                            severity: DiagnosticSeverity::Error,
+                            message: format!(
+                                "{} overlaps another component keepout",
+                                instance.name
+                            ),
+                            objects: vec![object(*id), object(other)],
+                        });
                     }
                 }
             }
@@ -137,15 +137,15 @@ pub fn validate_design_placements(
 
     let occupied_points: BTreeSet<_> = occupied.keys().copied().collect();
     for (point, owner) in &occupied {
-        if let Some(keepout_owner) = keepout_points.get(point) {
-            if owner != keepout_owner {
-                diagnostics.push(Diagnostic {
-                    code: DiagnosticCode("placement.keepout_occupied".into()),
-                    severity: DiagnosticSeverity::Error,
-                    message: "A component occupies another component's keepout".into(),
-                    objects: vec![object(*owner), object(*keepout_owner)],
-                });
-            }
+        if let Some(keepout_owner) = keepout_points.get(point)
+            && owner != keepout_owner
+        {
+            diagnostics.push(Diagnostic {
+                code: DiagnosticCode("placement.keepout_occupied".into()),
+                severity: DiagnosticSeverity::Error,
+                message: "A component occupies another component's keepout".into(),
+                objects: vec![object(*owner), object(*keepout_owner)],
+            });
         }
     }
     for (id, instance) in instances {

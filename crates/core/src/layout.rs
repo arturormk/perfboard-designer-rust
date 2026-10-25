@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{ComponentInstanceId, HolePos, Rotation};
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentInstance {
     pub id: ComponentInstanceId,
     pub definition_id: String,

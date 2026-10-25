@@ -10,6 +10,7 @@ import {
   evaluateProjectRoute,
   getComponentLibrary,
   getProject,
+  getProjectRevision,
   openProject,
   redoProject,
   restoreProjectCommit,
@@ -47,6 +48,8 @@ const escapeHtml = (value: string): string =>
       })[character] ?? character,
   );
 let project: ProjectDocument;
+let projectReady = false;
+let refreshPromise: Promise<void> | undefined;
 let comparison: SemanticDiff = {
   components: [],
   nets: [],
@@ -55,6 +58,7 @@ let comparison: SemanticDiff = {
   routes: [],
 };
 let library: ComponentDefinition[] = [];
+let selectedLibraryDefinitionId: string | undefined;
 let selectedId: string | undefined;
 let viewBox: [number, number, number, number] | undefined;
 let pendingWheelZoom = 1;
@@ -137,12 +141,28 @@ function render(): void {
         "committed-board",
       )
     : '<p class="tool-hint">No commit yet.</p>';
-  $("#library").innerHTML = library
-    .map(
-      (item) =>
-        `<button class="library-item" data-add-definition="${item.id}"><strong>${item.name}</strong><span>${item.description}</span></button>`,
-    )
-    .join("");
+  if (
+    !selectedLibraryDefinitionId ||
+    !library.some((item) => item.id === selectedLibraryDefinitionId)
+  )
+    selectedLibraryDefinitionId = library[0]?.id;
+  const selectedLibraryDefinition = library.find(
+    (item) => item.id === selectedLibraryDefinitionId,
+  );
+  $("#library").innerHTML = library.length
+    ? `<label class="stacked">Component type
+        <select id="component-library-select">
+          ${library
+            .map(
+              (item) =>
+                `<option value="${escapeHtml(item.id)}"${item.id === selectedLibraryDefinitionId ? " selected" : ""}>${escapeHtml(item.name)}</option>`,
+            )
+            .join("")}
+        </select>
+      </label>
+      <p id="component-library-description" class="tool-hint">${escapeHtml(selectedLibraryDefinition?.description ?? "")}</p>
+      <button id="add-library-component" type="button">Add component</button>`
+    : '<p class="tool-hint">No component types available.</p>';
   $("#component-list").innerHTML =
     Object.values(project.design.components ?? {})
       .map(
@@ -257,14 +277,29 @@ function render(): void {
 }
 async function refresh(): Promise<void> {
   routeProposal = undefined;
-  project = await getProject();
-  comparison = project.head_commit
-    ? await compareProjectRevisions(project.head_commit)
+  const loadedProject = await getProject();
+  const loadedComparison = loadedProject.head_commit
+    ? await compareProjectRevisions(loadedProject.head_commit)
     : { components: [], nets: [], wires: [], constraints: [], routes: [] };
+  if (projectReady && loadedProject.revision < project.revision) return;
+  project = loadedProject;
+  comparison = loadedComparison;
+  projectReady = true;
   render();
   setStatus(
     `Revision ${project.revision} · ${project.design.board.holes_x} × ${project.design.board.holes_y} holes`,
   );
+}
+function requestRefresh(): Promise<void> {
+  refreshPromise ??= refresh().finally(() => {
+    refreshPromise = undefined;
+  });
+  return refreshPromise;
+}
+async function refreshIfChanged(): Promise<void> {
+  if (!projectReady || document.visibilityState === "hidden") return;
+  const revision = await getProjectRevision();
+  if (revision !== project.revision) await requestRefresh();
 }
 async function mutate(
   payload: Parameters<typeof applyOperation>[1],
@@ -525,10 +560,9 @@ $("#app").addEventListener("click", (event) => {
     render();
     return;
   }
-  const add = target.closest<HTMLElement>("[data-add-definition]");
-  if (add?.dataset.addDefinition) {
+  if (target.id === "add-library-component") {
     const definition = library.find(
-      (item) => item.id === add.dataset.addDefinition,
+      (item) => item.id === selectedLibraryDefinitionId,
     );
     if (!definition) return;
     const count = Object.keys(project.design.components ?? {}).length;
@@ -548,6 +582,14 @@ $("#app").addEventListener("click", (event) => {
       },
     });
   }
+});
+$("#library").addEventListener("change", (event) => {
+  const target = event.target as HTMLSelectElement;
+  if (target.id !== "component-library-select") return;
+  selectedLibraryDefinitionId = target.value;
+  const definition = library.find((item) => item.id === target.value);
+  $("#component-library-description").textContent =
+    definition?.description ?? "";
 });
 $("#canvas").addEventListener("pointerdown", (event) => {
   const pointer = event as PointerEvent;
@@ -985,19 +1027,49 @@ $("#canvas").addEventListener(
   },
   { passive: false },
 );
-Promise.all([getBootstrapInfo(), getProject(), getComponentLibrary()])
-  .then(async ([info, loadedProject, loadedLibrary]) => {
-    project = loadedProject;
-    library = loadedLibrary;
-    if (project.head_commit) {
-      comparison = await compareProjectRevisions(project.head_commit);
+async function initialize(): Promise<void> {
+  let changedDuringStartup = false;
+  await listen<{ revision: number }>("project-changed", (event) => {
+    if (!projectReady) {
+      changedDuringStartup = true;
+      return;
     }
-    render();
-    setStatus(`Rust engine ready · schema v${info.schema_version}`);
-    await listen("project-changed", () => {
-      void refresh();
-    });
-  })
-  .catch((error: unknown) =>
-    setStatus(`The desktop bridge is unavailable: ${String(error)}`, "error"),
+    if (event.payload.revision > project.revision) {
+      void requestRefresh().catch((error: unknown) =>
+        setStatus(
+          `Could not refresh external change: ${String(error)}`,
+          "error",
+        ),
+      );
+    }
+  });
+  const [info, loadedProject, loadedLibrary] = await Promise.all([
+    getBootstrapInfo(),
+    getProject(),
+    getComponentLibrary(),
+  ]);
+  project = loadedProject;
+  library = loadedLibrary;
+  comparison = project.head_commit
+    ? await compareProjectRevisions(project.head_commit)
+    : { components: [], nets: [], wires: [], constraints: [], routes: [] };
+  projectReady = true;
+  render();
+  setStatus(`Rust engine ready · schema v${info.schema_version}`);
+  if (changedDuringStartup) await requestRefresh();
+  await refreshIfChanged();
+}
+
+void initialize().catch((error: unknown) =>
+  setStatus(`The desktop bridge is unavailable: ${String(error)}`, "error"),
+);
+window.addEventListener("focus", () => {
+  void refreshIfChanged().catch((error: unknown) =>
+    console.error("Could not check for external project changes", error),
   );
+});
+window.setInterval(() => {
+  void refreshIfChanged().catch((error: unknown) =>
+    console.error("Could not check for external project changes", error),
+  );
+}, 1_000);
