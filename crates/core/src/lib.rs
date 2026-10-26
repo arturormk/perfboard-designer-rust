@@ -3,6 +3,7 @@
 pub mod board;
 pub mod circuit;
 pub mod component;
+pub mod component_draft;
 pub mod constraints;
 pub mod diagnostic;
 pub mod geometry;
@@ -16,6 +17,9 @@ pub use circuit::{ConnectionState, ElectricalNet, Junction, PinRef, TerminalRef}
 pub use component::{
     AccessDirection, AccessRegion, ComponentDefinition, ComponentDefinitionError, Keepout,
     LocalPos, PinDefinition, RectMm, parse_component_library,
+};
+pub use component_draft::{
+    ComponentDraft, ComponentDraftError, ComponentDraftOperation, ComponentDraftSnapshot,
 };
 pub use constraints::{
     Constraint, ConstraintKind, ConstraintOrigin, ConstraintSeverity, GridRect,

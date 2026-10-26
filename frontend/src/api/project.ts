@@ -36,6 +36,8 @@ export interface ComponentDefinition {
   definition_version: string;
   name: string;
   description: string;
+  origin_x?: number;
+  origin_y?: number;
   body: { x: number; y: number; width: number; height: number };
   allowed_rotations: Rotation[];
   pins: PinDefinition[];
@@ -67,6 +69,36 @@ export interface ComponentViewerSnapshot {
   attempted_at_ms: number;
   load?: RuntimeComponentLoad;
   watcher_error?: string;
+}
+export interface ComponentDraftSnapshot {
+  definition: ComponentDefinition;
+  documentation: string;
+  valid: boolean;
+  dirty: boolean;
+  can_undo: boolean;
+  can_redo: boolean;
+  diagnostics: string[];
+}
+export type ComponentDraftOperation =
+  | {
+      type: "set_metadata";
+      id: string;
+      definition_version: string;
+      name: string;
+      description: string;
+    }
+  | { type: "set_body"; body: ComponentDefinition["body"] }
+  | { type: "set_origin"; x: number; y: number }
+  | { type: "set_rotations"; rotations: Rotation[] }
+  | { type: "upsert_pin"; previous_id?: string; pin: PinDefinition }
+  | { type: "remove_pin"; id: string }
+  | { type: "set_occupied_holes"; holes: HolePos[] }
+  | { type: "set_keepouts"; keepouts: LocalRect[] }
+  | { type: "set_access_regions"; access: AccessRegion[] }
+  | { type: "set_documentation"; documentation: string };
+export interface ComponentDraftSaveResult {
+  draft: ComponentDraftSnapshot;
+  load: RuntimeComponentLoad;
 }
 export interface ComponentInstance {
   id: string;
@@ -314,11 +346,31 @@ export function getComponentLibrary(): Promise<ComponentDefinition[]> {
 export function selectRuntimeComponent(): Promise<ComponentViewerSnapshot | null> {
   return invoke("select_runtime_component");
 }
+export function newComponentDraft(): Promise<ComponentViewerSnapshot | null> {
+  return invoke("new_component_draft");
+}
 export function reloadRuntimeComponent(): Promise<ComponentViewerSnapshot | null> {
   return invoke("reload_runtime_component");
 }
 export function closeRuntimeComponent(): Promise<void> {
   return invoke("close_runtime_component");
+}
+export function getComponentDraft(): Promise<ComponentDraftSnapshot | null> {
+  return invoke("get_component_draft");
+}
+export function applyComponentDraftOperation(
+  operation: ComponentDraftOperation,
+): Promise<ComponentDraftSnapshot> {
+  return invoke("apply_component_draft_operation", { operation });
+}
+export function undoComponentDraft(): Promise<ComponentDraftSnapshot> {
+  return invoke("undo_component_draft");
+}
+export function redoComponentDraft(): Promise<ComponentDraftSnapshot> {
+  return invoke("redo_component_draft");
+}
+export function saveComponentDraft(): Promise<ComponentDraftSaveResult> {
+  return invoke("save_component_draft");
 }
 export function createProject(
   name: string,

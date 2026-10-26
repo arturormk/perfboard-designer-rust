@@ -7,7 +7,8 @@ use std::{
 };
 
 use perfboard_core::{
-    BoardSize, CommitId, ComponentDefinition, ProjectId, RoutePos, RouteProposal, Side,
+    BoardSize, CommitId, ComponentDefinition, ComponentDraft, ComponentDraftOperation,
+    ComponentDraftSnapshot, ProjectId, RectMm, Rotation, RoutePos, RouteProposal, Side,
     parse_component_library,
 };
 use perfboard_project::{
@@ -29,6 +30,7 @@ mod component_viewer;
 
 use component_viewer::{
     AuthorizedComponent, COMPONENT_VIEWER_EVENT, ComponentViewerSnapshot, ComponentWatch,
+    RuntimeComponentLoad,
 };
 
 struct SessionState(Arc<Mutex<ProjectSession>>);
@@ -40,11 +42,19 @@ struct ActiveComponentViewer {
     generation: u64,
     _watch: Option<ComponentWatch>,
     watcher_error: Option<String>,
+    draft: Option<ComponentDraft>,
+    draft_base_revision: Option<String>,
 }
 
 struct ComponentViewerState {
     active: Mutex<Option<ActiveComponentViewer>>,
     active_generation: Arc<AtomicU64>,
+}
+
+#[derive(Debug, Serialize)]
+struct ComponentDraftSaveResult {
+    draft: ComponentDraftSnapshot,
+    load: component_viewer::RuntimeComponentLoad,
 }
 
 impl Default for ComponentViewerState {
@@ -569,6 +579,10 @@ async fn select_runtime_component(
         },
     );
     let load = authorized.load();
+    let draft = load.definition.clone().map(|definition| {
+        ComponentDraft::new(definition, load.documentation.clone().unwrap_or_default())
+    });
+    let draft_base_revision = draft.as_ref().map(|_| load.revision.clone());
     let (watch, watcher_error, snapshot) = match watch {
         Ok(watch) => (
             Some(watch),
@@ -589,8 +603,206 @@ async fn select_runtime_component(
         generation,
         _watch: watch,
         watcher_error,
+        draft,
+        draft_base_revision,
     });
     Ok(Some(snapshot))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+async fn new_component_draft(
+    state: tauri::State<'_, ComponentViewerState>,
+    app: tauri::AppHandle,
+) -> Result<Option<ComponentViewerSnapshot>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose an empty directory for the new component")
+        .pick_folder(move |selection| {
+            let _ = sender.send(selection);
+        });
+    let Some(selection) = receiver
+        .await
+        .map_err(|error| format!("component directory picker failed: {error}"))?
+    else {
+        return Ok(None);
+    };
+    let path = selection
+        .into_path()
+        .map_err(|error| format!("selected component directory is unavailable: {error}"))?;
+    let authorized = AuthorizedComponent::new(&path, &path).map_err(|error| error.message)?;
+    let disk = authorized.load();
+    if !disk
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.code == "component.definition_missing")
+    {
+        return Err("the selected directory already contains component.toml".into());
+    }
+    let definition = ComponentDefinition {
+        schema_version: perfboard_core::component::COMPONENT_SCHEMA_VERSION,
+        id: "dev.example.new-component".into(),
+        definition_version: "0.1.0".into(),
+        name: "New component".into(),
+        description: String::new(),
+        origin_x: 0,
+        origin_y: 0,
+        body: RectMm {
+            x: -1.27,
+            y: -1.27,
+            width: 2.54,
+            height: 2.54,
+        },
+        allowed_rotations: vec![Rotation::Deg0],
+        pins: Vec::new(),
+        occupied_holes: Vec::new(),
+        keepouts: Vec::new(),
+        access: Vec::new(),
+        documentation: String::new(),
+    };
+    let draft = ComponentDraft::new_unsaved(definition.clone(), "");
+    let generation = state.active_generation.fetch_add(1, Ordering::AcqRel) + 1;
+    let previous = state
+        .active
+        .lock()
+        .map_err(|error| error.to_string())?
+        .take();
+    drop(previous);
+    let watcher_app = app.clone();
+    let watch = ComponentWatch::start(
+        authorized.clone(),
+        generation,
+        Arc::clone(&state.active_generation),
+        move |event| {
+            if let Err(error) = watcher_app.emit(COMPONENT_VIEWER_EVENT, event) {
+                eprintln!("Failed to publish {COMPONENT_VIEWER_EVENT}: {error}");
+            }
+        },
+    );
+    let load = RuntimeComponentLoad {
+        definition: Some(definition),
+        documentation: None,
+        component_path: disk.component_path,
+        revision: disk.revision.clone(),
+        diagnostics: Vec::new(),
+    };
+    let (watch, watcher_error, snapshot) = match watch {
+        Ok(watch) => (
+            Some(watch),
+            None,
+            ComponentViewerSnapshot::watching(generation, load),
+        ),
+        Err(error) => {
+            let message = format!("could not watch component directory: {error}");
+            (
+                None,
+                Some(message.clone()),
+                ComponentViewerSnapshot::watcher_unavailable(generation, load, message),
+            )
+        }
+    };
+    *state.active.lock().map_err(|error| error.to_string())? = Some(ActiveComponentViewer {
+        component: authorized,
+        generation,
+        _watch: watch,
+        watcher_error,
+        draft: Some(draft),
+        draft_base_revision: Some(disk.revision),
+    });
+    Ok(Some(snapshot))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn get_component_draft(
+    state: tauri::State<'_, ComponentViewerState>,
+) -> Result<Option<ComponentDraftSnapshot>, String> {
+    let active = state.active.lock().map_err(|error| error.to_string())?;
+    Ok(active
+        .as_ref()
+        .and_then(|active| active.draft.as_ref().map(ComponentDraft::snapshot)))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn apply_component_draft_operation(
+    state: tauri::State<'_, ComponentViewerState>,
+    operation: ComponentDraftOperation,
+) -> Result<ComponentDraftSnapshot, String> {
+    state
+        .active
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_mut()
+        .and_then(|active| active.draft.as_mut())
+        .ok_or_else(|| "no valid component draft is open".to_owned())?
+        .apply(operation)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn undo_component_draft(
+    state: tauri::State<'_, ComponentViewerState>,
+) -> Result<ComponentDraftSnapshot, String> {
+    state
+        .active
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_mut()
+        .and_then(|active| active.draft.as_mut())
+        .map(ComponentDraft::undo)
+        .ok_or_else(|| "no valid component draft is open".to_owned())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn redo_component_draft(
+    state: tauri::State<'_, ComponentViewerState>,
+) -> Result<ComponentDraftSnapshot, String> {
+    state
+        .active
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_mut()
+        .and_then(|active| active.draft.as_mut())
+        .map(ComponentDraft::redo)
+        .ok_or_else(|| "no valid component draft is open".to_owned())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn save_component_draft(
+    state: tauri::State<'_, ComponentViewerState>,
+) -> Result<ComponentDraftSaveResult, String> {
+    let mut guard = state.active.lock().map_err(|error| error.to_string())?;
+    let active = guard
+        .as_mut()
+        .ok_or_else(|| "no component is open".to_owned())?;
+    let draft = active
+        .draft
+        .as_mut()
+        .ok_or_else(|| "no valid component draft is open".to_owned())?;
+    let snapshot = draft.snapshot();
+    if !snapshot.valid {
+        return Err("invalid drafts cannot be saved".into());
+    }
+    let source = draft.to_toml().map_err(|error| error.to_string())?;
+    let load = active
+        .component
+        .save(
+            &source,
+            draft.documentation(),
+            active.draft_base_revision.as_deref(),
+        )
+        .map_err(|error| error.to_string())?;
+    active.draft_base_revision = Some(load.revision.clone());
+    draft.mark_saved();
+    Ok(ComponentDraftSaveResult {
+        draft: draft.snapshot(),
+        load,
+    })
 }
 
 #[tauri::command]
@@ -602,9 +814,20 @@ fn reload_runtime_component(
         .active
         .lock()
         .map_err(|error| error.to_string())?
-        .as_ref()
+        .as_mut()
         .map(|active| {
             let load = active.component.load();
+            if load.definition.is_some()
+                && active
+                    .draft
+                    .as_ref()
+                    .is_none_or(|draft| !draft.snapshot().dirty)
+            {
+                active.draft = load.definition.clone().map(|definition| {
+                    ComponentDraft::new(definition, load.documentation.clone().unwrap_or_default())
+                });
+                active.draft_base_revision = Some(load.revision.clone());
+            }
             match &active.watcher_error {
                 Some(error) => ComponentViewerSnapshot::watcher_unavailable(
                     active.generation,
@@ -723,8 +946,14 @@ pub fn run() {
             evaluate_project_route,
             get_component_library,
             select_runtime_component,
+            new_component_draft,
             reload_runtime_component,
             close_runtime_component,
+            get_component_draft,
+            apply_component_draft_operation,
+            undo_component_draft,
+            redo_component_draft,
+            save_component_draft,
             save_project,
             open_project,
         ])

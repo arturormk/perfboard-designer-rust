@@ -537,7 +537,59 @@ textarea {
 .component-workspace {
   height: calc(100vh - 7.9rem);
   display: grid;
-  grid-template-columns: 17rem minmax(24rem, 1fr) minmax(22rem, 28rem);
+  grid-template-columns: minmax(19rem, 22rem) minmax(24rem, 1fr) minmax(
+      22rem,
+      28rem
+    );
+}
+.component-readonly-badge[data-state="invalid"] {
+  color: #ffaaa2;
+  border-color: #8f4d49;
+}
+.component-edit-form {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.65rem 0;
+}
+.component-edit-form label,
+#component-fields > label {
+  display: grid;
+  gap: 0.22rem;
+  color: #bac6bd;
+  font-size: 0.72rem;
+}
+.component-number-grid {
+  grid-template-columns: 1fr 1fr;
+}
+.component-number-grid button {
+  grid-column: 1 / -1;
+}
+#component-fields summary {
+  margin: 0.8rem 0 0.45rem;
+  color: #e8ece8;
+  cursor: pointer;
+  font-weight: 700;
+}
+#draft-rotations {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.25rem;
+  margin: 0.7rem 0;
+  border-color: #415349;
+}
+#draft-rotations label {
+  font-size: 0.72rem;
+}
+#draft-rotations input {
+  width: auto;
+}
+.component-pin-form {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #34473a;
+}
+.component-invalid-draft {
+  box-shadow: inset 0 0 0 3px #8f4d49;
 }
 .component-readonly-badge {
   display: inline-block;

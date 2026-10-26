@@ -260,7 +260,7 @@ CE2 is the first Component Designer release target.
 
 ### Milestone CE3 — Graphical component authoring
 
-Completion status: **Not started**.
+Completion status: **Complete**.
 
 Goal: edit a component draft graphically and save it without corrupting the
 library or overwriting concurrent external work.

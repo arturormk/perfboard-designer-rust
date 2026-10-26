@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getBootstrapInfo } from "./api/bootstrap";
 import {
   applyOperation,
+  applyComponentDraftOperation,
   closeRuntimeComponent,
   commitProject,
   compareProjectRevisions,
@@ -10,17 +11,25 @@ import {
   discardProjectChanges,
   evaluateProjectRoute,
   getComponentLibrary,
+  getComponentDraft,
   getProject,
   getProjectRevision,
+  newComponentDraft,
   openProject,
   reloadRuntimeComponent,
   redoProject,
+  redoComponentDraft,
   restoreProjectCommit,
   saveProject,
+  saveComponentDraft,
   selectRuntimeComponent,
   suggestProjectRoute,
   undoProject,
+  undoComponentDraft,
+  type AccessRegion,
   type ComponentDefinition,
+  type ComponentDraftOperation,
+  type ComponentDraftSnapshot,
   type ComponentInstance,
   type ComponentViewerSnapshot,
   type ComponentWatcherStatus,
@@ -28,6 +37,8 @@ import {
   type Rotation,
   type RouteProposal,
   type RuntimeComponentLoad,
+  type LocalRect,
+  type HolePos,
   type SemanticDiff,
   type Side,
   type TerminalRef,
@@ -47,6 +58,7 @@ import {
   transitionViewerState,
   type ComponentViewerState,
 } from "./component-designer/viewer-state";
+import { movePinOperation, splitList } from "./component-designer/editor";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -105,6 +117,7 @@ let panStart:
 type AppMode = "perfboard" | "component";
 let appMode: AppMode = "perfboard";
 let componentViewerState: ComponentViewerState = { kind: "no_component" };
+let componentDraft: ComponentDraftSnapshot | undefined;
 let componentViewerGeneration: number | undefined;
 let componentWatcherStatus: ComponentWatcherStatus = "stopped";
 let componentLastAttemptMs: number | undefined;
@@ -116,6 +129,8 @@ let componentViewBox: [number, number, number, number] | undefined;
 let componentPanStart:
   | { x: number; y: number; viewBox: [number, number, number, number] }
   | undefined;
+let componentPinDrag:
+  { pinId: string; pointerId: number; x: number; y: number } | undefined;
 function setStatus(message: string, state = "ready"): void {
   const status = $("#status");
   status.textContent = message;
@@ -130,7 +145,25 @@ function displayedComponentLoad(): RuntimeComponentLoad | undefined {
 }
 
 function activeComponentDefinition(): ComponentDefinition | undefined {
-  return displayedComponentLoad()?.definition;
+  return componentDraft?.definition ?? displayedComponentLoad()?.definition;
+}
+
+async function mutateComponentDraft(
+  operation: ComponentDraftOperation,
+): Promise<void> {
+  try {
+    componentDraft = await applyComponentDraftOperation(operation);
+    componentViewBox = undefined;
+    renderComponentDesigner();
+    setStatus(
+      componentDraft.valid
+        ? "Component draft updated"
+        : "Draft updated with validation errors",
+      componentDraft.valid ? "ready" : "error",
+    );
+  } catch (error) {
+    setStatus(`Could not update component draft: ${String(error)}`, "error");
+  }
 }
 
 function applyComponentSnapshot(
@@ -171,7 +204,7 @@ function setAppMode(mode: AppMode): void {
     mode === "perfboard" ? "Perfboard Designer" : "Component Designer";
   if (mode === "component") {
     renderComponentDesigner();
-    setStatus("Component Designer · read-only runtime viewer");
+    setStatus("Component Designer · graphical authoring");
   } else if (projectReady) {
     setStatus(
       `Revision ${project.revision} · ${project.design.board.holes_x} × ${project.design.board.holes_y} holes`,
@@ -200,10 +233,34 @@ function renderComponentDesigner(): void {
     componentViewerState.kind === "stale",
   );
   ($("#open-component") as HTMLButtonElement).disabled = loading;
+  ($("#new-component") as HTMLButtonElement).disabled = loading;
   ($("#reload-component") as HTMLButtonElement).disabled =
     loading || !hasOpenComponent;
   ($("#close-component") as HTMLButtonElement).disabled =
     loading || !hasOpenComponent;
+  ($("#save-component") as HTMLButtonElement).disabled =
+    loading || !componentDraft?.dirty || !componentDraft.valid;
+  ($("#undo-component") as HTMLButtonElement).disabled =
+    loading || !componentDraft?.can_undo;
+  ($("#redo-component") as HTMLButtonElement).disabled =
+    loading || !componentDraft?.can_redo;
+  const draftStatus = $("#component-draft-status");
+  draftStatus.textContent = componentDraft
+    ? `${componentDraft.dirty ? "Unsaved draft" : "Saved draft"} · ${componentDraft.valid ? "valid" : "invalid"}`
+    : "No editable draft";
+  draftStatus.setAttribute(
+    "data-state",
+    componentDraft?.valid === false ? "invalid" : "valid",
+  );
+  document
+    .querySelectorAll<
+      HTMLInputElement | HTMLTextAreaElement | HTMLButtonElement
+    >(
+      "#component-fields input, #component-fields textarea, #component-fields button, #component-pin-form input, #component-pin-form button, #draft-documentation, #apply-draft-documentation",
+    )
+    .forEach((control) => {
+      control.disabled = !componentDraft || loading;
+    });
   for (const id of [
     "component-label-mode",
     "component-zoom-out",
@@ -247,6 +304,7 @@ function renderComponentDesigner(): void {
       ? componentViewerState.attempted
       : componentViewerState.load;
   const diagnostics = attemptedLoad.diagnostics;
+  const draftDiagnostics = componentDraft?.diagnostics ?? [];
   $("#component-diagnostics").innerHTML = diagnostics.length
     ? `<section class="component-diagnostic-list"><h2>${componentViewerState.kind === "stale" ? "Reload failed — preview is stale" : "Could not load component"}</h2>${diagnostics
         .map((diagnostic) => {
@@ -256,7 +314,9 @@ function renderComponentDesigner(): void {
           return `<article><code>${escapeHtml(diagnostic.code)}</code><p>${escapeHtml(diagnostic.message)}</p><small>${escapeHtml(location)}${diagnostic.field ? ` · ${escapeHtml(diagnostic.field)}` : ""}</small></article>`;
         })
         .join("")}</section>`
-    : "";
+    : draftDiagnostics.length
+      ? `<section class="component-diagnostic-list"><h2>Draft needs attention</h2>${draftDiagnostics.map((message) => `<article><code>component.invalid_draft</code><p>${escapeHtml(message)}</p></article>`).join("")}</section>`
+      : "";
 
   const definition = activeComponentDefinition();
   if (!definition) {
@@ -274,6 +334,43 @@ function renderComponentDesigner(): void {
   if (!definition.allowed_rotations.includes(componentRotation)) {
     componentRotation = definition.allowed_rotations[0] ?? "deg0";
   }
+  for (const [id, value] of [
+    ["draft-id", definition.id],
+    ["draft-version", definition.definition_version],
+    ["draft-name", definition.name],
+    ["draft-description", definition.description],
+    ["draft-body-x", String(definition.body.x)],
+    ["draft-body-y", String(definition.body.y)],
+    ["draft-body-width", String(definition.body.width)],
+    ["draft-body-height", String(definition.body.height)],
+    ["draft-origin-x", String(definition.origin_x ?? 0)],
+    ["draft-origin-y", String(definition.origin_y ?? 0)],
+  ]) {
+    ($(`#${id}`) as HTMLInputElement | HTMLTextAreaElement).value = value ?? "";
+  }
+  document
+    .querySelectorAll<HTMLInputElement>("#draft-rotations input")
+    .forEach((input) => {
+      input.checked = definition.allowed_rotations.includes(
+        input.value as Rotation,
+      );
+      input.disabled = !componentDraft;
+    });
+  ($("#draft-occupied") as HTMLTextAreaElement).value = JSON.stringify(
+    definition.occupied_holes ?? [],
+    null,
+    2,
+  );
+  ($("#draft-keepouts") as HTMLTextAreaElement).value = JSON.stringify(
+    definition.keepouts ?? [],
+    null,
+    2,
+  );
+  ($("#draft-access") as HTMLTextAreaElement).value = JSON.stringify(
+    definition.access ?? [],
+    null,
+    2,
+  );
   if (
     selectedComponentPinId &&
     !definition.pins.some((pin) => pin.id === selectedComponentPinId)
@@ -312,6 +409,10 @@ function renderComponentDesigner(): void {
     viewBox: componentViewBox?.join(" "),
     ...overlays,
   });
+  $("#component-canvas").classList.toggle(
+    "component-invalid-draft",
+    componentDraft?.valid === false,
+  );
   $("#component-pin-table").innerHTML = `
     <table class="pin-table component-pin-table">
       <thead><tr><th>No.</th><th>Pin</th><th>Aliases / functions</th><th>Position</th></tr></thead>
@@ -331,9 +432,28 @@ function renderComponentDesigner(): void {
       </tbody>
     </table>`;
   const documentation = displayedComponentLoad()?.documentation;
-  $("#component-documentation").innerHTML = documentation
-    ? renderSanitizedMarkdown(documentation)
+  const draftDocumentation =
+    componentDraft?.documentation ?? documentation ?? "";
+  $("#component-documentation").innerHTML = draftDocumentation
+    ? renderSanitizedMarkdown(draftDocumentation)
     : '<p class="documentation-absent">No README.md is available.</p>';
+  ($("#draft-documentation") as HTMLTextAreaElement).value = draftDocumentation;
+  const selectedPin = definition.pins.find(
+    (pin) => pin.id === selectedComponentPinId,
+  );
+  for (const [id, value] of [
+    ["draft-pin-id", selectedPin?.id ?? ""],
+    ["draft-pin-number", selectedPin?.number ?? ""],
+    ["draft-pin-name", selectedPin?.name ?? ""],
+    ["draft-pin-x", selectedPin ? String(selectedPin.x) : "0"],
+    ["draft-pin-y", selectedPin ? String(selectedPin.y) : "0"],
+    ["draft-pin-aliases", selectedPin?.aliases?.join(", ") ?? ""],
+    ["draft-pin-functions", selectedPin?.functions?.join(", ") ?? ""],
+  ]) {
+    ($(`#${id}`) as HTMLInputElement).value = value ?? "";
+  }
+  ($("#remove-draft-pin") as HTMLButtonElement).disabled =
+    !componentDraft || !selectedPin;
 }
 
 function zoomComponent(factor: number): void {
@@ -722,7 +842,7 @@ $("#open-component").addEventListener("click", () => {
   renderComponentDesigner();
   setStatus("Selecting a component directory…");
   void selectRuntimeComponent()
-    .then((snapshot) => {
+    .then(async (snapshot) => {
       if (!snapshot?.load) {
         componentViewerState = previous;
         renderComponentDesigner();
@@ -731,13 +851,14 @@ $("#open-component").addEventListener("click", () => {
       }
       const load = snapshot.load;
       applyComponentSnapshot(snapshot);
+      componentDraft = (await getComponentDraft()) ?? undefined;
       componentRotation = load.definition?.allowed_rotations[0] ?? "deg0";
       renderComponentDesigner();
       setStatus(
         snapshot.watcher_status === "error"
           ? `Loaded ${load.definition?.name ?? "component"}, but live reload is unavailable`
           : load.definition
-            ? `Loaded ${load.definition.name} · read-only`
+            ? `Loaded ${load.definition.name} · editable draft`
             : "The selected component is invalid",
         load.definition && snapshot.watcher_status !== "error"
           ? "ready"
@@ -750,13 +871,40 @@ $("#open-component").addEventListener("click", () => {
       setStatus(`Could not open component: ${String(error)}`, "error");
     });
 });
+$("#new-component").addEventListener("click", () => {
+  const previous = componentViewerState;
+  componentViewerState = { kind: "loading" };
+  renderComponentDesigner();
+  setStatus("Selecting a directory for the new component…");
+  void newComponentDraft()
+    .then(async (snapshot) => {
+      if (!snapshot?.load) {
+        componentViewerState = previous;
+        renderComponentDesigner();
+        setStatus("New component cancelled");
+        return;
+      }
+      applyComponentSnapshot(snapshot);
+      componentDraft = (await getComponentDraft()) ?? undefined;
+      componentRotation = "deg0";
+      renderComponentDesigner();
+      setStatus(
+        "New component draft created · choose a stable ID before saving",
+      );
+    })
+    .catch((error: unknown) => {
+      componentViewerState = previous;
+      renderComponentDesigner();
+      setStatus(`Could not create component draft: ${String(error)}`, "error");
+    });
+});
 $("#reload-component").addEventListener("click", () => {
   const previous = componentViewerState;
   componentViewerState = { kind: "loading" };
   renderComponentDesigner();
   setStatus("Reloading component…");
   void reloadRuntimeComponent()
-    .then((snapshot) => {
+    .then(async (snapshot) => {
       if (!snapshot?.load) {
         componentViewerState = { kind: "no_component" };
         renderComponentDesigner();
@@ -765,12 +913,13 @@ $("#reload-component").addEventListener("click", () => {
       }
       const load = snapshot.load;
       applyComponentSnapshot(snapshot, previous);
+      componentDraft = (await getComponentDraft()) ?? componentDraft;
       renderComponentDesigner();
       setStatus(
         snapshot.watcher_status === "error"
           ? `Reloaded ${load.definition?.name ?? "component"}, but live reload is unavailable`
           : load.definition
-            ? `Reloaded ${load.definition.name} · read-only`
+            ? `Reloaded ${load.definition.name} · editable draft`
             : componentViewerState.kind === "stale"
               ? "Reload failed · showing the last valid preview"
               : "The component is still invalid",
@@ -789,6 +938,7 @@ $("#close-component").addEventListener("click", () => {
   void closeRuntimeComponent()
     .then(() => {
       componentViewerState = { kind: "no_component" };
+      componentDraft = undefined;
       componentViewerGeneration = undefined;
       componentWatcherStatus = "stopped";
       componentLastAttemptMs = undefined;
@@ -802,6 +952,144 @@ $("#close-component").addEventListener("click", () => {
     .catch((error: unknown) =>
       setStatus(`Could not close component: ${String(error)}`, "error"),
     );
+});
+$("#save-component").addEventListener("click", () => {
+  setStatus("Saving component draft…");
+  void saveComponentDraft()
+    .then((result) => {
+      componentDraft = result.draft;
+      componentViewerState = { kind: "current", load: result.load };
+      renderComponentDesigner();
+      setStatus("Component saved atomically · previous files retained as .bak");
+    })
+    .catch((error: unknown) =>
+      setStatus(`Could not save component: ${String(error)}`, "error"),
+    );
+});
+$("#undo-component").addEventListener("click", () => {
+  void undoComponentDraft()
+    .then((draft) => {
+      componentDraft = draft;
+      renderComponentDesigner();
+      setStatus("Component draft change undone");
+    })
+    .catch((error: unknown) =>
+      setStatus(`Could not undo: ${String(error)}`, "error"),
+    );
+});
+$("#redo-component").addEventListener("click", () => {
+  void redoComponentDraft()
+    .then((draft) => {
+      componentDraft = draft;
+      renderComponentDesigner();
+      setStatus("Component draft change redone");
+    })
+    .catch((error: unknown) =>
+      setStatus(`Could not redo: ${String(error)}`, "error"),
+    );
+});
+$("#component-metadata-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  void mutateComponentDraft({
+    type: "set_metadata",
+    id: ($("#draft-id") as HTMLInputElement).value,
+    definition_version: ($("#draft-version") as HTMLInputElement).value,
+    name: ($("#draft-name") as HTMLInputElement).value,
+    description: ($("#draft-description") as HTMLTextAreaElement).value,
+  });
+});
+$("#component-body-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const number = (id: string): number =>
+    Number(($(`#${id}`) as HTMLInputElement).value);
+  void mutateComponentDraft({
+    type: "set_body",
+    body: {
+      x: number("draft-body-x"),
+      y: number("draft-body-y"),
+      width: number("draft-body-width"),
+      height: number("draft-body-height"),
+    },
+  }).then(() =>
+    mutateComponentDraft({
+      type: "set_origin",
+      x: Math.round(number("draft-origin-x")),
+      y: Math.round(number("draft-origin-y")),
+    }),
+  );
+});
+$("#draft-rotations").addEventListener("change", () => {
+  const rotations = [
+    ...document.querySelectorAll<HTMLInputElement>(
+      "#draft-rotations input:checked",
+    ),
+  ].map((input) => input.value as Rotation);
+  void mutateComponentDraft({ type: "set_rotations", rotations });
+});
+function applyJsonDraftField<T>(
+  textareaId: string,
+  operation: (value: T) => ComponentDraftOperation,
+): void {
+  try {
+    const value = JSON.parse(
+      ($(`#${textareaId}`) as HTMLTextAreaElement).value,
+    ) as T;
+    void mutateComponentDraft(operation(value));
+  } catch (error) {
+    setStatus(`Invalid JSON: ${String(error)}`, "error");
+  }
+}
+$("#apply-draft-occupied").addEventListener("click", () =>
+  applyJsonDraftField<HolePos[]>("draft-occupied", (holes) => ({
+    type: "set_occupied_holes",
+    holes,
+  })),
+);
+$("#apply-draft-keepouts").addEventListener("click", () =>
+  applyJsonDraftField<LocalRect[]>("draft-keepouts", (keepouts) => ({
+    type: "set_keepouts",
+    keepouts,
+  })),
+);
+$("#apply-draft-access").addEventListener("click", () =>
+  applyJsonDraftField<AccessRegion[]>("draft-access", (access) => ({
+    type: "set_access_regions",
+    access,
+  })),
+);
+$("#component-pin-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  void mutateComponentDraft({
+    type: "upsert_pin",
+    previous_id: selectedComponentPinId,
+    pin: {
+      id: ($("#draft-pin-id") as HTMLInputElement).value,
+      number: ($("#draft-pin-number") as HTMLInputElement).value,
+      name: ($("#draft-pin-name") as HTMLInputElement).value,
+      x: Math.round(Number(($("#draft-pin-x") as HTMLInputElement).value)),
+      y: Math.round(Number(($("#draft-pin-y") as HTMLInputElement).value)),
+      aliases: splitList(($("#draft-pin-aliases") as HTMLInputElement).value),
+      functions: splitList(
+        ($("#draft-pin-functions") as HTMLInputElement).value,
+      ),
+    },
+  });
+});
+$("#remove-draft-pin").addEventListener("click", () => {
+  if (selectedComponentPinId)
+    void mutateComponentDraft({
+      type: "remove_pin",
+      id: selectedComponentPinId,
+    }).then(() => {
+      selectedComponentPinId = undefined;
+      renderComponentDesigner();
+    });
+});
+$("#apply-draft-documentation").addEventListener("click", () => {
+  void mutateComponentDraft({
+    type: "set_documentation",
+    documentation: ($("#draft-documentation") as HTMLTextAreaElement).value,
+  });
 });
 $("#component-label-mode").addEventListener("change", (event) => {
   componentLabelMode = (event.target as HTMLSelectElement)
@@ -851,6 +1139,45 @@ $("#component-canvas").addEventListener("click", (event) => {
   if (!pinId) return;
   selectedComponentPinId = pinId;
   renderComponentDesigner();
+});
+$("#component-canvas").addEventListener("pointerdown", (event) => {
+  const pointer = event as PointerEvent;
+  const pinId = (pointer.target as HTMLElement).closest<HTMLElement>(
+    "[data-preview-pin-id]",
+  )?.dataset.previewPinId;
+  if (!pinId || !componentDraft || pointer.button !== 0) return;
+  const pin = componentDraft.definition.pins.find((item) => item.id === pinId);
+  if (!pin) return;
+  selectedComponentPinId = pinId;
+  componentPinDrag = {
+    pinId,
+    pointerId: pointer.pointerId,
+    x: pin.x,
+    y: pin.y,
+  };
+  (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
+});
+$("#component-canvas").addEventListener("pointermove", (event) => {
+  const pointer = event as PointerEvent;
+  if (!componentPinDrag || pointer.pointerId !== componentPinDrag.pointerId)
+    return;
+  const svg = document.querySelector<SVGSVGElement>("#component-preview");
+  const matrix = svg?.getScreenCTM()?.inverse();
+  if (!svg || !matrix) return;
+  const point = svg.createSVGPoint();
+  point.x = pointer.clientX;
+  point.y = pointer.clientY;
+  const rotated = point.matrixTransform(matrix);
+  const [x, y] =
+    componentRotation === "deg0"
+      ? [rotated.x, rotated.y]
+      : componentRotation === "deg90"
+        ? [rotated.y, -rotated.x]
+        : componentRotation === "deg180"
+          ? [-rotated.x, -rotated.y]
+          : [-rotated.y, rotated.x];
+  componentPinDrag.x = Math.round(x);
+  componentPinDrag.y = Math.round(y);
 });
 $("#component-zoom-in").addEventListener("click", () => zoomComponent(0.8));
 $("#component-zoom-out").addEventListener("click", () => zoomComponent(1.25));
@@ -908,9 +1235,33 @@ $("#component-canvas").addEventListener("pointermove", (event) => {
 });
 for (const eventName of ["pointerup", "pointercancel"]) {
   $("#component-canvas").addEventListener(eventName, () => {
+    if (componentPinDrag && eventName === "pointerup" && componentDraft) {
+      const drag = componentPinDrag;
+      const pin = componentDraft.definition.pins.find(
+        (item) => item.id === drag.pinId,
+      );
+      if (pin && (pin.x !== drag.x || pin.y !== drag.y))
+        void mutateComponentDraft(movePinOperation(pin, drag.x, drag.y));
+    }
+    componentPinDrag = undefined;
     componentPanStart = undefined;
   });
 }
+window.addEventListener("keydown", (event) => {
+  if (appMode !== "component" || !componentDraft) return;
+  const modifier = event.ctrlKey || event.metaKey;
+  if (!modifier) return;
+  if (event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    ($("#save-component") as HTMLButtonElement).click();
+  } else if (event.key.toLowerCase() === "z" && event.shiftKey) {
+    event.preventDefault();
+    ($("#redo-component") as HTMLButtonElement).click();
+  } else if (event.key.toLowerCase() === "z") {
+    event.preventDefault();
+    ($("#undo-component") as HTMLButtonElement).click();
+  }
+});
 
 $("#app").addEventListener("click", (event) => {
   if (suppressClick) {
@@ -1542,29 +1893,38 @@ $("#canvas").addEventListener(
 );
 async function initialize(): Promise<void> {
   let changedDuringStartup = false;
-  await listen<ComponentViewerSnapshot>("component-viewer-changed", (event) => {
-    const snapshot = event.payload;
-    if (!isActiveViewerSnapshot(componentViewerGeneration, snapshot)) return;
-    applyComponentSnapshot(snapshot);
-    renderComponentDesigner();
-    if (snapshot.watcher_status === "error") {
+  await listen<ComponentViewerSnapshot>(
+    "component-viewer-changed",
+    async (event) => {
+      const snapshot = event.payload;
+      if (!isActiveViewerSnapshot(componentViewerGeneration, snapshot)) return;
+      applyComponentSnapshot(snapshot);
+      if (snapshot.load?.definition && !componentDraft?.dirty) {
+        await reloadRuntimeComponent();
+        componentDraft = (await getComponentDraft()) ?? undefined;
+      }
+      renderComponentDesigner();
+      if (snapshot.watcher_status === "error") {
+        setStatus(
+          `Component watcher unavailable: ${snapshot.watcher_error ?? "unknown error"}`,
+          "error",
+        );
+        return;
+      }
+      const load = snapshot.load;
+      if (!load) return;
       setStatus(
-        `Component watcher unavailable: ${snapshot.watcher_error ?? "unknown error"}`,
-        "error",
+        componentDraft?.dirty
+          ? "Component changed on disk while this draft has unsaved changes · save will require conflict resolution"
+          : load.definition
+            ? `Updated ${load.definition.name} from disk`
+            : displayedComponentLoad()?.definition
+              ? "External edit is invalid · showing the last valid preview"
+              : "External component edit is invalid",
+        load.definition && !componentDraft?.dirty ? "ready" : "error",
       );
-      return;
-    }
-    const load = snapshot.load;
-    if (!load) return;
-    setStatus(
-      load.definition
-        ? `Updated ${load.definition.name} from disk`
-        : displayedComponentLoad()?.definition
-          ? "External edit is invalid · showing the last valid preview"
-          : "External component edit is invalid",
-      load.definition ? "ready" : "error",
-    );
-  });
+    },
+  );
   await listen<{ revision: number }>("project-changed", (event) => {
     if (!projectReady) {
       changedDuringStartup = true;
@@ -1594,7 +1954,7 @@ async function initialize(): Promise<void> {
   renderComponentDesigner();
   setStatus(
     appMode === "component"
-      ? "Component Designer · read-only runtime viewer"
+      ? "Component Designer · graphical authoring"
       : `Rust engine ready · schema v${info.schema_version}`,
   );
   if (changedDuringStartup) await requestRefresh();

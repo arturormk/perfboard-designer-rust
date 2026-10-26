@@ -1,5 +1,6 @@
 use std::{
-    fs,
+    fs::{self, File},
+    io::Write,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -14,6 +15,7 @@ use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use perfboard_core::{ComponentDefinition, ComponentDefinitionError};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use thiserror::Error;
 
 const DEFINITION_FILE: &str = "component.toml";
 const DOCUMENTATION_FILE: &str = "README.md";
@@ -82,6 +84,18 @@ pub struct RuntimeComponentLoad {
     pub diagnostics: Vec<ComponentLoadDiagnostic>,
 }
 
+#[derive(Debug, Error)]
+pub enum ComponentSaveError {
+    #[error("component changed on disk (expected {expected}, found {actual})")]
+    Conflict { expected: String, actual: String },
+    #[error("save-as target already contains component.toml")]
+    TargetExists,
+    #[error("draft is invalid: {0}")]
+    InvalidDraft(String),
+    #[error("could not save component: {0}")]
+    Io(#[from] std::io::Error),
+}
+
 impl AuthorizedComponent {
     pub fn new(root: &Path, directory: &Path) -> Result<Self, ComponentLoadDiagnostic> {
         let root = canonical_directory(root, "component.root_unavailable")?;
@@ -99,6 +113,88 @@ impl AuthorizedComponent {
     pub fn load(&self) -> RuntimeComponentLoad {
         load_component(&self.root, &self.directory)
     }
+
+    pub fn save(
+        &self,
+        definition_toml: &str,
+        documentation: &str,
+        expected_revision: Option<&str>,
+    ) -> Result<RuntimeComponentLoad, ComponentSaveError> {
+        let current = self.load();
+        match expected_revision {
+            Some(expected) if current.revision != expected => {
+                return Err(ComponentSaveError::Conflict {
+                    expected: expected.to_owned(),
+                    actual: current.revision,
+                });
+            }
+            None if self.directory.join(DEFINITION_FILE).exists() => {
+                return Err(ComponentSaveError::TargetExists);
+            }
+            _ => {}
+        }
+        ComponentDefinition::from_toml(definition_toml)
+            .map_err(|error| ComponentSaveError::InvalidDraft(error.to_string()))?;
+        replace_file_safely(
+            &self.directory,
+            DEFINITION_FILE,
+            definition_toml.as_bytes(),
+            true,
+        )?;
+        replace_file_safely(
+            &self.directory,
+            DOCUMENTATION_FILE,
+            documentation.as_bytes(),
+            false,
+        )?;
+        let loaded = self.load();
+        if loaded.definition.is_none() {
+            return Err(ComponentSaveError::InvalidDraft(
+                loaded.diagnostics.first().map_or_else(
+                    || "saved component did not reload".into(),
+                    |item| item.message.clone(),
+                ),
+            ));
+        }
+        Ok(loaded)
+    }
+}
+
+fn replace_file_safely(
+    directory: &Path,
+    name: &str,
+    contents: &[u8],
+    validate_component: bool,
+) -> Result<(), ComponentSaveError> {
+    let target = directory.join(name);
+    if target.exists() {
+        let canonical = fs::canonicalize(&target)?;
+        if !canonical.starts_with(directory) || !canonical.is_file() {
+            return Err(ComponentSaveError::Io(std::io::Error::new(
+                std::io::ErrorKind::PermissionDenied,
+                format!("{name} resolves outside the component directory"),
+            )));
+        }
+        fs::copy(&canonical, directory.join(format!("{name}.bak")))?;
+    }
+    let temporary = directory.join(format!(".{name}.ce3.tmp"));
+    let result = (|| {
+        let mut file = File::create(&temporary)?;
+        file.write_all(contents)?;
+        file.sync_all()?;
+        if validate_component {
+            let staged = fs::read_to_string(&temporary)?;
+            ComponentDefinition::from_toml(&staged)
+                .map_err(|error| ComponentSaveError::InvalidDraft(error.to_string()))?;
+        }
+        fs::rename(&temporary, &target)?;
+        File::open(directory)?.sync_all()?;
+        Ok(())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
 }
 
 impl ComponentViewerSnapshot {
@@ -709,6 +805,45 @@ height = 2.54
             .unwrap()
             .load();
         assert!(load.definition.is_some());
+    }
+
+    #[test]
+    fn save_is_atomic_round_trips_keeps_backup_and_detects_conflicts() {
+        let root = TestDir::new("save");
+        write_component(&root.0, VALID);
+        fs::write(root.0.join(DOCUMENTATION_FILE), "old docs").unwrap();
+        let authorized = AuthorizedComponent::new(&root.0, &root.0).unwrap();
+        let revision = authorized.load().revision;
+        let changed = VALID.replace("name = \"Test\"", "name = \"Changed\"");
+        let saved = authorized
+            .save(&changed, "new docs", Some(&revision))
+            .unwrap();
+        assert_eq!(saved.definition.unwrap().name, "Changed");
+        assert_eq!(saved.documentation.as_deref(), Some("new docs"));
+        assert_eq!(
+            fs::read_to_string(root.0.join("component.toml.bak")).unwrap(),
+            VALID
+        );
+        assert_eq!(
+            fs::read_to_string(root.0.join("README.md.bak")).unwrap(),
+            "old docs"
+        );
+        let error = authorized.save(VALID, "", Some(&revision)).unwrap_err();
+        assert!(matches!(error, ComponentSaveError::Conflict { .. }));
+        assert_eq!(authorized.load().definition.unwrap().name, "Changed");
+    }
+
+    #[test]
+    fn failed_save_does_not_replace_the_definition() {
+        let root = TestDir::new("failed-save");
+        write_component(&root.0, VALID);
+        let authorized = AuthorizedComponent::new(&root.0, &root.0).unwrap();
+        let revision = authorized.load().revision;
+        assert!(authorized.save("not = [toml", "", Some(&revision)).is_err());
+        assert_eq!(
+            fs::read_to_string(root.0.join(DEFINITION_FILE)).unwrap(),
+            VALID
+        );
     }
 
     #[test]

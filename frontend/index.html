@@ -177,8 +177,12 @@
           aria-label="Component preview controls"
         >
           <button id="open-component" type="button">Open component…</button>
+          <button id="new-component" type="button">New component…</button>
           <button id="reload-component" type="button" disabled>Reload</button>
           <button id="close-component" type="button" disabled>Close</button>
+          <button id="save-component" type="button" disabled>Save</button>
+          <button id="undo-component" type="button" disabled>Undo</button>
+          <button id="redo-component" type="button" disabled>Redo</button>
           <label
             >Pin labels
             <select id="component-label-mode">
@@ -202,13 +206,93 @@
         </section>
         <div class="component-workspace">
           <aside class="panel component-overview">
-            <p class="component-readonly-badge">Read-only preview</p>
+            <p id="component-draft-status" class="component-readonly-badge">
+              No draft
+            </p>
             <div
               id="component-watch-status"
               class="component-watch-status"
             ></div>
             <div id="component-summary"></div>
             <div id="component-diagnostics" role="alert"></div>
+            <details id="component-fields" open>
+              <summary>Component fields</summary>
+              <form id="component-metadata-form" class="component-edit-form">
+                <label>Stable ID <input id="draft-id" required /></label>
+                <label>Version <input id="draft-version" required /></label>
+                <label>Name <input id="draft-name" required /></label>
+                <label
+                  >Description <textarea id="draft-description"></textarea>
+                </label>
+                <button type="submit">Apply metadata</button>
+              </form>
+              <form
+                id="component-body-form"
+                class="component-edit-form component-number-grid"
+              >
+                <label
+                  >Body x (mm)
+                  <input id="draft-body-x" type="number" step="0.01" required
+                /></label>
+                <label
+                  >Body y (mm)
+                  <input id="draft-body-y" type="number" step="0.01" required
+                /></label>
+                <label
+                  >Width (mm)
+                  <input
+                    id="draft-body-width"
+                    type="number"
+                    step="0.01"
+                    required
+                /></label>
+                <label
+                  >Height (mm)
+                  <input
+                    id="draft-body-height"
+                    type="number"
+                    step="0.01"
+                    required
+                /></label>
+                <label
+                  >Origin x
+                  <input id="draft-origin-x" type="number" step="1" required
+                /></label>
+                <label
+                  >Origin y
+                  <input id="draft-origin-y" type="number" step="1" required
+                /></label>
+                <button type="submit">Apply body and origin</button>
+              </form>
+              <fieldset id="draft-rotations">
+                <legend>Allowed rotations</legend>
+                <label><input type="checkbox" value="deg0" /> 0°</label>
+                <label><input type="checkbox" value="deg90" /> 90°</label>
+                <label><input type="checkbox" value="deg180" /> 180°</label>
+                <label><input type="checkbox" value="deg270" /> 270°</label>
+              </fieldset>
+              <label class="stacked"
+                >Occupied holes (JSON)
+                <textarea id="draft-occupied" spellcheck="false"></textarea>
+              </label>
+              <button id="apply-draft-occupied" type="button">
+                Apply occupied holes
+              </button>
+              <label class="stacked"
+                >Keepouts (JSON)
+                <textarea id="draft-keepouts" spellcheck="false"></textarea>
+              </label>
+              <button id="apply-draft-keepouts" type="button">
+                Apply keepouts
+              </button>
+              <label class="stacked"
+                >Access regions (JSON)
+                <textarea id="draft-access" spellcheck="false"></textarea>
+              </label>
+              <button id="apply-draft-access" type="button">
+                Apply access regions
+              </button>
+            </details>
             <h2>Orientation</h2>
             <div id="component-rotations" class="rotation-options"></div>
             <h2>Overlays</h2>
@@ -225,8 +309,9 @@
               Occupied holes</label
             >
             <p class="tool-hint">
-              Opening and reloading never edits this directory, adds the
-              component to the placement library, or changes the active project.
+              Draft changes do not touch this directory until Save. Saving does
+              not add the component to the placement library or change the
+              active project.
             </p>
           </aside>
           <section id="component-canvas" aria-label="Component preview canvas">
@@ -241,12 +326,48 @@
               positions at 2.54 mm pitch.
             </p>
             <div id="component-pin-table"></div>
+            <form
+              id="component-pin-form"
+              class="component-edit-form component-pin-form"
+            >
+              <h3>Edit pin</h3>
+              <label>ID <input id="draft-pin-id" required /></label>
+              <label>Number <input id="draft-pin-number" required /></label>
+              <label>Name <input id="draft-pin-name" required /></label>
+              <label
+                >X <input id="draft-pin-x" type="number" step="1" required
+              /></label>
+              <label
+                >Y <input id="draft-pin-y" type="number" step="1" required
+              /></label>
+              <label
+                >Aliases
+                <input id="draft-pin-aliases" placeholder="comma separated"
+              /></label>
+              <label
+                >Functions
+                <input id="draft-pin-functions" placeholder="comma separated"
+              /></label>
+              <div class="button-row">
+                <button type="submit">Add or update pin</button>
+                <button id="remove-draft-pin" type="button">
+                  Remove selected
+                </button>
+              </div>
+            </form>
             <section
               class="component-documentation"
               aria-labelledby="component-documentation-title"
             >
               <h2 id="component-documentation-title">Documentation</h2>
               <div id="component-documentation"></div>
+              <label class="stacked"
+                >Edit Markdown
+                <textarea id="draft-documentation"></textarea>
+              </label>
+              <button id="apply-draft-documentation" type="button">
+                Apply documentation
+              </button>
             </section>
           </aside>
         </div>

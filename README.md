@@ -65,6 +65,23 @@ Manual edits may temporarily leave a component out of bounds, overlapping, or
 blocking a required access region. The editor preserves the edit and reports
 the placement problem until a later move or rotation resolves it.
 
+## Component Designer
+
+Switch to Component Designer to open an existing component directory or start
+a draft in an empty directory. Metadata, body geometry, rotations, pins,
+occupied holes, keepouts, access regions, and Markdown documentation are edited
+as a separate Rust-validated draft with undo and redo. Pins can be moved on the
+preview and always snap to the integer 2.54 mm grid; the form provides the same
+operation without a pointer.
+
+Saving is explicit and is disabled while the draft is invalid. A save fails if
+`component.toml` or `README.md` changed externally since the draft was opened.
+Successful replacement retains the immediately previous files as
+`component.toml.bak` and `README.md.bak` in the component directory. To recover,
+close the component, inspect the backup, and copy the wanted backup over its
+corresponding live file before reopening. Saved project component snapshots are
+not modified by Component Designer saves.
+
 ## MCP access from Codex and Claude Code
 
 Start the desktop app first with `cargo tauri dev`. The repository includes a
@@ -114,7 +131,7 @@ threat boundary.
 ## Current limitations
 
 Assembly planning begins in Milestone 6, and component-library authoring remains
-read-only through MCP until the safe component editor work in Milestone 7.
+read-only through MCP until MCP authoring parity is implemented.
 Passing validation means that project geometry and basic connectivity are
 internally consistent; it is never a guarantee of electrical correctness or
 safety.
