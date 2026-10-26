@@ -29,6 +29,7 @@ import {
 } from "./api/project";
 import { renderBoardSvg } from "./editor/renderer";
 import { snappedDragPosition } from "./editor/drag";
+import { parseBoardDimensions } from "./editor/board-size";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -814,11 +815,55 @@ $("#inspector").addEventListener("change", (event) => {
     properties: instance.properties ?? {},
   });
 });
-$("#new-project").addEventListener("click", async () => {
-  project = await createProject("Untitled project");
-  selectedId = undefined;
-  viewBox = undefined;
-  render();
+$("#new-project").addEventListener("click", () => {
+  const dialog = $("#new-board-dialog") as HTMLDialogElement;
+  const holesX = $("#board-holes-x") as HTMLInputElement;
+  const holesY = $("#board-holes-y") as HTMLInputElement;
+  holesX.value = String(project.design.board.holes_x);
+  holesY.value = String(project.design.board.holes_y);
+  $("#new-board-error").textContent = "";
+  dialog.showModal();
+  holesX.select();
+});
+$("#cancel-new-board").addEventListener("click", () => {
+  ($("#new-board-dialog") as HTMLDialogElement).close();
+});
+$("#new-board-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const dialog = $("#new-board-dialog") as HTMLDialogElement;
+  const error = $("#new-board-error");
+  const dimensions = parseBoardDimensions(
+    ($("#board-holes-x") as HTMLInputElement).value,
+    ($("#board-holes-y") as HTMLInputElement).value,
+  );
+  if (!dimensions) {
+    error.textContent = "Width and height must be positive whole numbers.";
+    return;
+  }
+  error.textContent = "";
+  void createProject("Untitled project", dimensions.holesX, dimensions.holesY)
+    .then((createdProject) => {
+      project = createdProject;
+      comparison = {
+        components: [],
+        nets: [],
+        wires: [],
+        constraints: [],
+        routes: [],
+      };
+      selectedId = undefined;
+      activeNetId = undefined;
+      wireMode = false;
+      wireDraft = undefined;
+      routeProposal = undefined;
+      viewBox = undefined;
+      dialog.close();
+      render();
+      setStatus(`Created ${dimensions.holesX} × ${dimensions.holesY} board`);
+    })
+    .catch((createError: unknown) => {
+      error.textContent = String(createError);
+    });
 });
 $("#save-project").addEventListener("click", async () => {
   await saveProject(($("#project-path") as HTMLInputElement).value);

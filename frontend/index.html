@@ -16,7 +16,7 @@
         <p id="status">Connecting to the Rust design engine…</p>
       </header>
       <section class="toolbar" aria-label="Project controls">
-        <button id="new-project">New 25 × 18</button>
+        <button id="new-project">New board</button>
         <label
           >Project file
           <input id="project-path" value="nano-rs485.perfboard.json"
@@ -145,6 +145,44 @@
           <div id="operation-history"></div>
         </aside>
       </div>
+      <dialog id="new-board-dialog" aria-labelledby="new-board-title">
+        <form id="new-board-form" method="dialog">
+          <h2 id="new-board-title">New board</h2>
+          <p class="dialog-description">
+            Choose the number of holes along each edge of the perfboard.
+          </p>
+          <div class="dimension-fields">
+            <label
+              >Width (holes)
+              <input
+                id="board-holes-x"
+                name="holes-x"
+                type="number"
+                min="1"
+                step="1"
+                value="25"
+                required
+                autofocus
+            /></label>
+            <label
+              >Height (holes)
+              <input
+                id="board-holes-y"
+                name="holes-y"
+                type="number"
+                min="1"
+                step="1"
+                value="18"
+                required
+            /></label>
+          </div>
+          <p id="new-board-error" class="form-error" role="alert"></p>
+          <div class="dialog-actions">
+            <button id="cancel-new-board" type="button">Cancel</button>
+            <button type="submit">Create board</button>
+          </div>
+        </form>
+      </dialog>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
