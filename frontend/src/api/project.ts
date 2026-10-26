@@ -42,6 +42,31 @@ export interface ComponentDefinition {
   occupied_holes?: HolePos[];
   keepouts?: LocalRect[];
   access?: AccessRegion[];
+  documentation?: string;
+}
+export interface ComponentLoadDiagnostic {
+  code: string;
+  severity: "error";
+  message: string;
+  file: string;
+  line?: number;
+  column?: number;
+  field?: string;
+}
+export interface RuntimeComponentLoad {
+  definition?: ComponentDefinition;
+  documentation?: string;
+  component_path: string;
+  revision: string;
+  diagnostics: ComponentLoadDiagnostic[];
+}
+export type ComponentWatcherStatus = "watching" | "error" | "stopped";
+export interface ComponentViewerSnapshot {
+  generation: number;
+  watcher_status: ComponentWatcherStatus;
+  attempted_at_ms: number;
+  load?: RuntimeComponentLoad;
+  watcher_error?: string;
 }
 export interface ComponentInstance {
   id: string;
@@ -285,6 +310,15 @@ export function getProjectRevision(): Promise<number> {
 }
 export function getComponentLibrary(): Promise<ComponentDefinition[]> {
   return invoke("get_component_library");
+}
+export function selectRuntimeComponent(): Promise<ComponentViewerSnapshot | null> {
+  return invoke("select_runtime_component");
+}
+export function reloadRuntimeComponent(): Promise<ComponentViewerSnapshot | null> {
+  return invoke("reload_runtime_component");
+}
+export function closeRuntimeComponent(): Promise<void> {
+  return invoke("close_runtime_component");
 }
 export function createProject(
   name: string,

@@ -129,6 +129,8 @@ contract-tested between Rust and TypeScript.
 
 ### Milestone CE0 — Contracts, fixtures, and render foundation
 
+Completion status: **Complete**.
+
 Goal: establish stable viewer states and rendering behavior before adding
 filesystem lifecycle code.
 
@@ -168,6 +170,8 @@ Exit criteria:
   fixtures.
 
 ### Milestone CE1 — Runtime file-backed viewer
+
+Completion status: **Complete**.
 
 Goal: open and explicitly reload a component directory without mutating it.
 
@@ -209,6 +213,8 @@ Exit criteria:
   or embedded project definition.
 
 ### Milestone CE2 — Reliable live reload
+
+Completion status: **Complete**.
 
 Goal: update the preview safely when an external editor changes the component
 files.
@@ -253,6 +259,8 @@ Exit criteria:
 CE2 is the first Component Designer release target.
 
 ### Milestone CE3 — Graphical component authoring
+
+Completion status: **Not started**.
 
 Goal: edit a component draft graphically and save it without corrupting the
 library or overwriting concurrent external work.
@@ -303,6 +311,8 @@ Exit criteria:
 
 ### Milestone CE4 — Library and project upgrade workflow
 
+Completion status: **Not started**.
+
 Goal: manage authored definitions in the placement library and adopt revisions
 in projects explicitly.
 
@@ -342,6 +352,8 @@ Exit criteria:
 
 ### Milestone CE5 — Templates and variants
 
+Completion status: **Not started**.
+
 Goal: create common through-hole components efficiently without weakening the
 ordinary component-definition contract.
 
@@ -371,6 +383,8 @@ Exit criteria:
   geometry.
 
 ### Milestone CE6 — LLM and MCP authoring
+
+Completion status: **Not started**.
 
 Goal: allow an external MCP client to propose component changes using the same
 operations and safeguards as the graphical editor.
@@ -403,6 +417,8 @@ Exit criteria:
   library replacement.
 
 ### Milestone CE7 — Release hardening
+
+Completion status: **Not started**.
 
 Goal: make the complete Component Designer dependable on supported desktop
 platforms.

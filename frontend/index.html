@@ -11,113 +11,138 @@
       <header>
         <div>
           <p class="eyebrow">Local-first electronics design</p>
-          <h1>Perfboard Designer</h1>
+          <h1 id="workspace-title">Perfboard Designer</h1>
         </div>
+        <nav class="mode-switcher" aria-label="Application mode" role="tablist">
+          <button
+            id="perfboard-mode-button"
+            class="active"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="perfboard-mode"
+          >
+            Perfboard
+          </button>
+          <button
+            id="component-mode-button"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="component-mode"
+          >
+            Components
+          </button>
+        </nav>
         <p id="status">Connecting to the Rust design engine…</p>
       </header>
-      <section class="toolbar" aria-label="Project controls">
-        <button id="new-project">New board</button>
-        <label
-          >Project file
-          <input id="project-path" value="nano-rs485.perfboard.json"
-        /></label>
-        <button id="open-project">Open</button>
-        <button id="save-project">Save</button>
-        <button id="undo-project">Undo</button>
-        <button id="redo-project">Redo</button>
-        <button id="discard-project">Discard</button>
-        <button id="zoom-out" aria-label="Zoom out">−</button>
-        <button id="zoom-in" aria-label="Zoom in">+</button>
-        <button id="zoom-reset">Fit</button>
-        <button id="view-side">View: component</button>
-      </section>
-      <div class="workspace">
-        <aside class="panel">
-          <h2>Components</h2>
-          <div id="library"></div>
-          <h2>Placed</h2>
-          <div id="component-list"></div>
-          <h2>Nets</h2>
-          <label class="stacked"
-            >New net <input id="net-name" placeholder="e.g. GND"
+      <div id="perfboard-mode" role="tabpanel">
+        <section class="toolbar" aria-label="Project controls">
+          <button id="new-project">New board</button>
+          <label
+            >Project file
+            <input id="project-path" value="nano-rs485.perfboard.json"
           /></label>
-          <div class="button-row">
-            <button id="add-net">Add accepted</button
-            ><button id="propose-net">Propose</button>
-          </div>
-          <label class="stacked"
-            >Active net
-            <select id="active-net"></select
-          ></label>
-          <div id="net-list"></div>
-          <p class="tool-hint">
-            Select an active net, then click <strong>Start wire</strong> and
-            choose two pins. Unassigned endpoint pins are added to the net
-            automatically. Outside wire mode, clicking a pin toggles its net
-            assignment.
-          </p>
-          <h2>Manual wire</h2>
-          <label class="stacked"
-            >Color
-            <select id="wire-color">
-              <option>green</option>
-              <option>red</option>
-              <option>black</option>
-              <option>yellow</option>
-              <option>white</option>
-              <option>blue</option>
-              <option>orange</option>
-            </select></label
-          >
-          <button id="wire-mode">Start wire</button>
-          <button id="cancel-wire">Cancel</button>
-          <h2>Automatic route</h2>
-          <p class="tool-hint">
-            Uses the first two pins of the active accepted net. Existing routes
-            remain unchanged until you accept.
-          </p>
-          <button id="suggest-route">Suggest route</button>
-          <div id="route-proposal"><p>No active proposal.</p></div>
-          <h2>Jumper inventory</h2>
-          <label class="stacked"
-            >ID <input id="jumper-id" placeholder="red-5"
-          /></label>
-          <label class="stacked"
-            >Span (intervals)
-            <input id="jumper-span" type="number" min="0" value="5"
-          /></label>
-          <label class="stacked"
-            >Tolerance
-            <input id="jumper-tolerance" type="number" min="0" value="0"
-          /></label>
-          <label class="stacked"
-            >Color <input id="jumper-color" value="red"
-          /></label>
-          <button id="save-jumper">Add/update jumper</button>
-          <div id="jumper-list"></div>
-        </aside>
-        <section class="design-panes" aria-label="Design comparison">
-          <article class="design-pane working-pane">
-            <h2>Working copy</h2>
-            <div id="canvas" aria-label="Working-copy board editor">
-              <div class="empty">Loading board…</div>
-            </div>
-          </article>
-          <article class="design-pane committed-pane" id="committed-pane">
-            <h2>Committed</h2>
-            <div id="committed-canvas" aria-label="Committed board view"></div>
-          </article>
+          <button id="open-project">Open</button>
+          <button id="save-project">Save</button>
+          <button id="undo-project">Undo</button>
+          <button id="redo-project">Redo</button>
+          <button id="discard-project">Discard</button>
+          <button id="zoom-out" aria-label="Zoom out">−</button>
+          <button id="zoom-in" aria-label="Zoom in">+</button>
+          <button id="zoom-reset">Fit</button>
+          <button id="view-side">View: component</button>
         </section>
-        <aside class="panel">
-          <h2>Properties</h2>
-          <div id="inspector"><p>Select a component.</p></div>
-          <h2>Validation</h2>
-          <div id="validation"></div>
-          <h2>Constraints</h2>
-          <p class="tool-hint">
-            Typed constraint JSON; all fields are validated by Rust.
-          </p>
-          <textarea id="constraint-json" rows="8">
+        <div class="workspace">
+          <aside class="panel">
+            <h2>Components</h2>
+            <div id="library"></div>
+            <h2>Placed</h2>
+            <div id="component-list"></div>
+            <h2>Nets</h2>
+            <label class="stacked"
+              >New net <input id="net-name" placeholder="e.g. GND"
+            /></label>
+            <div class="button-row">
+              <button id="add-net">Add accepted</button
+              ><button id="propose-net">Propose</button>
+            </div>
+            <label class="stacked"
+              >Active net
+              <select id="active-net"></select
+            ></label>
+            <div id="net-list"></div>
+            <p class="tool-hint">
+              Select an active net, then click <strong>Start wire</strong> and
+              choose two pins. Unassigned endpoint pins are added to the net
+              automatically. Outside wire mode, clicking a pin toggles its net
+              assignment.
+            </p>
+            <h2>Manual wire</h2>
+            <label class="stacked"
+              >Color
+              <select id="wire-color">
+                <option>green</option>
+                <option>red</option>
+                <option>black</option>
+                <option>yellow</option>
+                <option>white</option>
+                <option>blue</option>
+                <option>orange</option>
+              </select></label
+            >
+            <button id="wire-mode">Start wire</button>
+            <button id="cancel-wire">Cancel</button>
+            <h2>Automatic route</h2>
+            <p class="tool-hint">
+              Uses the first two pins of the active accepted net. Existing
+              routes remain unchanged until you accept.
+            </p>
+            <button id="suggest-route">Suggest route</button>
+            <div id="route-proposal"><p>No active proposal.</p></div>
+            <h2>Jumper inventory</h2>
+            <label class="stacked"
+              >ID <input id="jumper-id" placeholder="red-5"
+            /></label>
+            <label class="stacked"
+              >Span (intervals)
+              <input id="jumper-span" type="number" min="0" value="5"
+            /></label>
+            <label class="stacked"
+              >Tolerance
+              <input id="jumper-tolerance" type="number" min="0" value="0"
+            /></label>
+            <label class="stacked"
+              >Color <input id="jumper-color" value="red"
+            /></label>
+            <button id="save-jumper">Add/update jumper</button>
+            <div id="jumper-list"></div>
+          </aside>
+          <section class="design-panes" aria-label="Design comparison">
+            <article class="design-pane working-pane">
+              <h2>Working copy</h2>
+              <div id="canvas" aria-label="Working-copy board editor">
+                <div class="empty">Loading board…</div>
+              </div>
+            </article>
+            <article class="design-pane committed-pane" id="committed-pane">
+              <h2>Committed</h2>
+              <div
+                id="committed-canvas"
+                aria-label="Committed board view"
+              ></div>
+            </article>
+          </section>
+          <aside class="panel">
+            <h2>Properties</h2>
+            <div id="inspector"><p>Select a component.</p></div>
+            <h2>Validation</h2>
+            <div id="validation"></div>
+            <h2>Constraints</h2>
+            <p class="tool-hint">
+              Typed constraint JSON; all fields are validated by Rust.
+            </p>
+            <textarea id="constraint-json" rows="8">
 {
   "severity": "preferred",
   "origin": "user",
@@ -126,24 +151,105 @@
   "type": "bend_spacing",
   "min_half_grid_steps": 2
 }</textarea>
-          <button id="save-constraint">Add constraint</button>
-          <div id="constraint-list"></div>
-          <h2>Revision</h2>
-          <label class="stacked"
-            >Commit name
-            <input id="commit-name" placeholder="e.g. Routed power"
-          /></label>
-          <label class="stacked"
-            >Description <textarea id="commit-description"></textarea>
+            <button id="save-constraint">Add constraint</button>
+            <div id="constraint-list"></div>
+            <h2>Revision</h2>
+            <label class="stacked"
+              >Commit name
+              <input id="commit-name" placeholder="e.g. Routed power"
+            /></label>
+            <label class="stacked"
+              >Description <textarea id="commit-description"></textarea>
+            </label>
+            <button id="commit-project">Commit working copy</button>
+            <h2>History</h2>
+            <div id="revision-history"></div>
+            <h2>Changes</h2>
+            <div id="semantic-diff"></div>
+            <h2>Operations</h2>
+            <div id="operation-history"></div>
+          </aside>
+        </div>
+      </div>
+      <div id="component-mode" role="tabpanel" hidden>
+        <section
+          class="toolbar component-toolbar"
+          aria-label="Component preview controls"
+        >
+          <button id="open-component" type="button">Open component…</button>
+          <button id="reload-component" type="button" disabled>Reload</button>
+          <button id="close-component" type="button" disabled>Close</button>
+          <label
+            >Pin labels
+            <select id="component-label-mode">
+              <option value="number">Number</option>
+              <option value="name">Name</option>
+              <option value="function">Function</option>
+              <option value="combined">Combined</option>
+              <option value="hidden">Hidden</option>
+            </select>
           </label>
-          <button id="commit-project">Commit working copy</button>
-          <h2>History</h2>
-          <div id="revision-history"></div>
-          <h2>Changes</h2>
-          <div id="semantic-diff"></div>
-          <h2>Operations</h2>
-          <div id="operation-history"></div>
-        </aside>
+          <button
+            id="component-zoom-out"
+            aria-label="Zoom component preview out"
+          >
+            −
+          </button>
+          <button id="component-zoom-in" aria-label="Zoom component preview in">
+            +
+          </button>
+          <button id="component-fit">Fit</button>
+        </section>
+        <div class="component-workspace">
+          <aside class="panel component-overview">
+            <p class="component-readonly-badge">Read-only preview</p>
+            <div
+              id="component-watch-status"
+              class="component-watch-status"
+            ></div>
+            <div id="component-summary"></div>
+            <div id="component-diagnostics" role="alert"></div>
+            <h2>Orientation</h2>
+            <div id="component-rotations" class="rotation-options"></div>
+            <h2>Overlays</h2>
+            <label class="overlay-toggle"
+              ><input id="show-component-keepouts" type="checkbox" checked />
+              Keepouts</label
+            >
+            <label class="overlay-toggle"
+              ><input id="show-component-access" type="checkbox" checked />
+              Access regions</label
+            >
+            <label class="overlay-toggle"
+              ><input id="show-component-occupied" type="checkbox" checked />
+              Occupied holes</label
+            >
+            <p class="tool-hint">
+              Opening and reloading never edits this directory, adds the
+              component to the placement library, or changes the active project.
+            </p>
+          </aside>
+          <section id="component-canvas" aria-label="Component preview canvas">
+            <div class="empty">
+              Open a directory containing <code>component.toml</code>.
+            </div>
+          </section>
+          <aside class="panel component-pin-panel">
+            <h2>Pin inspector</h2>
+            <p class="tool-hint">
+              Select a pin here or on the canvas. Coordinates are local grid
+              positions at 2.54 mm pitch.
+            </p>
+            <div id="component-pin-table"></div>
+            <section
+              class="component-documentation"
+              aria-labelledby="component-documentation-title"
+            >
+              <h2 id="component-documentation-title">Documentation</h2>
+              <div id="component-documentation"></div>
+            </section>
+          </aside>
+        </div>
       </div>
       <dialog id="new-board-dialog" aria-labelledby="new-board-title">
         <form id="new-board-form" method="dialog">

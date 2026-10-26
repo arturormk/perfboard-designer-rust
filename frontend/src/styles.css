@@ -7,6 +7,9 @@
 * {
   box-sizing: border-box;
 }
+[hidden] {
+  display: none !important;
+}
 body {
   min-width: 720px;
   min-height: 100vh;
@@ -174,6 +177,22 @@ header {
   justify-content: space-between;
   border-bottom: 1px solid #34473a;
   background: #18221c;
+}
+.mode-switcher {
+  display: inline-flex;
+  padding: 0.2rem;
+  border: 1px solid #34473a;
+  border-radius: 0.65rem;
+  background: #111713;
+}
+.mode-switcher button {
+  min-width: 7rem;
+  border: 0;
+  background: transparent;
+}
+.mode-switcher button.active {
+  background: #385342;
+  box-shadow: 0 0 0 1px #8eb99a;
 }
 .eyebrow {
   margin: 0;
@@ -509,11 +528,285 @@ textarea {
   color: #91d6a1;
   font-size: 0.82rem;
 }
+.component-toolbar label {
+  margin-left: 0;
+}
+.component-toolbar #open-component {
+  margin-right: auto;
+}
+.component-workspace {
+  height: calc(100vh - 7.9rem);
+  display: grid;
+  grid-template-columns: 17rem minmax(24rem, 1fr) minmax(22rem, 28rem);
+}
+.component-readonly-badge {
+  display: inline-block;
+  margin: 0.8rem 0 0;
+  padding: 0.25rem 0.5rem;
+  color: #e8bd64;
+  border: 1px solid #80662d;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.component-watch-status {
+  margin: 0.65rem 0;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid #415349;
+  border-radius: 0.35rem;
+  color: #aebdb4;
+  background: #18221c;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+.component-watch-status[data-status="watching"] {
+  border-color: #39724b;
+  color: #9edbab;
+}
+.component-watch-status[data-status="error"] {
+  border-color: #8f4d49;
+  color: #ffaaa2;
+}
+.component-stale #component-preview {
+  opacity: 0.72;
+}
+.component-overview > #component-summary > h2 {
+  margin-top: 0.8rem;
+  color: #e8ece8;
+  font-size: 1rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.component-overview p {
+  color: #bac6bd;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.component-metadata {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.35rem 0.6rem;
+  font-size: 0.74rem;
+}
+.component-metadata dt {
+  color: #8fa096;
+}
+.component-metadata dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.component-diagnostic-list {
+  margin: 0.8rem 0;
+  padding: 0.65rem;
+  border: 1px solid #8f4d49;
+  border-radius: 0.5rem;
+  background: rgb(117 43 40 / 18%);
+}
+.component-diagnostic-list h2 {
+  margin: 0 0 0.55rem;
+  color: #ffaaa2;
+}
+.component-diagnostic-list article + article {
+  margin-top: 0.65rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid #74413e;
+}
+.component-diagnostic-list p {
+  margin: 0.25rem 0;
+  color: #f2d1ce;
+}
+.component-diagnostic-list small {
+  color: #c99b97;
+}
+.rotation-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.35rem;
+}
+.overlay-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.5rem 0;
+  color: #c7d2ca;
+  font-size: 0.78rem;
+}
+.overlay-toggle input {
+  width: auto;
+}
+#component-canvas {
+  min-width: 0;
+  overflow: hidden;
+  touch-action: none;
+  cursor: grab;
+  background: #111713;
+}
+#component-canvas:active {
+  cursor: grabbing;
+}
+#component-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+}
+.preview-grid-hole {
+  fill: #526258;
+}
+.preview-axes path {
+  fill: none;
+  stroke: #71917b;
+  stroke-width: 0.035;
+  stroke-dasharray: 0.18 0.13;
+}
+.preview-axes circle {
+  fill: #ffcf70;
+}
+.preview-axes text {
+  fill: #b8c9bd;
+  font-size: 0.38px;
+}
+.preview-body {
+  fill: rgb(40 64 78 / 88%);
+  stroke: #b4cedc;
+  stroke-width: 0.1;
+}
+.preview-orientation {
+  fill: #f07768;
+}
+.preview-pin {
+  cursor: pointer;
+}
+.preview-pin circle {
+  fill: #e8bd64;
+  stroke: #4d3814;
+  stroke-width: 0.07;
+}
+.preview-pin:hover circle,
+.preview-pin.selected circle {
+  fill: #fff3a1;
+  stroke: #fff;
+  stroke-width: 0.15;
+  filter: drop-shadow(0 0 0.12px #fff56b);
+}
+.preview-pin-label {
+  fill: #eef7f0;
+  font-size: 0.34px;
+  paint-order: stroke;
+  pointer-events: none;
+  stroke: #111713;
+  stroke-width: 0.09px;
+}
+.preview-keepout {
+  fill: rgb(255 86 71 / 12%);
+  stroke: #e56e63;
+  stroke-width: 0.07;
+  stroke-dasharray: 0.18 0.12;
+}
+.preview-access rect {
+  fill: rgb(93 190 246 / 12%);
+  stroke: #6bcbf6;
+  stroke-width: 0.07;
+  stroke-dasharray: 0.12;
+}
+.preview-access text {
+  fill: #c9efff;
+  font-size: 0.62px;
+  text-anchor: middle;
+}
+.preview-occupied {
+  fill: none;
+  stroke: #d8a6ff;
+  stroke-width: 0.1;
+}
+.component-pin-panel {
+  padding-left: 0.8rem;
+}
+.component-documentation {
+  margin-top: 1.1rem;
+  padding-top: 0.2rem;
+  border-top: 1px solid #34473a;
+}
+#component-documentation {
+  color: #c7d2ca;
+  font-size: 0.76rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+#component-documentation h1,
+#component-documentation h2,
+#component-documentation h3,
+#component-documentation h4 {
+  margin: 0.9rem 0 0.4rem;
+  color: #e8ece8;
+  letter-spacing: normal;
+  text-transform: none;
+}
+#component-documentation h1 {
+  font-size: 1rem;
+}
+#component-documentation h2 {
+  font-size: 0.9rem;
+}
+#component-documentation h3,
+#component-documentation h4 {
+  font-size: 0.8rem;
+}
+#component-documentation p,
+#component-documentation ul,
+#component-documentation pre {
+  margin: 0.45rem 0;
+}
+#component-documentation a {
+  color: #8dd7ff;
+}
+#component-documentation pre {
+  padding: 0.55rem;
+  overflow: auto;
+  border-radius: 0.35rem;
+  background: #0c110e;
+}
+.documentation-absent {
+  color: #8fa096;
+  font-style: italic;
+}
+.component-pin-table {
+  font-size: 0.68rem;
+}
+.component-pin-table th:first-child,
+.component-pin-table td:first-child {
+  width: auto;
+}
+.component-pin-table tbody tr {
+  cursor: pointer;
+}
+.component-pin-table tbody tr:hover,
+.component-pin-table tbody tr.selected {
+  background: #30483a;
+  outline: 1px solid #8eb99a;
+}
+.component-pin-table small {
+  display: block;
+  margin-top: 0.15rem;
+  color: #8fa096;
+}
 @media (max-width: 900px) {
   .workspace {
     grid-template-columns: 12rem minmax(18rem, 1fr);
   }
   .panel:last-child {
+    display: none;
+  }
+  .mode-switcher button {
+    min-width: auto;
+  }
+  .component-workspace {
+    grid-template-columns: 14rem minmax(22rem, 1fr);
+  }
+  .component-pin-panel {
     display: none;
   }
 }

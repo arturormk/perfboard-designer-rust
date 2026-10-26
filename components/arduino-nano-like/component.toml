@@ -7,7 +7,7 @@ allowed_rotations = ["deg0", "deg90", "deg180", "deg270"]
 
 [body]
 x = -1.5
-y = -1.5
+y = -4.5
 width = 18.0
 height = 45.0
 
@@ -266,8 +266,8 @@ max = { x = 6, y = 14 }
 
 [[access]]
 label = "USB connector"
-min = { x = 1, y = -2 }
-max = { x = 5, y = -1 }
+min = { x = 2, y = -1 }
+max = { x = 4, y = 1 }
 direction = "north"
 required = true
 allow_board_overhang = true

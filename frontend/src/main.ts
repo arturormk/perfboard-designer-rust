@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getBootstrapInfo } from "./api/bootstrap";
 import {
   applyOperation,
+  closeRuntimeComponent,
   commitProject,
   compareProjectRevisions,
   createProject,
@@ -12,16 +13,21 @@ import {
   getProject,
   getProjectRevision,
   openProject,
+  reloadRuntimeComponent,
   redoProject,
   restoreProjectCommit,
   saveProject,
+  selectRuntimeComponent,
   suggestProjectRoute,
   undoProject,
   type ComponentDefinition,
   type ComponentInstance,
+  type ComponentViewerSnapshot,
+  type ComponentWatcherStatus,
   type ProjectDocument,
   type Rotation,
   type RouteProposal,
+  type RuntimeComponentLoad,
   type SemanticDiff,
   type Side,
   type TerminalRef,
@@ -30,6 +36,17 @@ import {
 import { renderBoardSvg } from "./editor/renderer";
 import { snappedDragPosition } from "./editor/drag";
 import { parseBoardDimensions } from "./editor/board-size";
+import {
+  renderComponentPreviewSvg,
+  type PinLabelMode,
+} from "./component-designer/preview";
+import { renderSanitizedMarkdown } from "./component-designer/markdown";
+import {
+  displayedLoad,
+  isActiveViewerSnapshot,
+  transitionViewerState,
+  type ComponentViewerState,
+} from "./component-designer/viewer-state";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -85,6 +102,20 @@ let suppressClick = false;
 let panStart:
   | { x: number; y: number; viewBox: [number, number, number, number] }
   | undefined;
+type AppMode = "perfboard" | "component";
+let appMode: AppMode = "perfboard";
+let componentViewerState: ComponentViewerState = { kind: "no_component" };
+let componentViewerGeneration: number | undefined;
+let componentWatcherStatus: ComponentWatcherStatus = "stopped";
+let componentLastAttemptMs: number | undefined;
+let componentWatcherError: string | undefined;
+let componentRotation: Rotation = "deg0";
+let componentLabelMode: PinLabelMode = "number";
+let selectedComponentPinId: string | undefined;
+let componentViewBox: [number, number, number, number] | undefined;
+let componentPanStart:
+  | { x: number; y: number; viewBox: [number, number, number, number] }
+  | undefined;
 function setStatus(message: string, state = "ready"): void {
   const status = $("#status");
   status.textContent = message;
@@ -92,6 +123,239 @@ function setStatus(message: string, state = "ready"): void {
 }
 function selected(): ComponentInstance | undefined {
   return selectedId ? project.design.components?.[selectedId] : undefined;
+}
+
+function displayedComponentLoad(): RuntimeComponentLoad | undefined {
+  return displayedLoad(componentViewerState);
+}
+
+function activeComponentDefinition(): ComponentDefinition | undefined {
+  return displayedComponentLoad()?.definition;
+}
+
+function applyComponentSnapshot(
+  snapshot: ComponentViewerSnapshot,
+  baseState = componentViewerState,
+): void {
+  componentViewerGeneration = snapshot.generation;
+  componentWatcherStatus = snapshot.watcher_status;
+  componentLastAttemptMs = snapshot.attempted_at_ms;
+  componentWatcherError = snapshot.watcher_error;
+  const load = snapshot.load;
+  componentViewerState = transitionViewerState(baseState, snapshot);
+  if (!load) return;
+  if (load.definition) {
+    componentRotation = load.definition.allowed_rotations.includes(
+      componentRotation,
+    )
+      ? componentRotation
+      : (load.definition.allowed_rotations[0] ?? "deg0");
+  }
+  selectedComponentPinId = undefined;
+  componentViewBox = undefined;
+}
+
+function setAppMode(mode: AppMode): void {
+  appMode = mode;
+  const perfboard = $("#perfboard-mode");
+  const component = $("#component-mode");
+  const perfboardButton = $("#perfboard-mode-button");
+  const componentButton = $("#component-mode-button");
+  perfboard.toggleAttribute("hidden", mode !== "perfboard");
+  component.toggleAttribute("hidden", mode !== "component");
+  perfboardButton.classList.toggle("active", mode === "perfboard");
+  componentButton.classList.toggle("active", mode === "component");
+  perfboardButton.setAttribute("aria-selected", String(mode === "perfboard"));
+  componentButton.setAttribute("aria-selected", String(mode === "component"));
+  $("#workspace-title").textContent =
+    mode === "perfboard" ? "Perfboard Designer" : "Component Designer";
+  if (mode === "component") {
+    renderComponentDesigner();
+    setStatus("Component Designer · read-only runtime viewer");
+  } else if (projectReady) {
+    setStatus(
+      `Revision ${project.revision} · ${project.design.board.holes_x} × ${project.design.board.holes_y} holes`,
+    );
+  }
+}
+
+function renderComponentDesigner(): void {
+  const hasOpenComponent =
+    componentViewerState.kind === "current" ||
+    componentViewerState.kind === "stale" ||
+    componentViewerState.kind === "load_error";
+  const loading = componentViewerState.kind === "loading";
+  const watchStatus = $("#component-watch-status");
+  watchStatus.setAttribute("data-status", componentWatcherStatus);
+  const attempted = componentLastAttemptMs
+    ? new Date(componentLastAttemptMs).toLocaleTimeString()
+    : "not yet";
+  watchStatus.textContent = componentWatcherError
+    ? `Watcher error: ${componentWatcherError}`
+    : componentWatcherStatus === "watching"
+      ? `Watching selected directory · last load attempt ${attempted}`
+      : "File watcher stopped";
+  $("#component-mode").classList.toggle(
+    "component-stale",
+    componentViewerState.kind === "stale",
+  );
+  ($("#open-component") as HTMLButtonElement).disabled = loading;
+  ($("#reload-component") as HTMLButtonElement).disabled =
+    loading || !hasOpenComponent;
+  ($("#close-component") as HTMLButtonElement).disabled =
+    loading || !hasOpenComponent;
+  for (const id of [
+    "component-label-mode",
+    "component-zoom-out",
+    "component-zoom-in",
+    "component-fit",
+    "show-component-keepouts",
+    "show-component-access",
+    "show-component-occupied",
+  ]) {
+    (
+      $(`#${id}`) as HTMLButtonElement | HTMLInputElement | HTMLSelectElement
+    ).disabled = !activeComponentDefinition() || loading;
+  }
+
+  if (componentViewerState.kind === "loading") {
+    $("#component-canvas").innerHTML =
+      '<div class="empty component-loading">Loading and validating component…</div>';
+    $("#component-summary").innerHTML = "";
+    $("#component-diagnostics").innerHTML = "";
+    $("#component-pin-table").innerHTML = "";
+    $("#component-rotations").innerHTML = "";
+    $("#component-documentation").innerHTML = "";
+    return;
+  }
+
+  if (componentViewerState.kind === "no_component") {
+    $("#component-canvas").innerHTML =
+      '<div class="empty">Open a directory containing <code>component.toml</code>.</div>';
+    $("#component-summary").innerHTML =
+      '<p class="tool-hint">No component is open.</p>';
+    $("#component-diagnostics").innerHTML = "";
+    $("#component-pin-table").innerHTML = "";
+    $("#component-rotations").innerHTML = "";
+    $("#component-documentation").innerHTML =
+      '<p class="documentation-absent">No README.md is available.</p>';
+    return;
+  }
+
+  const attemptedLoad =
+    componentViewerState.kind === "stale"
+      ? componentViewerState.attempted
+      : componentViewerState.load;
+  const diagnostics = attemptedLoad.diagnostics;
+  $("#component-diagnostics").innerHTML = diagnostics.length
+    ? `<section class="component-diagnostic-list"><h2>${componentViewerState.kind === "stale" ? "Reload failed — preview is stale" : "Could not load component"}</h2>${diagnostics
+        .map((diagnostic) => {
+          const location = [diagnostic.file, diagnostic.line, diagnostic.column]
+            .filter((part) => part !== undefined)
+            .join(":");
+          return `<article><code>${escapeHtml(diagnostic.code)}</code><p>${escapeHtml(diagnostic.message)}</p><small>${escapeHtml(location)}${diagnostic.field ? ` · ${escapeHtml(diagnostic.field)}` : ""}</small></article>`;
+        })
+        .join("")}</section>`
+    : "";
+
+  const definition = activeComponentDefinition();
+  if (!definition) {
+    $("#component-canvas").innerHTML =
+      '<div class="empty component-load-error">The selected directory has no valid component preview.</div>';
+    $("#component-summary").innerHTML =
+      `<dl class="component-metadata"><dt>Directory</dt><dd><code>${escapeHtml(attemptedLoad.component_path)}</code></dd><dt>Revision</dt><dd><code>${escapeHtml(attemptedLoad.revision.slice(0, 23))}…</code></dd></dl>`;
+    $("#component-pin-table").innerHTML = "";
+    $("#component-rotations").innerHTML = "";
+    $("#component-documentation").innerHTML = attemptedLoad.documentation
+      ? renderSanitizedMarkdown(attemptedLoad.documentation)
+      : '<p class="documentation-absent">No README.md is available.</p>';
+    return;
+  }
+  if (!definition.allowed_rotations.includes(componentRotation)) {
+    componentRotation = definition.allowed_rotations[0] ?? "deg0";
+  }
+  if (
+    selectedComponentPinId &&
+    !definition.pins.some((pin) => pin.id === selectedComponentPinId)
+  ) {
+    selectedComponentPinId = undefined;
+  }
+  $("#component-summary").innerHTML = `
+    <h2>${escapeHtml(definition.name)}</h2>
+    <p>${escapeHtml(definition.description)}</p>
+    <dl class="component-metadata">
+      <dt>Directory</dt><dd><code>${escapeHtml(displayedComponentLoad()!.component_path)}</code></dd>
+      <dt>Stable ID</dt><dd><code>${escapeHtml(definition.id)}</code></dd>
+      <dt>Definition</dt><dd>${escapeHtml(definition.definition_version)}</dd>
+      <dt>Schema</dt><dd>${definition.schema_version}</dd>
+      <dt>Body</dt><dd>${definition.body.width} × ${definition.body.height} mm</dd>
+      <dt>Pins</dt><dd>${definition.pins.length}</dd>
+      <dt>Revision</dt><dd><code title="${escapeHtml(displayedComponentLoad()!.revision)}">${escapeHtml(displayedComponentLoad()!.revision.slice(0, 23))}…</code></dd>
+      ${componentViewerState.kind === "stale" ? `<dt>Attempted revision</dt><dd><code title="${escapeHtml(componentViewerState.attempted.revision)}">${escapeHtml(componentViewerState.attempted.revision.slice(0, 23))}…</code></dd>` : ""}
+    </dl>`;
+  $("#component-rotations").innerHTML = definition.allowed_rotations
+    .map(
+      (rotation) =>
+        `<button type="button" data-component-rotation="${rotation}" class="${rotation === componentRotation ? "active" : ""}" aria-pressed="${rotation === componentRotation}">${rotation.replace("deg", "")}°</button>`,
+    )
+    .join("");
+  const overlays = {
+    showKeepouts: ($("#show-component-keepouts") as HTMLInputElement).checked,
+    showAccess: ($("#show-component-access") as HTMLInputElement).checked,
+    showOccupiedHoles: ($("#show-component-occupied") as HTMLInputElement)
+      .checked,
+  };
+  $("#component-canvas").innerHTML = renderComponentPreviewSvg(definition, {
+    rotation: componentRotation,
+    labelMode: componentLabelMode,
+    selectedPinId: selectedComponentPinId,
+    viewBox: componentViewBox?.join(" "),
+    ...overlays,
+  });
+  $("#component-pin-table").innerHTML = `
+    <table class="pin-table component-pin-table">
+      <thead><tr><th>No.</th><th>Pin</th><th>Aliases / functions</th><th>Position</th></tr></thead>
+      <tbody>
+        ${definition.pins
+          .map(
+            (
+              pin,
+            ) => `<tr tabindex="0" data-component-pin-row="${escapeHtml(pin.id)}" class="${pin.id === selectedComponentPinId ? "selected" : ""}" aria-selected="${pin.id === selectedComponentPinId}">
+              <td>${escapeHtml(pin.number)}</td>
+              <td><strong>${escapeHtml(pin.name)}</strong><small>${escapeHtml(pin.id)}</small></td>
+              <td>${escapeHtml([...(pin.aliases ?? []), ...(pin.functions ?? [])].join(", ") || "—")}</td>
+              <td>(${pin.x}, ${pin.y})</td>
+            </tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>`;
+  const documentation = displayedComponentLoad()?.documentation;
+  $("#component-documentation").innerHTML = documentation
+    ? renderSanitizedMarkdown(documentation)
+    : '<p class="documentation-absent">No README.md is available.</p>';
+}
+
+function zoomComponent(factor: number): void {
+  const svg = document.querySelector<SVGSVGElement>("#component-preview");
+  if (!svg) return;
+  const current = (
+    svg.getAttribute("viewBox") ??
+    svg.dataset.defaultViewBox ??
+    "-2 -2 10 10"
+  )
+    .split(" ")
+    .map(Number) as [number, number, number, number];
+  const [x, y, width, height] = current;
+  const nextWidth = width * factor;
+  const nextHeight = height * factor;
+  componentViewBox = [
+    x + (width - nextWidth) / 2,
+    y + (height - nextHeight) / 2,
+    nextWidth,
+    nextHeight,
+  ];
+  svg.setAttribute("viewBox", componentViewBox.join(" "));
 }
 function render(): void {
   const changes = Object.fromEntries(
@@ -287,9 +551,11 @@ async function refresh(): Promise<void> {
   comparison = loadedComparison;
   projectReady = true;
   render();
-  setStatus(
-    `Revision ${project.revision} · ${project.design.board.holes_x} × ${project.design.board.holes_y} holes`,
-  );
+  if (appMode === "perfboard") {
+    setStatus(
+      `Revision ${project.revision} · ${project.design.board.holes_x} × ${project.design.board.holes_y} holes`,
+    );
+  }
 }
 function requestRefresh(): Promise<void> {
   refreshPromise ??= refresh().finally(() => {
@@ -441,6 +707,208 @@ async function handleWirePin(
       locked: false,
       notes: "",
     },
+  });
+}
+
+$("#perfboard-mode-button").addEventListener("click", () =>
+  setAppMode("perfboard"),
+);
+$("#component-mode-button").addEventListener("click", () =>
+  setAppMode("component"),
+);
+$("#open-component").addEventListener("click", () => {
+  const previous = componentViewerState;
+  componentViewerState = { kind: "loading" };
+  renderComponentDesigner();
+  setStatus("Selecting a component directory…");
+  void selectRuntimeComponent()
+    .then((snapshot) => {
+      if (!snapshot?.load) {
+        componentViewerState = previous;
+        renderComponentDesigner();
+        setStatus("Component selection cancelled");
+        return;
+      }
+      const load = snapshot.load;
+      applyComponentSnapshot(snapshot);
+      componentRotation = load.definition?.allowed_rotations[0] ?? "deg0";
+      renderComponentDesigner();
+      setStatus(
+        snapshot.watcher_status === "error"
+          ? `Loaded ${load.definition?.name ?? "component"}, but live reload is unavailable`
+          : load.definition
+            ? `Loaded ${load.definition.name} · read-only`
+            : "The selected component is invalid",
+        load.definition && snapshot.watcher_status !== "error"
+          ? "ready"
+          : "error",
+      );
+    })
+    .catch((error: unknown) => {
+      componentViewerState = previous;
+      renderComponentDesigner();
+      setStatus(`Could not open component: ${String(error)}`, "error");
+    });
+});
+$("#reload-component").addEventListener("click", () => {
+  const previous = componentViewerState;
+  componentViewerState = { kind: "loading" };
+  renderComponentDesigner();
+  setStatus("Reloading component…");
+  void reloadRuntimeComponent()
+    .then((snapshot) => {
+      if (!snapshot?.load) {
+        componentViewerState = { kind: "no_component" };
+        renderComponentDesigner();
+        setStatus("No component is open", "error");
+        return;
+      }
+      const load = snapshot.load;
+      applyComponentSnapshot(snapshot, previous);
+      renderComponentDesigner();
+      setStatus(
+        snapshot.watcher_status === "error"
+          ? `Reloaded ${load.definition?.name ?? "component"}, but live reload is unavailable`
+          : load.definition
+            ? `Reloaded ${load.definition.name} · read-only`
+            : componentViewerState.kind === "stale"
+              ? "Reload failed · showing the last valid preview"
+              : "The component is still invalid",
+        load.definition && snapshot.watcher_status !== "error"
+          ? "ready"
+          : "error",
+      );
+    })
+    .catch((error: unknown) => {
+      componentViewerState = previous;
+      renderComponentDesigner();
+      setStatus(`Could not reload component: ${String(error)}`, "error");
+    });
+});
+$("#close-component").addEventListener("click", () => {
+  void closeRuntimeComponent()
+    .then(() => {
+      componentViewerState = { kind: "no_component" };
+      componentViewerGeneration = undefined;
+      componentWatcherStatus = "stopped";
+      componentLastAttemptMs = undefined;
+      componentWatcherError = undefined;
+      componentRotation = "deg0";
+      selectedComponentPinId = undefined;
+      componentViewBox = undefined;
+      renderComponentDesigner();
+      setStatus("Component closed");
+    })
+    .catch((error: unknown) =>
+      setStatus(`Could not close component: ${String(error)}`, "error"),
+    );
+});
+$("#component-label-mode").addEventListener("change", (event) => {
+  componentLabelMode = (event.target as HTMLSelectElement)
+    .value as PinLabelMode;
+  selectedComponentPinId = undefined;
+  renderComponentDesigner();
+});
+for (const id of [
+  "show-component-keepouts",
+  "show-component-access",
+  "show-component-occupied",
+]) {
+  $(`#${id}`).addEventListener("change", renderComponentDesigner);
+}
+$("#component-rotations").addEventListener("click", (event) => {
+  const rotation = (event.target as HTMLElement).closest<HTMLElement>(
+    "[data-component-rotation]",
+  )?.dataset.componentRotation as Rotation | undefined;
+  if (!rotation) return;
+  componentRotation = rotation;
+  componentViewBox = undefined;
+  renderComponentDesigner();
+});
+$("#component-pin-table").addEventListener("click", (event) => {
+  const pinId = (event.target as HTMLElement).closest<HTMLElement>(
+    "[data-component-pin-row]",
+  )?.dataset.componentPinRow;
+  if (!pinId) return;
+  selectedComponentPinId = pinId;
+  renderComponentDesigner();
+});
+$("#component-pin-table").addEventListener("keydown", (event) => {
+  const keyboard = event as KeyboardEvent;
+  if (keyboard.key !== "Enter" && keyboard.key !== " ") return;
+  const pinId = (keyboard.target as HTMLElement).closest<HTMLElement>(
+    "[data-component-pin-row]",
+  )?.dataset.componentPinRow;
+  if (!pinId) return;
+  keyboard.preventDefault();
+  selectedComponentPinId = pinId;
+  renderComponentDesigner();
+});
+$("#component-canvas").addEventListener("click", (event) => {
+  const pinId = (event.target as HTMLElement).closest<HTMLElement>(
+    "[data-preview-pin-id]",
+  )?.dataset.previewPinId;
+  if (!pinId) return;
+  selectedComponentPinId = pinId;
+  renderComponentDesigner();
+});
+$("#component-zoom-in").addEventListener("click", () => zoomComponent(0.8));
+$("#component-zoom-out").addEventListener("click", () => zoomComponent(1.25));
+$("#component-fit").addEventListener("click", () => {
+  componentViewBox = undefined;
+  renderComponentDesigner();
+});
+$("#component-canvas").addEventListener(
+  "wheel",
+  (event) => {
+    event.preventDefault();
+    zoomComponent((event as WheelEvent).deltaY > 0 ? 1.12 : 0.89);
+  },
+  { passive: false },
+);
+$("#component-canvas").addEventListener("pointerdown", (event) => {
+  const pointer = event as PointerEvent;
+  if (
+    !pointer.isPrimary ||
+    pointer.button !== 0 ||
+    (pointer.target as Element).closest("[data-preview-pin-id]")
+  )
+    return;
+  const svg = document.querySelector<SVGSVGElement>("#component-preview");
+  if (!svg) return;
+  const values = (svg.getAttribute("viewBox") ?? "-2 -2 10 10")
+    .split(" ")
+    .map(Number) as [number, number, number, number];
+  componentPanStart = {
+    x: pointer.clientX,
+    y: pointer.clientY,
+    viewBox: values,
+  };
+  (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
+});
+$("#component-canvas").addEventListener("pointermove", (event) => {
+  if (!componentPanStart) return;
+  const pointer = event as PointerEvent;
+  const svg = document.querySelector<SVGSVGElement>("#component-preview");
+  if (!svg) return;
+  const bounds = svg.getBoundingClientRect();
+  const dx =
+    ((pointer.clientX - componentPanStart.x) * componentPanStart.viewBox[2]) /
+    bounds.width;
+  const dy =
+    ((pointer.clientY - componentPanStart.y) * componentPanStart.viewBox[3]) /
+    bounds.height;
+  componentViewBox = [
+    componentPanStart.viewBox[0] - dx,
+    componentPanStart.viewBox[1] - dy,
+    componentPanStart.viewBox[2],
+    componentPanStart.viewBox[3],
+  ];
+  svg.setAttribute("viewBox", componentViewBox.join(" "));
+});
+for (const eventName of ["pointerup", "pointercancel"]) {
+  $("#component-canvas").addEventListener(eventName, () => {
+    componentPanStart = undefined;
   });
 }
 
@@ -1074,6 +1542,29 @@ $("#canvas").addEventListener(
 );
 async function initialize(): Promise<void> {
   let changedDuringStartup = false;
+  await listen<ComponentViewerSnapshot>("component-viewer-changed", (event) => {
+    const snapshot = event.payload;
+    if (!isActiveViewerSnapshot(componentViewerGeneration, snapshot)) return;
+    applyComponentSnapshot(snapshot);
+    renderComponentDesigner();
+    if (snapshot.watcher_status === "error") {
+      setStatus(
+        `Component watcher unavailable: ${snapshot.watcher_error ?? "unknown error"}`,
+        "error",
+      );
+      return;
+    }
+    const load = snapshot.load;
+    if (!load) return;
+    setStatus(
+      load.definition
+        ? `Updated ${load.definition.name} from disk`
+        : displayedComponentLoad()?.definition
+          ? "External edit is invalid · showing the last valid preview"
+          : "External component edit is invalid",
+      load.definition ? "ready" : "error",
+    );
+  });
   await listen<{ revision: number }>("project-changed", (event) => {
     if (!projectReady) {
       changedDuringStartup = true;
@@ -1100,7 +1591,12 @@ async function initialize(): Promise<void> {
     : { components: [], nets: [], wires: [], constraints: [], routes: [] };
   projectReady = true;
   render();
-  setStatus(`Rust engine ready · schema v${info.schema_version}`);
+  renderComponentDesigner();
+  setStatus(
+    appMode === "component"
+      ? "Component Designer · read-only runtime viewer"
+      : `Rust engine ready · schema v${info.schema_version}`,
+  );
   if (changedDuringStartup) await requestRefresh();
   await refreshIfChanged();
 }

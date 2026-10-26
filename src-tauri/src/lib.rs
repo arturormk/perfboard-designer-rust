@@ -1,6 +1,9 @@
 use std::{
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use perfboard_core::{
@@ -20,10 +23,38 @@ use perfboard_session_ipc::{
 };
 use serde::Serialize;
 use tauri::{Emitter, Manager};
+use tauri_plugin_dialog::DialogExt;
+
+mod component_viewer;
+
+use component_viewer::{
+    AuthorizedComponent, COMPONENT_VIEWER_EVENT, ComponentViewerSnapshot, ComponentWatch,
+};
 
 struct SessionState(Arc<Mutex<ProjectSession>>);
 
 struct IpcRegistrationState(#[allow(dead_code)] Arc<SessionRegistration>);
+
+struct ActiveComponentViewer {
+    component: AuthorizedComponent,
+    generation: u64,
+    _watch: Option<ComponentWatch>,
+    watcher_error: Option<String>,
+}
+
+struct ComponentViewerState {
+    active: Mutex<Option<ActiveComponentViewer>>,
+    active_generation: Arc<AtomicU64>,
+}
+
+impl Default for ComponentViewerState {
+    fn default() -> Self {
+        Self {
+            active: Mutex::new(None),
+            active_generation: Arc::new(AtomicU64::new(0)),
+        }
+    }
+}
 
 #[derive(Debug, Serialize)]
 struct CommandError {
@@ -496,6 +527,120 @@ fn get_component_library() -> Result<Vec<ComponentDefinition>, String> {
 }
 
 #[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+async fn select_runtime_component(
+    state: tauri::State<'_, ComponentViewerState>,
+    app: tauri::AppHandle,
+) -> Result<Option<ComponentViewerSnapshot>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Open component directory")
+        .pick_folder(move |selection| {
+            let _ = sender.send(selection);
+        });
+    let Some(selection) = receiver
+        .await
+        .map_err(|error| format!("component directory picker failed: {error}"))?
+    else {
+        return Ok(None);
+    };
+    let path = selection
+        .into_path()
+        .map_err(|error| format!("selected component directory is unavailable: {error}"))?;
+    let authorized = AuthorizedComponent::new(&path, &path).map_err(|error| error.message)?;
+    let generation = state.active_generation.fetch_add(1, Ordering::AcqRel) + 1;
+    let previous = state
+        .active
+        .lock()
+        .map_err(|error| error.to_string())?
+        .take();
+    drop(previous);
+
+    let watcher_app = app.clone();
+    let watch = ComponentWatch::start(
+        authorized.clone(),
+        generation,
+        Arc::clone(&state.active_generation),
+        move |event| {
+            if let Err(error) = watcher_app.emit(COMPONENT_VIEWER_EVENT, event) {
+                eprintln!("Failed to publish {COMPONENT_VIEWER_EVENT}: {error}");
+            }
+        },
+    );
+    let load = authorized.load();
+    let (watch, watcher_error, snapshot) = match watch {
+        Ok(watch) => (
+            Some(watch),
+            None,
+            ComponentViewerSnapshot::watching(generation, load),
+        ),
+        Err(error) => {
+            let message = format!("could not watch component directory: {error}");
+            (
+                None,
+                Some(message.clone()),
+                ComponentViewerSnapshot::watcher_unavailable(generation, load, message),
+            )
+        }
+    };
+    *state.active.lock().map_err(|error| error.to_string())? = Some(ActiveComponentViewer {
+        component: authorized,
+        generation,
+        _watch: watch,
+        watcher_error,
+    });
+    Ok(Some(snapshot))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn reload_runtime_component(
+    state: tauri::State<'_, ComponentViewerState>,
+) -> Result<Option<ComponentViewerSnapshot>, String> {
+    state
+        .active
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_ref()
+        .map(|active| {
+            let load = active.component.load();
+            match &active.watcher_error {
+                Some(error) => ComponentViewerSnapshot::watcher_unavailable(
+                    active.generation,
+                    load,
+                    error.clone(),
+                ),
+                None => ComponentViewerSnapshot::watching(active.generation, load),
+            }
+        })
+        .map_or(Ok(None), |snapshot| Ok(Some(snapshot)))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn close_runtime_component(
+    state: tauri::State<'_, ComponentViewerState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let active = state
+        .active
+        .lock()
+        .map_err(|error| error.to_string())?
+        .take();
+    if let Some(active) = active {
+        state.active_generation.fetch_add(1, Ordering::AcqRel);
+        let generation = active.generation;
+        drop(active);
+        let _ = app.emit(
+            COMPONENT_VIEWER_EVENT,
+            ComponentViewerSnapshot::stopped(generation),
+        );
+    }
+    Ok(())
+}
+
+#[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
 fn save_project(state: tauri::State<'_, SessionState>, path: PathBuf) -> Result<(), String> {
     let session = state.0.lock().map_err(|error| error.to_string())?;
@@ -541,6 +686,8 @@ pub fn run() {
     let ipc_session = Arc::clone(&session);
     tauri::Builder::default()
         .manage(SessionState(session))
+        .manage(ComponentViewerState::default())
+        .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             let (registration, listener) =
                 SessionRegistration::bind().map_err(Box::<dyn std::error::Error>::from)?;
@@ -575,6 +722,9 @@ pub fn run() {
             suggest_project_route,
             evaluate_project_route,
             get_component_library,
+            select_runtime_component,
+            reload_runtime_component,
+            close_runtime_component,
             save_project,
             open_project,
         ])
