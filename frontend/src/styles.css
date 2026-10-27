@@ -410,6 +410,13 @@ button:disabled {
   cursor: grab;
   touch-action: none;
 }
+svg[data-side="solder"] .component {
+  opacity: 0.2;
+}
+svg[data-side="solder"] > .component-label,
+svg[data-side="solder"] > .pin-labels {
+  opacity: 0.25;
+}
 .component.dragging {
   cursor: grabbing;
   opacity: 0.55;
