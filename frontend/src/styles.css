@@ -440,7 +440,6 @@ button:disabled {
 svg[data-side="solder"] .component {
   opacity: 0.2;
 }
-svg[data-side="solder"] > .component-label,
 svg[data-side="solder"] > .pin-labels {
   opacity: 0.25;
 }
@@ -477,14 +476,6 @@ svg[data-side="solder"] > .pin-labels {
 }
 .orientation {
   fill: #e77363;
-}
-.component-label {
-  fill: white;
-  font-size: 0.52px;
-  paint-order: stroke;
-  stroke: #101713;
-  stroke-width: 0.11px;
-  pointer-events: none;
 }
 .keepout {
   fill: rgb(255 86 71 / 12%);

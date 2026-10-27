@@ -44,6 +44,29 @@ function pinTooltip(
     details.push(`Functions: ${pin.functions.join(", ")}`);
   return details.join(" · ");
 }
+function componentTooltip(
+  instance: ComponentInstance,
+  definition: ComponentDefinition,
+): string {
+  const details = [
+    instance.name,
+    `Type: ${definition.name} (${definition.id} v${definition.definition_version})`,
+  ];
+  if (definition.description) details.push(definition.description);
+  details.push(
+    `Anchor: ${instance.position.x}, ${instance.position.y}`,
+    `Rotation: ${degrees(instance.rotation)}°`,
+    `Pins: ${definition.pins.length}`,
+  );
+  const properties = Object.entries(instance.properties ?? {});
+  if (properties.length) {
+    details.push(
+      `Properties: ${properties.map(([key, value]) => `${key}=${value}`).join(", ")}`,
+    );
+  }
+  if (instance.notes) details.push(`Notes: ${instance.notes}`);
+  return details.join("\n");
+}
 function rectPoints(
   min: { x: number; y: number },
   max: { x: number; y: number },
@@ -55,7 +78,6 @@ function renderComponent(
   definition: ComponentDefinition,
   selected: boolean,
   pitch: number,
-  showLabel = true,
   changeKind?: string,
 ): string {
   const body = definition.body;
@@ -82,7 +104,7 @@ function renderComponent(
       return `<g class="access"><rect x="${x}" y="${y}" width="${width}" height="${height}"/><text x="${middleX}" y="${middleY + 0.25}">${arrow}</text><title>${escape(area.label)}</title></g>`;
     })
     .join("");
-  return `<g class="component${selected ? " selected" : ""}${changeKind ? ` diff-${escape(changeKind)}` : ""}" data-component-id="${instance.id}" data-rotation-degrees="${degrees(instance.rotation)}" transform="translate(${instance.position.x} ${instance.position.y}) rotate(${degrees(instance.rotation)})">${keepouts}<rect class="body" x="${body.x / pitch}" y="${body.y / pitch}" width="${body.width / pitch}" height="${body.height / pitch}" rx=".35"/><path class="orientation" d="M .25 .25 L 1 .25 L .25 1 Z"><title>Component orientation</title></path>${pins}${access}${showLabel ? `<text class="component-label" x=".5" y="1.45">${escape(instance.name)}</text>` : ""}</g>`;
+  return `<g class="component${selected ? " selected" : ""}${changeKind ? ` diff-${escape(changeKind)}` : ""}" data-component-id="${instance.id}" data-rotation-degrees="${degrees(instance.rotation)}" transform="translate(${instance.position.x} ${instance.position.y}) rotate(${degrees(instance.rotation)})">${keepouts}<rect class="body" x="${body.x / pitch}" y="${body.y / pitch}" width="${body.width / pitch}" height="${body.height / pitch}" rx=".35"/><path class="orientation" d="M .25 .25 L 1 .25 L .25 1 Z"><title>${escape(componentTooltip(instance, definition))}</title></path>${pins}${access}</g>`;
 }
 function wireColor(color: import("../api/project").WireColor): string {
   return typeof color === "string" ? color : color.other;
@@ -130,7 +152,6 @@ export function renderBoardSvg(
             definition,
             instance.id === selectedId,
             board.pitch_mm,
-            side === "component",
             changes[instance.id],
           )
         : "";
@@ -159,15 +180,6 @@ export function renderBoardSvg(
     board.holes_y - 1 + (margins.top + margins.bottom) / board.pitch_mm;
   const mirror =
     side === "solder" ? `translate(${board.holes_x - 1} 0) scale(-1 1)` : "";
-  const componentLabels =
-    side === "solder"
-      ? componentValues
-          .map(
-            (instance) =>
-              `<text class="component-label readable-label" x="${board.holes_x - 1 - instance.position.x + 0.5}" y="${instance.position.y + 1.45}">${escape(instance.name)}</text>`,
-          )
-          .join("")
-      : "";
   const pinLabels = componentValues
     .flatMap((instance) => {
       const definition = definitions[instance.definition_id];
@@ -181,5 +193,5 @@ export function renderBoardSvg(
       });
     })
     .join("");
-  return `<svg id="${escape(svgId)}" aria-label="${escape(board.name)}, ${side} side" role="img" viewBox="${viewBox ?? defaultViewBox}" data-default-view-box="${defaultViewBox}" data-side="${side}"><rect class="board-outline" x="${-left}" y="${-top}" width="${width}" height="${height}" rx=".5"/><g class="board-geometry" transform="${mirror}"><g class="holes">${holes}</g>${mountingHoles}${forbidden}<g class="wires">${wires}</g><g class="components">${components}</g></g>${componentLabels}<g class="pin-labels">${pinLabels}</g></svg>`;
+  return `<svg id="${escape(svgId)}" aria-label="${escape(board.name)}, ${side} side" role="img" viewBox="${viewBox ?? defaultViewBox}" data-default-view-box="${defaultViewBox}" data-side="${side}"><rect class="board-outline" x="${-left}" y="${-top}" width="${width}" height="${height}" rx=".5"/><g class="board-geometry" transform="${mirror}"><g class="holes">${holes}</g>${mountingHoles}${forbidden}<g class="wires">${wires}</g><g class="components">${components}</g></g><g class="pin-labels">${pinLabels}</g></svg>`;
 }

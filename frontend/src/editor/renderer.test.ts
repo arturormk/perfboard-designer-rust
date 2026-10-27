@@ -41,12 +41,16 @@ const fixture: ProjectDocument = {
   },
 };
 describe("board SVG", () => {
-  it("renders holes, selection, pins, labels, and rotation deterministically", () => {
+  it("renders holes, selection, pin labels, and rotation deterministically", () => {
     const svg = renderBoardSvg(fixture, "instance");
     expect(svg.match(/class="hole"/g)).toHaveLength(12);
     expect(svg).toContain('class="component selected"');
     expect(svg).toContain("translate(2 1) rotate(90)");
     expect(svg).toContain('class="orientation"');
+    expect(svg).toContain("U1\nType: Part (part v1)");
+    expect(svg).toContain("Anchor: 2, 1\nRotation: 90°\nPins: 1");
+    expect(svg).not.toContain('class="component-label"');
+    expect(svg).not.toContain("Component orientation");
     expect(svg).toContain("Pin 1: Pin 1");
     expect(svg).toContain("Aliases: P1 · Functions: gpio");
     expect(svg).toContain('data-pin-id="1"');
@@ -74,15 +78,28 @@ describe("board SVG", () => {
     );
   });
 
-  it("mirrors solder-side geometry while keeping labels readable", () => {
+  it("mirrors solder-side geometry while keeping pin labels readable", () => {
     const svg = renderBoardSvg(fixture, undefined, undefined, "solder");
     expect(svg).toContain('transform="translate(3 0) scale(-1 1)"');
-    expect(svg).toContain('class="component-label readable-label"');
-    expect(svg).toContain('x="1.5"');
+    expect(svg).not.toContain('class="component-label"');
     expect(svg).toContain('data-side="solder"');
     expect(svg).toContain(
       '<text class="pin-label readable-label" x="1" y="1">1</text>',
     );
+  });
+
+  it("includes optional component details in the orientation hint", () => {
+    const detailed = structuredClone(fixture);
+    detailed.design.component_definitions!.part!.description = "Timer module";
+    detailed.design.components!.instance!.properties = {
+      package: "DIP-8",
+      value: "555 & friends",
+    };
+    detailed.design.components!.instance!.notes = "Keep near power < rail";
+    const svg = renderBoardSvg(detailed);
+    expect(svg).toContain("Timer module\nAnchor: 2, 1");
+    expect(svg).toContain("Properties: package=DIP-8, value=555 &amp; friends");
+    expect(svg).toContain("Notes: Keep near power &lt; rail");
   });
 
   it("renders wires with identifiers and non-color side patterns", () => {
