@@ -1,5 +1,6 @@
 use std::{
-    path::PathBuf,
+    fs,
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -134,6 +135,35 @@ fn bundled_component_library() -> Result<Vec<ComponentDefinition>, String> {
         include_str!("../../components/rs485-breakout/component.toml"),
     ])
     .map_err(|error| error.to_string())
+}
+
+fn load_component_library(root: &Path) -> Result<Vec<ComponentDefinition>, String> {
+    let entries = fs::read_dir(root).map_err(|error| {
+        format!(
+            "could not read component library {}: {error}",
+            root.display()
+        )
+    })?;
+    let mut definition_paths = entries
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.path().join("component.toml"))
+        .filter(|path| path.is_file())
+        .collect::<Vec<_>>();
+    definition_paths.sort();
+
+    let sources = definition_paths
+        .iter()
+        .map(|path| {
+            fs::read_to_string(path)
+                .map_err(|error| format!("could not read {}: {error}", path.display()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    parse_component_library(sources.iter().map(String::as_str)).map_err(|error| error.to_string())
+}
+
+fn component_library_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../components")
 }
 
 struct DesktopSessionHandler {
@@ -533,7 +563,7 @@ fn evaluate_project_route(
 
 #[tauri::command]
 fn get_component_library() -> Result<Vec<ComponentDefinition>, String> {
-    bundled_component_library()
+    load_component_library(&component_library_root())
 }
 
 #[tauri::command]
@@ -978,6 +1008,17 @@ mod tests {
 
     #[test]
     fn bundled_component_library_is_valid() {
-        assert_eq!(get_component_library().unwrap().len(), 2);
+        assert_eq!(bundled_component_library().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn runtime_component_library_scans_component_directories() {
+        let library = get_component_library().unwrap();
+        assert!(library.len() >= 3);
+        assert!(
+            library
+                .iter()
+                .any(|definition| definition.id == "dev.perfboard.resistance")
+        );
     }
 }

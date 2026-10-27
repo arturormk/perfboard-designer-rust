@@ -699,6 +699,25 @@ function requestRefresh(): Promise<void> {
   });
   return refreshPromise;
 }
+async function refreshComponentLibrary(): Promise<void> {
+  const button = $("#refresh-component-library") as HTMLButtonElement;
+  button.disabled = true;
+  button.classList.add("refreshing");
+  try {
+    library = await getComponentLibrary();
+    if (!library.some((item) => item.id === selectedLibraryDefinitionId))
+      selectedLibraryDefinitionId = library[0]?.id;
+    render();
+    setStatus(
+      `Component library refreshed · ${library.length} component type${library.length === 1 ? "" : "s"}`,
+    );
+  } catch (error) {
+    setStatus(`Could not refresh component library: ${String(error)}`, "error");
+  } finally {
+    button.disabled = false;
+    button.classList.remove("refreshing");
+  }
+}
 async function refreshIfChanged(): Promise<void> {
   if (!projectReady || document.visibilityState === "hidden") return;
   const revision = await getProjectRevision();
@@ -852,6 +871,9 @@ $("#perfboard-mode-button").addEventListener("click", () =>
 $("#component-mode-button").addEventListener("click", () =>
   setAppMode("component"),
 );
+$("#refresh-component-library").addEventListener("click", () => {
+  void refreshComponentLibrary();
+});
 $("#open-component").addEventListener("click", () => {
   const previous = componentViewerState;
   componentViewerState = { kind: "loading" };

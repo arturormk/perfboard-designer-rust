@@ -1,0 +1,52 @@
+schema_version = 1
+id = "dev.perfboard.resistance"
+definition_version = "1.0.0"
+name = "Generic resistance (5x1)"
+description = "Generic axial resistance with a three-hole body and one terminal hole at each end"
+origin_x = 0
+origin_y = 0
+allowed_rotations = [
+    "deg0",
+    "deg90",
+    "deg180",
+    "deg270",
+]
+documentation = ""
+occupied_holes = [
+    { x = 1, y = 0 },
+    { x = 2, y = 0 },
+    { x = 3, y = 0 },
+]
+
+[body]
+x = 1.27
+y = -1.27
+width = 7.62
+height = 2.54
+
+[[pins]]
+id = "terminal_1"
+number = "1"
+name = "Terminal 1"
+x = 0
+y = 0
+functions = ["passive"]
+
+[[pins]]
+id = "terminal_2"
+number = "2"
+name = "Terminal 2"
+x = 4
+y = 0
+functions = ["passive"]
+
+[[keepouts]]
+label = "Resistance body"
+
+[keepouts.min]
+x = 1
+y = 0
+
+[keepouts.max]
+x = 3
+y = 0
