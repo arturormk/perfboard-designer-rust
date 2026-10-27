@@ -48,6 +48,7 @@ import { renderBoardSvg } from "./editor/renderer";
 import { snappedDragPosition } from "./editor/drag";
 import { parseBoardDimensions } from "./editor/board-size";
 import {
+  pinLabelPlacement,
   renderComponentPreviewSvg,
   type PinLabelMode,
 } from "./component-designer/preview";
@@ -58,7 +59,11 @@ import {
   transitionViewerState,
   type ComponentViewerState,
 } from "./component-designer/viewer-state";
-import { movePinOperation, splitList } from "./component-designer/editor";
+import {
+  movePinOperation,
+  reorderPinOperation,
+  splitList,
+} from "./component-designer/editor";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -130,7 +135,18 @@ let componentPanStart:
   | { x: number; y: number; viewBox: [number, number, number, number] }
   | undefined;
 let componentPinDrag:
-  { pinId: string; pointerId: number; x: number; y: number } | undefined;
+  | {
+      pinId: string;
+      pointerId: number;
+      initialX: number;
+      initialY: number;
+      x: number;
+      y: number;
+      element: SVGGraphicsElement;
+      label?: SVGTextElement;
+    }
+  | undefined;
+let componentPinRowDrag: { pinId: string } | undefined;
 function setStatus(message: string, state = "ready"): void {
   const status = $("#status");
   status.textContent = message;
@@ -421,7 +437,7 @@ function renderComponentDesigner(): void {
           .map(
             (
               pin,
-            ) => `<tr tabindex="0" data-component-pin-row="${escapeHtml(pin.id)}" class="${pin.id === selectedComponentPinId ? "selected" : ""}" aria-selected="${pin.id === selectedComponentPinId}">
+            ) => `<tr tabindex="0" draggable="true" data-component-pin-row="${escapeHtml(pin.id)}" class="${pin.id === selectedComponentPinId ? "selected" : ""}" aria-selected="${pin.id === selectedComponentPinId}" title="Drag to reorder">
               <td>${escapeHtml(pin.number)}</td>
               <td><strong>${escapeHtml(pin.name)}</strong><small>${escapeHtml(pin.id)}</small></td>
               <td>${escapeHtml([...(pin.aliases ?? []), ...(pin.functions ?? [])].join(", ") || "—")}</td>
@@ -1132,6 +1148,71 @@ $("#component-pin-table").addEventListener("keydown", (event) => {
   selectedComponentPinId = pinId;
   renderComponentDesigner();
 });
+function clearPinRowDropIndicators(): void {
+  document
+    .querySelectorAll("#component-pin-table tr")
+    .forEach((row) =>
+      row.classList.remove("dragging", "drop-before", "drop-after"),
+    );
+}
+$("#component-pin-table").addEventListener("dragstart", (event) => {
+  const drag = event as DragEvent;
+  const row = (drag.target as HTMLElement).closest<HTMLTableRowElement>(
+    "[data-component-pin-row]",
+  );
+  const pinId = row?.dataset.componentPinRow;
+  if (!row || !pinId || !componentDraft) {
+    drag.preventDefault();
+    return;
+  }
+  componentPinRowDrag = { pinId };
+  row.classList.add("dragging");
+  drag.dataTransfer?.setData("text/plain", pinId);
+  if (drag.dataTransfer) drag.dataTransfer.effectAllowed = "move";
+});
+$("#component-pin-table").addEventListener("dragover", (event) => {
+  if (!componentPinRowDrag) return;
+  const drag = event as DragEvent;
+  const row = (drag.target as HTMLElement).closest<HTMLTableRowElement>(
+    "[data-component-pin-row]",
+  );
+  if (!row || row.dataset.componentPinRow === componentPinRowDrag.pinId) return;
+  drag.preventDefault();
+  document
+    .querySelectorAll("#component-pin-table tr")
+    .forEach((candidate) =>
+      candidate.classList.remove("drop-before", "drop-after"),
+    );
+  const afterTarget =
+    drag.clientY >= row.getBoundingClientRect().top + row.offsetHeight / 2;
+  row.classList.add(afterTarget ? "drop-after" : "drop-before");
+  if (drag.dataTransfer) drag.dataTransfer.dropEffect = "move";
+});
+$("#component-pin-table").addEventListener("drop", (event) => {
+  const drag = event as DragEvent;
+  const row = (drag.target as HTMLElement).closest<HTMLTableRowElement>(
+    "[data-component-pin-row]",
+  );
+  const pinId = componentPinRowDrag?.pinId;
+  const targetId = row?.dataset.componentPinRow;
+  if (!row || !pinId || !targetId || !componentDraft || pinId === targetId)
+    return;
+  drag.preventDefault();
+  const afterTarget = row.classList.contains("drop-after");
+  const operation = reorderPinOperation(
+    componentDraft.definition.pins,
+    pinId,
+    targetId,
+    afterTarget,
+  );
+  clearPinRowDropIndicators();
+  componentPinRowDrag = undefined;
+  if (operation) void mutateComponentDraft(operation);
+});
+$("#component-pin-table").addEventListener("dragend", () => {
+  clearPinRowDropIndicators();
+  componentPinRowDrag = undefined;
+});
 $("#component-canvas").addEventListener("click", (event) => {
   const pinId = (event.target as HTMLElement).closest<HTMLElement>(
     "[data-preview-pin-id]",
@@ -1142,19 +1223,28 @@ $("#component-canvas").addEventListener("click", (event) => {
 });
 $("#component-canvas").addEventListener("pointerdown", (event) => {
   const pointer = event as PointerEvent;
-  const pinId = (pointer.target as HTMLElement).closest<HTMLElement>(
+  const pinElement = (pointer.target as Element).closest<SVGGraphicsElement>(
     "[data-preview-pin-id]",
-  )?.dataset.previewPinId;
+  );
+  const pinId = pinElement?.dataset.previewPinId;
   if (!pinId || !componentDraft || pointer.button !== 0) return;
   const pin = componentDraft.definition.pins.find((item) => item.id === pinId);
-  if (!pin) return;
+  if (!pin || !pinElement) return;
   selectedComponentPinId = pinId;
+  const label = Array.from(
+    document.querySelectorAll<SVGTextElement>("[data-preview-pin-label-id]"),
+  ).find((item) => item.dataset.previewPinLabelId === pinId);
   componentPinDrag = {
     pinId,
     pointerId: pointer.pointerId,
+    initialX: pin.x,
+    initialY: pin.y,
     x: pin.x,
     y: pin.y,
+    element: pinElement,
+    label,
   };
+  pinElement.classList.add("dragging");
   (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
 });
 $("#component-canvas").addEventListener("pointermove", (event) => {
@@ -1178,6 +1268,23 @@ $("#component-canvas").addEventListener("pointermove", (event) => {
           : [-rotated.y, rotated.x];
   componentPinDrag.x = Math.round(x);
   componentPinDrag.y = Math.round(y);
+  componentPinDrag.element.setAttribute(
+    "transform",
+    `translate(${componentPinDrag.x - componentPinDrag.initialX} ${componentPinDrag.y - componentPinDrag.initialY})`,
+  );
+  if (componentPinDrag.label) {
+    const placement = pinLabelPlacement(
+      componentRotation,
+      componentPinDrag.x,
+      componentPinDrag.y,
+    );
+    componentPinDrag.label.setAttribute("x", String(placement.x));
+    componentPinDrag.label.setAttribute("y", String(placement.y));
+    componentPinDrag.label.setAttribute("text-anchor", placement.textAnchor);
+  }
+  setStatus(
+    `Move pin ${componentPinDrag.pinId} to (${componentPinDrag.x}, ${componentPinDrag.y})`,
+  );
 });
 $("#component-zoom-in").addEventListener("click", () => zoomComponent(0.8));
 $("#component-zoom-out").addEventListener("click", () => zoomComponent(1.25));
@@ -1235,13 +1342,27 @@ $("#component-canvas").addEventListener("pointermove", (event) => {
 });
 for (const eventName of ["pointerup", "pointercancel"]) {
   $("#component-canvas").addEventListener(eventName, () => {
-    if (componentPinDrag && eventName === "pointerup" && componentDraft) {
+    if (componentPinDrag) {
       const drag = componentPinDrag;
-      const pin = componentDraft.definition.pins.find(
-        (item) => item.id === drag.pinId,
-      );
-      if (pin && (pin.x !== drag.x || pin.y !== drag.y))
-        void mutateComponentDraft(movePinOperation(pin, drag.x, drag.y));
+      drag.element.removeAttribute("transform");
+      drag.element.classList.remove("dragging");
+      if (drag.label) {
+        const placement = pinLabelPlacement(
+          componentRotation,
+          drag.initialX,
+          drag.initialY,
+        );
+        drag.label.setAttribute("x", String(placement.x));
+        drag.label.setAttribute("y", String(placement.y));
+        drag.label.setAttribute("text-anchor", placement.textAnchor);
+      }
+      if (eventName === "pointerup" && componentDraft) {
+        const pin = componentDraft.definition.pins.find(
+          (item) => item.id === drag.pinId,
+        );
+        if (pin && (pin.x !== drag.x || pin.y !== drag.y))
+          void mutateComponentDraft(movePinOperation(pin, drag.x, drag.y));
+      }
     }
     componentPinDrag = undefined;
     componentPanStart = undefined;

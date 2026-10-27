@@ -100,6 +100,7 @@ describe("component preview", () => {
     expect(svg).toContain('class="preview-access"');
     expect(svg).toContain('class="preview-occupied"');
     expect(svg).toContain('class="preview-pin selected"');
+    expect(svg).toContain('data-preview-pin-label-id="signal"');
     expect(svg).toContain('text-anchor="middle" dominant-baseline="central"');
     expect(svg).toContain("1 · Signal · gpio, pwm");
   });

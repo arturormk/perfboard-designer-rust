@@ -3,7 +3,15 @@ id = "dev.perfboard.nano-like"
 definition_version = "1.2.0"
 name = "Arduino Nano-like"
 description = "Generic 30-pin Nano-compatible controller module"
-allowed_rotations = ["deg0", "deg90", "deg180", "deg270"]
+origin_x = 0
+origin_y = 0
+allowed_rotations = [
+    "deg0",
+    "deg90",
+    "deg180",
+    "deg270",
+]
+documentation = ""
 
 [body]
 x = -1.5
@@ -17,8 +25,14 @@ number = "1"
 name = "D13 / SCK / LED"
 x = 0
 y = 0
-aliases = ["SCK", "LED_BUILTIN"]
-functions = ["gpio", "spi_clock"]
+aliases = [
+    "SCK",
+    "LED_BUILTIN",
+]
+functions = [
+    "gpio",
+    "spi_clock",
+]
 
 [[pins]]
 id = "3v3"
@@ -42,7 +56,10 @@ number = "4"
 name = "A0 / D14"
 x = 0
 y = 3
-functions = ["gpio", "analog_input"]
+functions = [
+    "gpio",
+    "analog_input",
+]
 
 [[pins]]
 id = "a1"
@@ -50,7 +67,10 @@ number = "5"
 name = "A1 / D15"
 x = 0
 y = 4
-functions = ["gpio", "analog_input"]
+functions = [
+    "gpio",
+    "analog_input",
+]
 
 [[pins]]
 id = "a2"
@@ -58,7 +78,10 @@ number = "6"
 name = "A2 / D16"
 x = 0
 y = 5
-functions = ["gpio", "analog_input"]
+functions = [
+    "gpio",
+    "analog_input",
+]
 
 [[pins]]
 id = "a3"
@@ -66,7 +89,10 @@ number = "7"
 name = "A3 / D17"
 x = 0
 y = 6
-functions = ["gpio", "analog_input"]
+functions = [
+    "gpio",
+    "analog_input",
+]
 
 [[pins]]
 id = "a4"
@@ -75,7 +101,11 @@ name = "A4 / D18 / SDA"
 x = 0
 y = 7
 aliases = ["SDA"]
-functions = ["gpio", "analog_input", "i2c_data"]
+functions = [
+    "gpio",
+    "analog_input",
+    "i2c_data",
+]
 
 [[pins]]
 id = "a5"
@@ -84,7 +114,11 @@ name = "A5 / D19 / SCL"
 x = 0
 y = 8
 aliases = ["SCL"]
-functions = ["gpio", "analog_input", "i2c_clock"]
+functions = [
+    "gpio",
+    "analog_input",
+    "i2c_clock",
+]
 
 [[pins]]
 id = "a6"
@@ -140,8 +174,14 @@ number = "30"
 name = "D12 / CIPO"
 x = 6
 y = 0
-aliases = ["MISO", "CIPO"]
-functions = ["gpio", "spi_data"]
+aliases = [
+    "MISO",
+    "CIPO",
+]
+functions = [
+    "gpio",
+    "spi_data",
+]
 
 [[pins]]
 id = "d11"
@@ -149,8 +189,15 @@ number = "29"
 name = "D11 / COPI / PWM"
 x = 6
 y = 1
-aliases = ["MOSI", "COPI"]
-functions = ["gpio", "pwm", "spi_data"]
+aliases = [
+    "MOSI",
+    "COPI",
+]
+functions = [
+    "gpio",
+    "pwm",
+    "spi_data",
+]
 
 [[pins]]
 id = "d10"
@@ -159,7 +206,11 @@ name = "D10 / SS / PWM"
 x = 6
 y = 2
 aliases = ["SS"]
-functions = ["gpio", "pwm", "spi_select"]
+functions = [
+    "gpio",
+    "pwm",
+    "spi_select",
+]
 
 [[pins]]
 id = "d9"
@@ -167,7 +218,10 @@ number = "27"
 name = "D9 / PWM"
 x = 6
 y = 3
-functions = ["gpio", "pwm"]
+functions = [
+    "gpio",
+    "pwm",
+]
 
 [[pins]]
 id = "d8"
@@ -191,7 +245,10 @@ number = "24"
 name = "D6 / PWM"
 x = 6
 y = 6
-functions = ["gpio", "pwm"]
+functions = [
+    "gpio",
+    "pwm",
+]
 
 [[pins]]
 id = "d5"
@@ -199,7 +256,10 @@ number = "23"
 name = "D5 / PWM"
 x = 6
 y = 7
-functions = ["gpio", "pwm"]
+functions = [
+    "gpio",
+    "pwm",
+]
 
 [[pins]]
 id = "d4"
@@ -215,7 +275,10 @@ number = "21"
 name = "D3 / PWM"
 x = 6
 y = 9
-functions = ["gpio", "pwm"]
+functions = [
+    "gpio",
+    "pwm",
+]
 
 [[pins]]
 id = "d2"
@@ -248,7 +311,10 @@ name = "D0 / RX"
 x = 6
 y = 13
 aliases = ["RX"]
-functions = ["gpio", "uart_rx"]
+functions = [
+    "gpio",
+    "uart_rx",
+]
 
 [[pins]]
 id = "d1"
@@ -257,17 +323,32 @@ name = "D1 / TX"
 x = 6
 y = 14
 aliases = ["TX"]
-functions = ["gpio", "uart_tx"]
+functions = [
+    "gpio",
+    "uart_tx",
+]
 
 [[keepouts]]
 label = "Module body"
-min = { x = 0, y = 0 }
-max = { x = 6, y = 14 }
+
+[keepouts.min]
+x = 0
+y = 0
+
+[keepouts.max]
+x = 6
+y = 14
 
 [[access]]
-label = "USB connector"
-min = { x = 2, y = -1 }
-max = { x = 4, y = 1 }
 direction = "north"
+label = "USB connector"
 required = true
 allow_board_overhang = true
+
+[access.min]
+x = 2
+y = -1
+
+[access.max]
+x = 4
+y = 1

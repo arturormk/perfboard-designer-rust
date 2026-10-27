@@ -732,6 +732,9 @@ textarea {
 .preview-pin {
   cursor: pointer;
 }
+.preview-pin.dragging {
+  cursor: grabbing;
+}
 .preview-pin circle {
   fill: #e8bd64;
   stroke: #4d3814;
@@ -743,6 +746,12 @@ textarea {
   stroke: #fff;
   stroke-width: 0.15;
   filter: drop-shadow(0 0 0.12px #fff56b);
+}
+.preview-pin.dragging circle {
+  fill: #70e5ff;
+  stroke: #fff;
+  stroke-width: 0.15;
+  filter: drop-shadow(0 0 0.14px #70e5ff);
 }
 .preview-pin-label {
   fill: #eef7f0;
@@ -833,7 +842,19 @@ textarea {
   width: auto;
 }
 .component-pin-table tbody tr {
-  cursor: pointer;
+  cursor: grab;
+}
+.component-pin-table tbody tr:active {
+  cursor: grabbing;
+}
+.component-pin-table tbody tr.dragging {
+  opacity: 0.4;
+}
+.component-pin-table tbody tr.drop-before td {
+  box-shadow: inset 0 2px #70e5ff;
+}
+.component-pin-table tbody tr.drop-after td {
+  box-shadow: inset 0 -2px #70e5ff;
 }
 .component-pin-table tbody tr:hover,
 .component-pin-table tbody tr.selected {

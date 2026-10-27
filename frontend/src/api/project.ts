@@ -92,6 +92,7 @@ export type ComponentDraftOperation =
   | { type: "set_rotations"; rotations: Rotation[] }
   | { type: "upsert_pin"; previous_id?: string; pin: PinDefinition }
   | { type: "remove_pin"; id: string }
+  | { type: "reorder_pin"; id: string; index: number }
   | { type: "set_occupied_holes"; holes: HolePos[] }
   | { type: "set_keepouts"; keepouts: LocalRect[] }
   | { type: "set_access_regions"; access: AccessRegion[] }

@@ -190,7 +190,7 @@ export function renderComponentPreviewSvg(
       const label = pinLabel(pin, options.labelMode);
       if (!label) return "";
       const placement = pinLabelPlacement(options.rotation, pin.x, pin.y);
-      return `<text class="preview-pin-label" x="${placement.x}" y="${placement.y}" text-anchor="${placement.textAnchor}" dominant-baseline="central">${escape(label)}</text>`;
+      return `<text class="preview-pin-label" data-preview-pin-label-id="${escape(pin.id)}" x="${placement.x}" y="${placement.y}" text-anchor="${placement.textAnchor}" dominant-baseline="central">${escape(label)}</text>`;
     })
     .join("");
   const rotation = rotationDegrees(options.rotation);

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { movePinOperation, snapGridCoordinate, splitList } from "./editor";
+import {
+  movePinOperation,
+  reorderPinOperation,
+  snapGridCoordinate,
+  splitList,
+} from "./editor";
 
 describe("component authoring helpers", () => {
   it("snaps graphical pin movement to integer grid coordinates", () => {
@@ -27,5 +32,24 @@ describe("component authoring helpers", () => {
       "VCC",
       "supply",
     ]);
+  });
+
+  it("calculates final pin indices when rows are reordered", () => {
+    const pins = [
+      { id: "a", number: "1", name: "A", x: 0, y: 0 },
+      { id: "b", number: "2", name: "B", x: 0, y: 1 },
+      { id: "c", number: "3", name: "C", x: 0, y: 2 },
+    ];
+    expect(reorderPinOperation(pins, "a", "c", true)).toEqual({
+      type: "reorder_pin",
+      id: "a",
+      index: 2,
+    });
+    expect(reorderPinOperation(pins, "c", "a", false)).toEqual({
+      type: "reorder_pin",
+      id: "c",
+      index: 0,
+    });
+    expect(reorderPinOperation(pins, "b", "c", false)).toBeUndefined();
   });
 });

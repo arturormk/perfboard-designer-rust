@@ -32,6 +32,10 @@ pub enum ComponentDraftOperation {
     RemovePin {
         id: String,
     },
+    ReorderPin {
+        id: String,
+        index: usize,
+    },
     SetOccupiedHoles {
         holes: Vec<LocalPos>,
     },
@@ -193,6 +197,9 @@ impl ComponentDraft {
                 };
                 next.definition.pins.remove(index);
             }
+            ComponentDraftOperation::ReorderPin { id, index } => {
+                reorder_pin(&mut next.definition.pins, id, index)?;
+            }
             ComponentDraftOperation::SetOccupiedHoles { mut holes } => {
                 holes.sort_unstable();
                 holes.dedup();
@@ -268,6 +275,20 @@ impl ComponentDraft {
         self.undo.clear();
         self.redo.clear();
     }
+}
+
+fn reorder_pin(
+    pins: &mut Vec<PinDefinition>,
+    id: String,
+    index: usize,
+) -> Result<(), ComponentDraftError> {
+    let Some(current_index) = pins.iter().position(|pin| pin.id == id) else {
+        return Err(ComponentDraftError::PinNotFound(id));
+    };
+    let pin = pins.remove(current_index);
+    let index = index.min(pins.len());
+    pins.insert(index, pin);
+    Ok(())
 }
 
 fn normalized_strings(values: Vec<String>) -> Vec<String> {
@@ -352,6 +373,57 @@ height = 2.54
                 pin: pin("b", "1", 4)
             }),
             Err(ComponentDraftError::DuplicatePinNumber("1".into()))
+        );
+    }
+
+    #[test]
+    fn pins_can_be_reordered_for_serialization_and_undo() {
+        let mut draft = ComponentDraft::new(definition(), "");
+        for (id, number) in [("a", "1"), ("b", "2"), ("c", "3")] {
+            draft
+                .apply(ComponentDraftOperation::UpsertPin {
+                    previous_id: None,
+                    pin: PinDefinition {
+                        id: id.into(),
+                        number: number.into(),
+                        name: id.into(),
+                        x: 0,
+                        y: 0,
+                        aliases: vec![],
+                        functions: vec![],
+                    },
+                })
+                .unwrap();
+        }
+
+        draft
+            .apply(ComponentDraftOperation::ReorderPin {
+                id: "c".into(),
+                index: 0,
+            })
+            .unwrap();
+        assert_eq!(
+            draft
+                .snapshot()
+                .definition
+                .pins
+                .iter()
+                .map(|pin| pin.id.as_str())
+                .collect::<Vec<_>>(),
+            ["c", "a", "b"]
+        );
+        let serialized = draft.to_toml().unwrap();
+        assert!(serialized.find("id = \"c\"").unwrap() < serialized.find("id = \"a\"").unwrap());
+
+        assert_eq!(
+            draft
+                .undo()
+                .definition
+                .pins
+                .iter()
+                .map(|pin| pin.id.as_str())
+                .collect::<Vec<_>>(),
+            ["a", "b", "c"]
         );
     }
 
