@@ -1,4 +1,4 @@
-# Arduino Nano-like
+# Nano
 
 A deliberately generic Nano-compatible module used by the example project.
 The origin is its upper-left header pin when the USB connector faces north.

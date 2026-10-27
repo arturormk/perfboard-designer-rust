@@ -1,8 +1,8 @@
 schema_version = 1
-id = "dev.perfboard.resistance"
-definition_version = "1.0.0"
-name = "Generic resistance (5x1)"
-description = "Generic axial resistance with a three-hole body and one terminal hole at each end"
+id = "dev.perfboard.resistor"
+definition_version = "1.0.1"
+name = "Resistor"
+description = "Generic axial resistor with a three-hole body and one terminal hole at each end"
 origin_x = 0
 origin_y = 0
 allowed_rotations = [
@@ -41,7 +41,7 @@ y = 0
 functions = ["passive"]
 
 [[keepouts]]
-label = "Resistance body"
+label = "Resistor body"
 
 [keepouts.min]
 x = 1

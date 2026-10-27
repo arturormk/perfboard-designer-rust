@@ -1,0 +1,28 @@
+schema_version = 1
+id = "dev.perfboard.dupont-pin"
+definition_version = "1.0.1"
+name = "Pin"
+description = "Generic single-pin 2.54 mm connector for jumpers, headers, and off-board wires"
+origin_x = 0
+origin_y = 0
+allowed_rotations = [
+    "deg0",
+    "deg90",
+    "deg180",
+    "deg270",
+]
+documentation = ""
+
+[body]
+x = -1.27
+y = -1.27
+width = 2.54
+height = 2.54
+
+[[pins]]
+id = "pin"
+number = "1"
+name = "Pin 1"
+x = 0
+y = 0
+functions = ["passive"]

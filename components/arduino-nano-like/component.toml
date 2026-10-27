@@ -1,7 +1,7 @@
 schema_version = 1
 id = "dev.perfboard.nano-like"
-definition_version = "1.2.0"
-name = "Arduino Nano-like"
+definition_version = "1.2.1"
+name = "Nano"
 description = "Generic 30-pin Nano-compatible controller module"
 origin_x = 0
 origin_y = 0

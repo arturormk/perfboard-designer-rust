@@ -1018,7 +1018,7 @@ mod tests {
         assert!(
             library
                 .iter()
-                .any(|definition| definition.id == "dev.perfboard.resistance")
+                .any(|definition| definition.id == "dev.perfboard.resistor")
         );
     }
 }

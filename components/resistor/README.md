@@ -1,6 +1,6 @@
-# Generic resistance (5x1)
+# Resistor
 
-A generic axial resistance laid out across five perfboard holes in one row. The
+A generic axial resistor laid out across five perfboard holes in one row. The
 body occupies the middle three holes, with one terminal hole at each end.
 
 The origin is terminal 1 at `(0, 0)`; terminal 2 is at `(4, 0)`. The component
