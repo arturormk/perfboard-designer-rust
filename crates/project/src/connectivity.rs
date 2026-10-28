@@ -235,6 +235,38 @@ fn pin_position(design: &Design, pin: &PinRef) -> Option<RoutePos> {
     ))
 }
 
+pub(crate) fn route_crosses_unrelated_pin(design: &Design, wire: &perfboard_core::Wire) -> bool {
+    let endpoints: BTreeSet<_> = [&wire.start, &wire.end]
+        .into_iter()
+        .filter_map(|terminal| terminal_position(design, wire.net_id, terminal).ok())
+        .collect();
+    let pins: BTreeSet<_> = design
+        .components
+        .values()
+        .flat_map(|instance| {
+            let definition = &design.component_definitions[&instance.definition_id];
+            definition.pins.iter().map(move |pin| {
+                let (x, y) = instance.rotation.rotate_local((pin.x, pin.y));
+                RoutePos::new(
+                    (i64::from(instance.position.x) + i64::from(x)) * 2,
+                    (i64::from(instance.position.y) + i64::from(y)) * 2,
+                )
+            })
+        })
+        .collect();
+    wire.vertices.windows(2).any(|pair| {
+        let dx = (pair[1].x2 - pair[0].x2).signum();
+        let dy = (pair[1].y2 - pair[0].y2).signum();
+        let steps = (pair[1].x2 - pair[0].x2)
+            .abs()
+            .max((pair[1].y2 - pair[0].y2).abs());
+        (0..=steps).any(|step| {
+            let point = RoutePos::new(pair[0].x2 + dx * step, pair[0].y2 + dy * step);
+            !endpoints.contains(&point) && pins.contains(&point)
+        })
+    })
+}
+
 pub(crate) fn terminal_position(
     design: &Design,
     net_id: NetId,

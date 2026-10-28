@@ -43,7 +43,10 @@ impl Default for RoutingCostConfig {
     fn default() -> Self {
         Self {
             orthogonal_step: 10,
-            diagonal_step: 14,
+            // Slightly above sqrt(2) times an orthogonal step: straight runs
+            // win close calls, while a useful diagonal remains much cheaper
+            // than taking two orthogonal steps.
+            diagonal_step: 15,
             bend: 25,
             cramped_bend: 80,
             crossing: 60,
@@ -141,6 +144,7 @@ pub fn suggest_route(
         .max_by_key(|item| item.0);
     let bend_distance_cap = minimum_bend.map_or(1, |item| item.0.max(1));
     let blocked = blocked_positions(design, side, start, end);
+    let unavailable_bend_holes = component_occupied_holes(design);
     let soft_areas = soft_area_positions(design);
     let existing = occupied_wire_positions(design, request.replace_wire_id);
     let max_x = i64::from(design.board.size.intervals_x()) * 2;
@@ -178,6 +182,12 @@ pub fn suggest_route(
                 continue;
             }
             let turning = current.direction < 8 && current.direction != direction;
+            // A formed bend needs a physical anchoring hole. Component pins,
+            // occupied holes, and junctions are already excluded by `blocked`.
+            let bend = RoutePos::new(current.x2, current.y2);
+            if turning && (!bend.is_hole() || unavailable_bend_holes.contains(&bend)) {
+                continue;
+            }
             if turning
                 && minimum_bend.is_some_and(|(spacing, severity)| {
                     severity == ConstraintSeverity::Required && current.since_bend < spacing
@@ -465,6 +475,13 @@ fn blocked_positions(
                     }
                 }
             }
+            for local in &definition.occupied_holes {
+                let (x, y) = instance.rotation.rotate_local((local.x, local.y));
+                blocked.insert(RoutePos::new(
+                    (i64::from(instance.position.x) + i64::from(x)) * 2,
+                    (i64::from(instance.position.y) + i64::from(y)) * 2,
+                ));
+            }
             for access in &definition.access {
                 if access.required {
                     add_local_rect(&mut blocked, instance, access.min, access.max);
@@ -474,7 +491,15 @@ fn blocked_positions(
     }
     for instance in design.components.values() {
         let definition = &design.component_definitions[&instance.definition_id];
-        for local in definition.occupied_positions() {
+        // Pins physically occupy their holes on both faces. Other occupied
+        // positions describe holes covered by the component body, so they are
+        // obstacles only on the component face; solder-side wire may pass
+        // beneath that body.
+        let occupied = definition
+            .pins
+            .iter()
+            .map(|pin| perfboard_core::LocalPos::new(pin.x, pin.y));
+        for local in occupied {
             let (x, y) = instance.rotation.rotate_local((local.x, local.y));
             blocked.insert(RoutePos::new(
                 (i64::from(instance.position.x) + i64::from(x)) * 2,
@@ -509,6 +534,23 @@ fn soft_area_positions(design: &Design) -> BTreeSet<RoutePos> {
         }
     }
     result
+}
+
+fn component_occupied_holes(design: &Design) -> BTreeSet<RoutePos> {
+    design
+        .components
+        .values()
+        .flat_map(|instance| {
+            let definition = &design.component_definitions[&instance.definition_id];
+            definition.occupied_holes.iter().map(move |local| {
+                let (x, y) = instance.rotation.rotate_local((local.x, local.y));
+                RoutePos::new(
+                    (i64::from(instance.position.x) + i64::from(x)) * 2,
+                    (i64::from(instance.position.y) + i64::from(y)) * 2,
+                )
+            })
+        })
+        .collect()
 }
 
 fn add_local_rect(

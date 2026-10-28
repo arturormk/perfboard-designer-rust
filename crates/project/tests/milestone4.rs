@@ -7,8 +7,8 @@ use perfboard_core::{
     Rotation, RoutePos, Side, TerminalRef, Wire, WireColor, WireId,
 };
 use perfboard_project::{
-    Board, OperationOrigin, OperationPayload, OperationRequest, ProjectDocument, RouteError,
-    RouteRequest, RoutingCostConfig, apply_operation, evaluate_route, suggest_route,
+    Board, OperationError, OperationOrigin, OperationPayload, OperationRequest, ProjectDocument,
+    RouteError, RouteRequest, RoutingCostConfig, apply_operation, evaluate_route, suggest_route,
     to_snapshot_json,
 };
 
@@ -16,6 +16,13 @@ fn definition() -> ComponentDefinition {
     ComponentDefinition::from_toml(
         "schema_version=1\nid='test.point'\ndefinition_version='1'\nname='Point'\nallowed_rotations=['deg0']\n[body]\nx=-0.4\ny=-0.4\nwidth=0.8\nheight=0.8\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0",
     ).unwrap()
+}
+
+fn resistor_definition() -> ComponentDefinition {
+    ComponentDefinition::from_toml(
+        "schema_version=1\nid='test.resistor'\ndefinition_version='1'\nname='Resistor'\nallowed_rotations=['deg0']\noccupied_holes=[{x=1,y=0},{x=2,y=0},{x=3,y=0}]\n[body]\nx=1.27\ny=-1.27\nwidth=7.62\nheight=2.54\n[[pins]]\nid='a'\nnumber='1'\nname='A'\nx=0\ny=0\n[[pins]]\nid='b'\nnumber='2'\nname='B'\nx=4\ny=0\n[[keepouts]]\nlabel='body'\nmin={x=1,y=0}\nmax={x=3,y=0}",
+    )
+    .unwrap()
 }
 
 fn apply(document: &mut ProjectDocument, payload: OperationPayload) {
@@ -152,6 +159,36 @@ fn identical_state_and_config_produce_byte_equivalent_obstacle_avoiding_routes()
         serde_json::to_vec(&second).unwrap()
     );
     assert!(first.vertices.len() >= 3);
+    assert!(
+        first.vertices[1..first.vertices.len() - 1]
+            .iter()
+            .all(|point| point.is_hole()),
+        "every automatically generated bend must be anchored at a board hole"
+    );
+    let occupied: BTreeSet<_> = document
+        .design
+        .components
+        .values()
+        .flat_map(|instance| {
+            let definition = &document.design.component_definitions[&instance.definition_id];
+            definition
+                .occupied_positions()
+                .into_iter()
+                .map(move |local| {
+                    let (x, y) = instance.rotation.rotate_local((local.x, local.y));
+                    RoutePos::new(
+                        (i64::from(instance.position.x) + i64::from(x)) * 2,
+                        (i64::from(instance.position.y) + i64::from(y)) * 2,
+                    )
+                })
+        })
+        .collect();
+    assert!(
+        first.vertices[1..first.vertices.len() - 1]
+            .iter()
+            .all(|point| !occupied.contains(point)),
+        "automatic bends must not use component-occupied holes"
+    );
     assert!(first.vertices.windows(2).all(|pair| {
         let dx = (pair[1].x2 - pair[0].x2).abs();
         let dy = (pair[1].y2 - pair[0].y2).abs();
@@ -169,18 +206,123 @@ fn identical_state_and_config_produce_byte_equivalent_obstacle_avoiding_routes()
 fn router_uses_diagonal_moves_when_they_are_clear() {
     let (mut document, ids) = fixture(&[("a", 1, 1), ("b", 7, 7)]);
     let (net_id, terminals) = routed_net(&mut document, &ids, &["a", "b"]);
-    let proposal = suggest_route(
-        &document.design,
-        &request(net_id, &terminals),
-        &RoutingCostConfig::default(),
-    )
-    .unwrap();
+    let config = RoutingCostConfig::default();
+    assert!(config.diagonal_step > config.orthogonal_step);
+    assert!(config.diagonal_step < config.orthogonal_step * 2);
+    let proposal = suggest_route(&document.design, &request(net_id, &terminals), &config).unwrap();
     assert_eq!(proposal.vertices.len(), 2);
     let endpoints: BTreeSet<_> = proposal.vertices.into_iter().collect();
     assert_eq!(
         endpoints,
         BTreeSet::from([RoutePos::new(2, 2), RoutePos::new(14, 14)])
     );
+}
+
+#[test]
+fn routes_and_manual_edits_cannot_pass_through_an_unrelated_pin() {
+    let (mut document, ids) = fixture(&[("left", 1, 4), ("blocker", 4, 4), ("right", 7, 4)]);
+    let (net_id, terminals) = routed_net(&mut document, &ids, &["left", "right"]);
+    let proposal = suggest_route(
+        &document.design,
+        &request(net_id, &terminals),
+        &RoutingCostConfig::default(),
+    )
+    .unwrap();
+    let blocker = RoutePos::new(8, 8);
+    assert!(!proposal.vertices.windows(2).any(|pair| {
+        let dx = (pair[1].x2 - pair[0].x2).signum();
+        let dy = (pair[1].y2 - pair[0].y2).signum();
+        let steps = (pair[1].x2 - pair[0].x2)
+            .abs()
+            .max((pair[1].y2 - pair[0].y2).abs());
+        (0..=steps)
+            .any(|step| RoutePos::new(pair[0].x2 + dx * step, pair[0].y2 + dy * step) == blocker)
+    }));
+
+    let revision = document.revision;
+    let result = apply_operation(
+        &mut document,
+        OperationRequest {
+            operation_id: OperationId::new(),
+            expected_revision: revision,
+            origin: OperationOrigin::User,
+            rationale: None,
+            allow_invalid_placement: true,
+            payload: OperationPayload::AddWire {
+                wire: Wire {
+                    id: WireId::new(),
+                    net_id,
+                    start: terminals[0].clone(),
+                    end: terminals[1].clone(),
+                    side: Side::Solder,
+                    color: WireColor::Green,
+                    vertices: vec![RoutePos::new(2, 8), RoutePos::new(14, 8)],
+                    locked: false,
+                    notes: String::new(),
+                },
+            },
+        },
+    );
+    assert!(matches!(result, Err(OperationError::WireCrossesPin)));
+}
+
+#[test]
+fn solder_side_routes_may_pass_beneath_a_component_body_but_not_its_pins() {
+    let (mut document, ids) = fixture(&[("top", 5, 1), ("bottom", 5, 7)]);
+    let resistor = resistor_definition();
+    apply(
+        &mut document,
+        OperationPayload::AddComponent {
+            definition: resistor.clone(),
+            instance: ComponentInstance {
+                id: ComponentInstanceId::new(),
+                definition_id: resistor.id,
+                name: "R1".into(),
+                position: HolePos::new(3, 4),
+                rotation: Rotation::Deg0,
+                properties: BTreeMap::new(),
+                notes: String::new(),
+            },
+        },
+    );
+    let (net_id, terminals) = routed_net(&mut document, &ids, &["top", "bottom"]);
+    let solder = suggest_route(
+        &document.design,
+        &request(net_id, &terminals),
+        &RoutingCostConfig::default(),
+    )
+    .unwrap();
+    assert_eq!(solder.vertices.len(), 2);
+    assert!(solder.vertices.iter().all(|point| point.x2 == 10));
+    assert_eq!(
+        solder
+            .vertices
+            .iter()
+            .map(|point| point.y2)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([2, 14])
+    );
+
+    let component = suggest_route(
+        &document.design,
+        &RouteRequest {
+            preferred_side: Some(Side::Component),
+            ..request(net_id, &terminals)
+        },
+        &RoutingCostConfig::default(),
+    )
+    .unwrap();
+    let body_center = RoutePos::new(10, 8);
+    assert!(!component.vertices.windows(2).any(|pair| {
+        let dx = (pair[1].x2 - pair[0].x2).signum();
+        let dy = (pair[1].y2 - pair[0].y2).signum();
+        let steps = (pair[1].x2 - pair[0].x2)
+            .abs()
+            .max((pair[1].y2 - pair[0].y2).abs());
+        (0..=steps).any(|step| {
+            RoutePos::new(pair[0].x2 + dx * step, pair[0].y2 + dy * step) == body_center
+        })
+    }));
 }
 
 #[test]

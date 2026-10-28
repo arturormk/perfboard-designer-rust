@@ -42,11 +42,13 @@ import {
   type SemanticDiff,
   type Side,
   type TerminalRef,
+  type Wire,
   type WireColor,
 } from "./api/project";
 import { renderBoardSvg } from "./editor/renderer";
 import { snappedDragPosition } from "./editor/drag";
 import { parseBoardDimensions } from "./editor/board-size";
+import { planWireReroutes, type WireRerouteTarget } from "./editor/net-routing";
 import {
   pinLabelPlacement,
   renderComponentPreviewSvg,
@@ -102,6 +104,7 @@ let viewSide: Side = "component";
 let activeNetId: string | undefined;
 let wireMode = false;
 let routeProposal: RouteProposal | undefined;
+let rerouting = false;
 let wireDraft:
   | { start: TerminalRef; vertices: Array<{ x2: number; y2: number }> }
   | undefined;
@@ -606,6 +609,12 @@ function render(): void {
       .join("") || "<p>No constraints.</p>";
   $("#view-side").textContent = `View: ${viewSide}`;
   $("#wire-mode").classList.toggle("active", wireMode);
+  const unlockedWireCount = Object.values(project.design.wires ?? {}).filter(
+    (candidate) => !candidate.locked,
+  ).length;
+  const rerouteAll = $("#reroute-all") as HTMLButtonElement;
+  rerouteAll.disabled = rerouting || unlockedWireCount === 0;
+  rerouteAll.textContent = rerouting ? "Rerouting…" : "Reroute all wires";
   const instance = selected();
   const wire = selectedId ? project.design.wires?.[selectedId] : undefined;
   const selectedDefinition = instance
@@ -617,7 +626,7 @@ function render(): void {
   $("#inspector").innerHTML = instance
     ? `<label>Name <input id="instance-name" value="${escapeHtml(instance.name)}" /></label><label>Notes <textarea id="instance-notes">${escapeHtml(instance.notes ?? "")}</textarea></label><div class="button-row"><button id="rotate-component">Rotate 90°</button><button id="remove-component" class="danger">Remove</button></div><p>Anchor: ${instance.position.x}, ${instance.position.y}<br>Rotation: ${instance.rotation}</p>${pinTable}`
     : wire
-      ? `<p>Wire ${wire.id.slice(0, 8)}</p><label>Side <select id="selected-wire-side"><option${wire.side === "component" ? " selected" : ""}>component</option><option${wire.side === "solder" ? " selected" : ""}>solder</option></select></label><label>Color <select id="selected-wire-color">${["green", "red", "black", "yellow", "white", "blue", "orange"].map((color) => `<option${wire.color === color ? " selected" : ""}>${color}</option>`).join("")}</select></label>${wire.vertices.map((point, index) => `<div class="wire-vertex"><label>x2 <input data-vertex-x="${index}" type="number" value="${point.x2}" /></label><label>y2 <input data-vertex-y="${index}" type="number" value="${point.y2}" /></label>${index > 0 && index < wire.vertices.length - 1 ? `<button data-remove-vertex="${index}">Remove bend</button>` : ""}</div>`).join("")}<div class="button-row"><button id="evaluate-wire">Evaluate</button><button id="toggle-wire-lock">${wire.locked ? "Unlock" : "Lock"}</button><button id="remove-wire" class="danger">Remove wire</button></div>`
+      ? `<p>Wire ${wire.id.slice(0, 8)}</p><label>Side <select id="selected-wire-side"><option${wire.side === "component" ? " selected" : ""}>component</option><option${wire.side === "solder" ? " selected" : ""}>solder</option></select></label><label>Color <select id="selected-wire-color">${["green", "red", "black", "yellow", "white", "blue", "orange"].map((color) => `<option${wire.color === color ? " selected" : ""}>${color}</option>`).join("")}</select></label>${wire.vertices.map((point, index) => `<div class="wire-vertex"><label>x2 <input data-vertex-x="${index}" type="number" value="${point.x2}" /></label><label>y2 <input data-vertex-y="${index}" type="number" value="${point.y2}" /></label>${index > 0 && index < wire.vertices.length - 1 ? `<button data-remove-vertex="${index}">Remove bend</button>` : ""}</div>`).join("")}<div class="button-row"><button id="reroute-wire"${wire.locked || rerouting ? " disabled" : ""}>Reroute selected</button><button id="evaluate-wire">Evaluate</button><button id="toggle-wire-lock">${wire.locked ? "Unlock" : "Lock"}</button><button id="remove-wire" class="danger">Remove wire</button></div>${wire.locked ? '<p class="tool-hint">Unlock this wire before rerouting it.</p>' : ""}`
       : "<p>Select a component or wire.</p>";
   const diagnostics = project.validation ?? [];
   $("#validation").innerHTML = diagnostics.length
@@ -731,6 +740,59 @@ async function mutate(
     await refresh();
   } catch (error) {
     setStatus(String(error), "error");
+  }
+}
+
+async function rerouteWire(
+  wire: Wire,
+  target: WireRerouteTarget,
+): Promise<void> {
+  const proposal = await suggestProjectRoute({
+    net_id: wire.net_id,
+    start: target.start,
+    end: target.end,
+    preferred_side: wire.side,
+    replace_wire_id: wire.id,
+  });
+  await applyOperation(project.revision, {
+    type: "accept_route_proposal",
+    proposal,
+    wire_id: wire.id,
+    color: wire.color,
+    notes: wire.notes ?? "",
+    replace_wire_id: wire.id,
+    new_route_over: proposal.crossings.length ? true : undefined,
+  });
+  await refresh();
+}
+
+async function rerouteWires(targets: WireRerouteTarget[]): Promise<void> {
+  if (rerouting) return;
+  rerouting = true;
+  render();
+  let completed = 0;
+  let skipped = 0;
+  try {
+    for (const target of targets) {
+      const wire = project.design.wires?.[target.wireId];
+      if (!wire || wire.locked) {
+        skipped += 1;
+        continue;
+      }
+      await rerouteWire(wire, target);
+      completed += 1;
+    }
+    setStatus(
+      `Rerouted ${completed} wire${completed === 1 ? "" : "s"}; bends are anchored at free holes${skipped ? ` · left ${skipped} locked` : ""}`,
+    );
+  } catch (error) {
+    setStatus(
+      `Rerouted ${completed} wire${completed === 1 ? "" : "s"}, then stopped: ${String(error)}`,
+      "error",
+    );
+  } finally {
+    rerouting = false;
+    render();
   }
 }
 function nextRotation(rotation: Rotation): Rotation {
@@ -1566,8 +1628,8 @@ $("#canvas").addEventListener("pointerdown", (event) => {
     const point = svgPoint(pointer);
     if (point) {
       appendRoutable({
-        x2: Math.round(point.x * 2),
-        y2: Math.round(point.y * 2),
+        x2: Math.round(point.x) * 2,
+        y2: Math.round(point.y) * 2,
       });
       setStatus(`${wireDraft.vertices.length - 1} bend point(s)`);
     }
@@ -1677,7 +1739,11 @@ $("#inspector").addEventListener("click", (event) => {
   if (wire) {
     const removeIndex = target.closest<HTMLElement>("[data-remove-vertex]")
       ?.dataset.removeVertex;
-    if (target.id === "evaluate-wire") {
+    if (target.id === "reroute-wire") {
+      void rerouteWires([
+        { wireId: wire.id, start: wire.start, end: wire.end },
+      ]);
+    } else if (target.id === "evaluate-wire") {
       void evaluateProjectRoute(
         {
           net_id: wire.net_id,
@@ -1964,6 +2030,9 @@ $("#cancel-wire").addEventListener("click", () => {
   wireMode = false;
   wireDraft = undefined;
   render();
+});
+$("#reroute-all").addEventListener("click", () => {
+  void rerouteWires(planWireReroutes(project));
 });
 $("#suggest-route").addEventListener("click", () => {
   const net = activeNetId ? project.design.nets?.[activeNetId] : undefined;

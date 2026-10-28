@@ -67,9 +67,13 @@ allow_board_overhang = true
   must never be inferred from array order. Body geometry and pin locations are
   independent.
 - Rotations are restricted to `deg0`, `deg90`, `deg180`, and `deg270`.
-- `occupied_holes` adds occupied local grid positions beyond pins. `keepouts`
-  are inclusive local-grid rectangles. `access` tables are inclusive regions
-  with a direction, label, required flag, and explicit board-overhang policy.
+- `occupied_holes` adds local grid positions covered by the component beyond
+  its pins. They block placement and component-side routing and cannot anchor a
+  bend, but a solder-side wire may run straight beneath them. Only `pins`
+  describe leads that physically obstruct a route through the board.
+  `keepouts` are inclusive local-grid rectangles. `access` tables are inclusive
+  regions with a direction, label, required flag, and explicit board-overhang
+  policy.
 - Unknown fields may be retained by migration tooling, but authoritative
   readers must not silently reinterpret an unknown schema version.
 

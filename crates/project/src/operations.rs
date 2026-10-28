@@ -176,6 +176,8 @@ pub enum OperationError {
     DuplicateWire,
     #[error("wire was not found")]
     WireNotFound,
+    #[error("wire route passes through an unrelated component pin")]
+    WireCrossesPin,
     #[error("junction already exists")]
     DuplicateJunction,
     #[error("junction was not found")]
@@ -465,6 +467,9 @@ pub(crate) fn apply_operation_untracked(
             if next.design.wires.contains_key(&wire.id) {
                 return Err(OperationError::DuplicateWire);
             }
+            if crate::connectivity::route_crosses_unrelated_pin(&next.design, wire) {
+                return Err(OperationError::WireCrossesPin);
+            }
             next.design.wires.insert(wire.id, wire.clone());
             affected_nets.insert(wire.net_id);
             affected_wires.insert(wire.id);
@@ -492,19 +497,24 @@ pub(crate) fn apply_operation_untracked(
             format!("Removed wire {wire_id}")
         }
         OperationPayload::ModifyWirePath { wire_id, vertices } => {
-            let wire = next
+            let mut candidate = next
                 .design
                 .wires
-                .get_mut(wire_id)
+                .get(wire_id)
+                .cloned()
                 .ok_or(OperationError::WireNotFound)?;
-            if wire.locked {
+            if candidate.locked {
                 return Err(OperationError::LockedWire);
             }
-            wire.vertices.clone_from(vertices);
+            candidate.vertices.clone_from(vertices);
+            if crate::connectivity::route_crosses_unrelated_pin(&next.design, &candidate) {
+                return Err(OperationError::WireCrossesPin);
+            }
+            next.design.wires.insert(*wire_id, candidate.clone());
             next.design.crossing_choices.retain(|_, choice| {
                 choice.first_wire_id != *wire_id && choice.second_wire_id != *wire_id
             });
-            affected_nets.insert(wire.net_id);
+            affected_nets.insert(candidate.net_id);
             affected_wires.insert(*wire_id);
             format!("Edited wire {wire_id} path")
         }
@@ -618,6 +628,20 @@ pub(crate) fn apply_operation_untracked(
             if next.design.wires.contains_key(wire_id) && Some(*wire_id) != *replace_wire_id {
                 return Err(OperationError::DuplicateWire);
             }
+            let routed_wire = Wire {
+                id: *wire_id,
+                net_id: proposal.net_id,
+                start: proposal.start.clone(),
+                end: proposal.end.clone(),
+                side: proposal.side,
+                color: color.clone(),
+                vertices: proposal.vertices.clone(),
+                locked: false,
+                notes: notes.clone(),
+            };
+            if crate::connectivity::route_crosses_unrelated_pin(&next.design, &routed_wire) {
+                return Err(OperationError::WireCrossesPin);
+            }
             if let Some(replaced) = replace_wire_id {
                 let removed = next
                     .design
@@ -629,20 +653,7 @@ pub(crate) fn apply_operation_untracked(
                 });
                 affected_wires.insert(removed.id);
             }
-            next.design.wires.insert(
-                *wire_id,
-                Wire {
-                    id: *wire_id,
-                    net_id: proposal.net_id,
-                    start: proposal.start.clone(),
-                    end: proposal.end.clone(),
-                    side: proposal.side,
-                    color: color.clone(),
-                    vertices: proposal.vertices.clone(),
-                    locked: false,
-                    notes: notes.clone(),
-                },
-            );
+            next.design.wires.insert(*wire_id, routed_wire);
             if let Some(route_is_over) = new_route_over {
                 for crossing in &proposal.crossings {
                     let (first, second) = if wire_id < &crossing.other_wire_id {

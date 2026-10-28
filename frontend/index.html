@@ -106,10 +106,13 @@
             <button id="cancel-wire">Cancel</button>
             <h2>Automatic route</h2>
             <p class="tool-hint">
-              Uses the first two pins of the active accepted net. Existing
-              routes remain unchanged until you accept.
+              Suggest uses the first two pins of the active accepted net.
+              Reroute all replaces every unlocked wire. Automatic bends are
+              placed at free board holes, and simple multi-pin net trees may be
+              reordered when that shortens their estimated route.
             </p>
             <button id="suggest-route">Suggest route</button>
+            <button id="reroute-all">Reroute all wires</button>
             <div id="route-proposal"><p>No active proposal.</p></div>
             <h2>Jumper inventory</h2>
             <label class="stacked"
