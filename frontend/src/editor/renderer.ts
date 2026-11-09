@@ -4,6 +4,7 @@ import type {
   ProjectDocument,
   Side,
 } from "../api/project";
+import { fullyEnclosedHoleDimensions } from "./board-size";
 const PAD = 2;
 function escape(value: string): string {
   return value.replace(
@@ -116,6 +117,7 @@ export function renderBoardSvg(
   side: Side = "component",
   changes: Record<string, string> = {},
   svgId = "board",
+  resizeMode = false,
 ): string {
   const board = document.design.board;
   const definitions = document.design.component_definitions ?? {};
@@ -193,5 +195,24 @@ export function renderBoardSvg(
       });
     })
     .join("");
-  return `<svg id="${escape(svgId)}" aria-label="${escape(board.name)}, ${side} side" role="img" viewBox="${viewBox ?? defaultViewBox}" data-default-view-box="${defaultViewBox}" data-side="${side}"><rect class="board-outline" x="${-left}" y="${-top}" width="${width}" height="${height}" rx=".5"/><g class="board-geometry" transform="${mirror}"><g class="holes">${holes}</g>${mountingHoles}${forbidden}<g class="wires">${wires}</g><g class="components">${components}</g></g><g class="pin-labels">${pinLabels}</g></svg>`;
+  const resizeHandles = resizeMode
+    ? (() => {
+        const fullHoles = fullyEnclosedHoleDimensions({
+          holesX: board.holes_x,
+          holesY: board.holes_y,
+        });
+        return `<g class="board-resize-controls" aria-label="Board resize handles"><rect class="board-resize-boundary" x="0" y="0" width="${board.holes_x - 1}" height="${board.holes_y - 1}"/><text class="board-resize-feedback" x="${(board.holes_x - 1) / 2}" y="${(board.holes_y - 1) / 2}" text-anchor="middle" aria-live="polite">${fullHoles.holesX} full holes wide × ${fullHoles.holesY} tall</text><line data-resize-handle="top" x1="0" y1="0" x2="${board.holes_x - 1}" y2="0"/><line data-resize-handle="right" x1="${board.holes_x - 1}" y1="0" x2="${board.holes_x - 1}" y2="${board.holes_y - 1}"/><line data-resize-handle="bottom" x1="0" y1="${board.holes_y - 1}" x2="${board.holes_x - 1}" y2="${board.holes_y - 1}"/><line data-resize-handle="left" x1="0" y1="0" x2="0" y2="${board.holes_y - 1}"/>${[
+          ["top-left", 0, 0],
+          ["top-right", board.holes_x - 1, 0],
+          ["bottom-right", board.holes_x - 1, board.holes_y - 1],
+          ["bottom-left", 0, board.holes_y - 1],
+        ]
+          .map(
+            ([handle, x, y]) =>
+              `<rect class="board-resize-corner" data-resize-handle="${handle}" x="${Number(x) - 0.3}" y="${Number(y) - 0.3}" width=".6" height=".6" rx=".12"/>`,
+          )
+          .join("")}</g>`;
+      })()
+    : "";
+  return `<svg id="${escape(svgId)}" aria-label="${escape(board.name)}, ${side} side" role="img" viewBox="${viewBox ?? defaultViewBox}" data-default-view-box="${defaultViewBox}" data-side="${side}"><rect class="board-outline" x="${-left}" y="${-top}" width="${width}" height="${height}" rx=".5"/><g class="board-geometry" transform="${mirror}"><g class="holes">${holes}</g>${mountingHoles}${forbidden}<g class="wires">${wires}</g><g class="components">${components}</g></g><g class="pin-labels">${pinLabels}</g>${resizeHandles}</svg>`;
 }

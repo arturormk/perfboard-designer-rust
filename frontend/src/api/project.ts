@@ -290,6 +290,13 @@ export interface SemanticDiff {
 
 export type OperationPayload =
   | {
+      type: "resize_board";
+      holes_x: number;
+      holes_y: number;
+      offset_x: number;
+      offset_y: number;
+    }
+  | {
       type: "add_component";
       definition: ComponentDefinition;
       instance: ComponentInstance;

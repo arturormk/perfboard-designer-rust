@@ -345,6 +345,9 @@ textarea {
   background: radial-gradient(circle, #26332a 1px, transparent 1px);
   background-size: 18px 18px;
 }
+#canvas.resize-mode {
+  cursor: default;
+}
 #committed-canvas {
   min-height: 0;
   overflow: hidden;
@@ -422,6 +425,48 @@ button:disabled {
   fill: #bd9760;
   stroke: #eed29e;
   stroke-width: 0.1;
+}
+.board-resize-boundary {
+  fill: none;
+  stroke: #70e5ff;
+  stroke-width: 0.12;
+  stroke-dasharray: 0.35 0.2;
+  pointer-events: none;
+}
+.board-resize-feedback {
+  fill: #e9fff3;
+  stroke: #10231b;
+  stroke-width: 0.28;
+  paint-order: stroke fill;
+  font-size: 0.55px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.board-resize-controls line {
+  stroke: transparent;
+  stroke-width: 0.8;
+  pointer-events: stroke;
+}
+.board-resize-controls line[data-resize-handle="top"],
+.board-resize-controls line[data-resize-handle="bottom"] {
+  cursor: ns-resize;
+}
+.board-resize-controls line[data-resize-handle="left"],
+.board-resize-controls line[data-resize-handle="right"] {
+  cursor: ew-resize;
+}
+.board-resize-corner {
+  fill: #70e5ff;
+  stroke: #10231b;
+  stroke-width: 0.08;
+}
+.board-resize-corner[data-resize-handle="top-left"],
+.board-resize-corner[data-resize-handle="bottom-right"] {
+  cursor: nwse-resize;
+}
+.board-resize-corner[data-resize-handle="top-right"],
+.board-resize-corner[data-resize-handle="bottom-left"] {
+  cursor: nesw-resize;
 }
 .hole {
   fill: #202821;

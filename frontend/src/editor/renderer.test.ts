@@ -136,4 +136,23 @@ describe("board SVG", () => {
     expect(svg).toContain('id="committed-board"');
     expect(svg).toContain('class="component diff-moved"');
   });
+
+  it("renders edge and corner handles only when resize mode is active", () => {
+    expect(renderBoardSvg(fixture)).not.toContain("data-resize-handle");
+    const svg = renderBoardSvg(
+      fixture,
+      undefined,
+      undefined,
+      "component",
+      {},
+      "board",
+      true,
+    );
+    expect(svg.match(/data-resize-handle=/g)).toHaveLength(8);
+    expect(svg).toContain('data-resize-handle="bottom-right"');
+    expect(svg).toContain('class="board-resize-boundary"');
+    expect(svg).toContain(
+      'class="board-resize-feedback" x="1.5" y="1" text-anchor="middle" aria-live="polite">2 full holes wide × 1 tall</text>',
+    );
+  });
 });

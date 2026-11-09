@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
-    ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState, Constraint,
-    ConstraintId, Diagnostic, DiagnosticSeverity, ElectricalNet, HolePos, JumperInventoryEntry,
-    Junction, JunctionId, NetId, OperationId, PinRef, Rotation, RoutePos, RouteProposal, Side,
-    Wire, WireColor, WireId,
+    BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState,
+    Constraint, ConstraintId, ConstraintKind, Diagnostic, DiagnosticSeverity, ElectricalNet,
+    HolePos, JumperInventoryEntry, Junction, JunctionId, NetId, OperationId, PinRef, Rotation,
+    RoutePos, RouteProposal, Side, Wire, WireColor, WireId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -39,6 +39,12 @@ pub struct OperationRequest {
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)] // Serialized DTO clarity is preferable to boxed fields.
 pub enum OperationPayload {
+    ResizeBoard {
+        holes_x: u32,
+        holes_y: u32,
+        offset_x: i64,
+        offset_y: i64,
+    },
     AddComponent {
         definition: ComponentDefinition,
         instance: ComponentInstance,
@@ -168,6 +174,12 @@ pub enum OperationError {
     RotationNotAllowed,
     #[error("operation would create an invalid placement")]
     InvalidPlacement { diagnostics: Vec<Diagnostic> },
+    #[error("board dimensions must contain at least one hole on each axis")]
+    InvalidBoardSize,
+    #[error("board resize offset must keep either the near or far edge anchored")]
+    InvalidBoardResizeOffset,
+    #[error("board resize would move existing content outside the coordinate range")]
+    BoardResizeOutOfRange,
     #[error("net already exists")]
     DuplicateNet,
     #[error("net was not found")]
@@ -248,6 +260,104 @@ pub(crate) fn apply_operation_untracked(
     let mut affected_wires = BTreeSet::new();
     let mut affected_constraints = BTreeSet::new();
     let summary = match &request.payload {
+        OperationPayload::ResizeBoard {
+            holes_x,
+            holes_y,
+            offset_x,
+            offset_y,
+        } => {
+            let old_x = next.design.board.size.holes_x();
+            let old_y = next.design.board.size.holes_y();
+            let width_change = i64::from(*holes_x) - i64::from(old_x);
+            let height_change = i64::from(*holes_y) - i64::from(old_y);
+            if ![0, width_change].contains(offset_x) || ![0, height_change].contains(offset_y) {
+                return Err(OperationError::InvalidBoardResizeOffset);
+            }
+            next.design.board.size =
+                BoardSize::new(*holes_x, *holes_y).map_err(|_| OperationError::InvalidBoardSize)?;
+
+            let translate_hole = |point: &mut HolePos| -> Result<(), OperationError> {
+                let x = i64::from(point.x)
+                    .checked_add(*offset_x)
+                    .and_then(|value| u32::try_from(value).ok())
+                    .ok_or(OperationError::BoardResizeOutOfRange)?;
+                let y = i64::from(point.y)
+                    .checked_add(*offset_y)
+                    .and_then(|value| u32::try_from(value).ok())
+                    .ok_or(OperationError::BoardResizeOutOfRange)?;
+                *point = HolePos::new(x, y);
+                Ok(())
+            };
+            let translate_route = |point: &mut RoutePos| -> Result<(), OperationError> {
+                point.x2 = point
+                    .x2
+                    .checked_add(
+                        offset_x
+                            .checked_mul(2)
+                            .ok_or(OperationError::BoardResizeOutOfRange)?,
+                    )
+                    .ok_or(OperationError::BoardResizeOutOfRange)?;
+                point.y2 = point
+                    .y2
+                    .checked_add(
+                        offset_y
+                            .checked_mul(2)
+                            .ok_or(OperationError::BoardResizeOutOfRange)?,
+                    )
+                    .ok_or(OperationError::BoardResizeOutOfRange)?;
+                Ok(())
+            };
+
+            for instance in next.design.components.values_mut() {
+                translate_hole(&mut instance.position)?;
+                affected.insert(instance.id);
+            }
+            for junction in next.design.junctions.values_mut() {
+                translate_hole(&mut junction.position)?;
+                affected_nets.insert(junction.net_id);
+            }
+            for wire in next.design.wires.values_mut() {
+                for vertex in &mut wire.vertices {
+                    translate_route(vertex)?;
+                }
+                affected_nets.insert(wire.net_id);
+                affected_wires.insert(wire.id);
+            }
+            for hole in &mut next.design.board.features.mounting_holes {
+                translate_hole(&mut hole.position)?;
+            }
+            for area in &mut next.design.board.features.forbidden_areas {
+                translate_hole(&mut area.min)?;
+                translate_hole(&mut area.max)?;
+            }
+            for constraint in next.design.constraints.values_mut() {
+                match &mut constraint.kind {
+                    ConstraintKind::FixedPlacement { position, .. } => {
+                        translate_hole(position)?;
+                    }
+                    ConstraintKind::ReservedArea { area, .. }
+                    | ConstraintKind::AssemblyAccess { area, .. } => {
+                        translate_hole(&mut area.min)?;
+                        translate_hole(&mut area.max)?;
+                    }
+                    _ => {}
+                }
+                affected_constraints.insert(constraint.id);
+            }
+            let choices = std::mem::take(&mut next.design.crossing_choices);
+            for (_, mut choice) in choices {
+                translate_route(&mut choice.position)?;
+                let key = format!(
+                    "{}:{}:{}:{}",
+                    choice.first_wire_id,
+                    choice.second_wire_id,
+                    choice.position.x2,
+                    choice.position.y2
+                );
+                next.design.crossing_choices.insert(key, choice);
+            }
+            format!("Resized board from {old_x} × {old_y} to {holes_x} × {holes_y} holes")
+        }
         OperationPayload::AddComponent {
             definition,
             instance,
@@ -720,7 +830,7 @@ pub(crate) fn apply_operation_untracked(
 mod tests {
     use super::*;
     use crate::Board;
-    use perfboard_core::{BoardSize, ProjectId};
+    use perfboard_core::{BoardSize, MountingHole, ProjectId};
     use uuid::Uuid;
 
     #[test]
@@ -746,5 +856,53 @@ mod tests {
             Err(OperationError::StaleRevision { .. })
         ));
         assert_eq!(document, before);
+    }
+
+    #[test]
+    fn resizing_from_top_left_translates_board_content_and_is_undoable() {
+        let mut document = ProjectDocument::new(
+            ProjectId::from_uuid(Uuid::nil()),
+            "x",
+            Board::new("x", BoardSize::new(3, 2).unwrap(), 2.54),
+        );
+        document
+            .design
+            .board
+            .features
+            .mounting_holes
+            .push(MountingHole {
+                position: HolePos::new(0, 0),
+                diameter_mm: 1.0,
+                label: "corner".into(),
+            });
+        let result = apply_operation(
+            &mut document,
+            OperationRequest {
+                operation_id: OperationId::new(),
+                expected_revision: DocumentRevision(0),
+                origin: OperationOrigin::User,
+                rationale: None,
+                allow_invalid_placement: false,
+                payload: OperationPayload::ResizeBoard {
+                    holes_x: 5,
+                    holes_y: 3,
+                    offset_x: 2,
+                    offset_y: 1,
+                },
+            },
+        )
+        .expect("valid resize");
+
+        assert_eq!(document.design.board.size.holes_x(), 5);
+        assert_eq!(document.design.board.size.holes_y(), 3);
+        assert_eq!(
+            document.design.board.features.mounting_holes[0].position,
+            HolePos::new(2, 1)
+        );
+        assert_eq!(
+            result.change_summary,
+            "Resized board from 3 × 2 to 5 × 3 holes"
+        );
+        assert_eq!(document.undo_stack.len(), 1);
     }
 }

@@ -47,7 +47,13 @@ import {
 } from "./api/project";
 import { renderBoardSvg } from "./editor/renderer";
 import { snappedDragPosition } from "./editor/drag";
-import { parseBoardDimensions } from "./editor/board-size";
+import {
+  fullyEnclosedHoleDimensions,
+  parseBoardDimensions,
+  planBoardResize,
+  type BoardResizePlan,
+  type ResizeHandle,
+} from "./editor/board-size";
 import { planWireReroutes, type WireRerouteTarget } from "./editor/net-routing";
 import {
   pinLabelPlacement,
@@ -103,6 +109,7 @@ let wheelZoomFrame: number | undefined;
 let viewSide: Side = "component";
 let activeNetId: string | undefined;
 let wireMode = false;
+let resizeMode = false;
 let routeProposal: RouteProposal | undefined;
 let rerouting = false;
 let wireDraft:
@@ -116,6 +123,15 @@ let drag:
       initialPosition: { x: number; y: number };
       position: { x: number; y: number };
       element: SVGGraphicsElement;
+    }
+  | undefined;
+let boardResize:
+  | {
+      pointerId: number;
+      handle: ResizeHandle;
+      pointerStart: { x: number; y: number };
+      plan: BoardResizePlan;
+      boundary: SVGRectElement;
     }
   | undefined;
 let suppressClick = false;
@@ -530,7 +546,10 @@ function render(): void {
     viewBox?.join(" "),
     viewSide,
     changes,
+    "board",
+    resizeMode,
   );
+  $("#canvas").classList.toggle("resize-mode", resizeMode);
   const head = project.head_commit
     ? project.commits?.[project.head_commit]
     : undefined;
@@ -609,6 +628,8 @@ function render(): void {
       .join("") || "<p>No constraints.</p>";
   $("#view-side").textContent = `View: ${viewSide}`;
   $("#wire-mode").classList.toggle("active", wireMode);
+  $("#resize-board").classList.toggle("active", resizeMode);
+  $("#resize-board").setAttribute("aria-pressed", String(resizeMode));
   const unlockedWireCount = Object.values(project.design.wires ?? {}).filter(
     (candidate) => !candidate.locked,
   ).length;
@@ -799,12 +820,20 @@ function nextRotation(rotation: Rotation): Rotation {
   const rotations: Rotation[] = ["deg0", "deg90", "deg180", "deg270"];
   return rotations[(rotations.indexOf(rotation) + 1) % rotations.length]!;
 }
-function svgPoint(event: PointerEvent): { x: number; y: number } | undefined {
+function svgVisualPoint(
+  event: PointerEvent,
+): { x: number; y: number } | undefined {
   const matrix = ($("#board") as SVGSVGElement).getScreenCTM();
   if (!matrix) return undefined;
   const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(
     matrix.inverse(),
   );
+  return { x: point.x, y: point.y };
+}
+
+function svgPoint(event: PointerEvent): { x: number; y: number } | undefined {
+  const point = svgVisualPoint(event);
+  if (!point) return undefined;
   return {
     x:
       viewSide === "solder"
@@ -1618,7 +1647,31 @@ $("#library").addEventListener("change", (event) => {
 });
 $("#canvas").addEventListener("pointerdown", (event) => {
   const pointer = event as PointerEvent;
-  if (!pointer.isPrimary || pointer.button !== 0 || drag) return;
+  if (!pointer.isPrimary || pointer.button !== 0 || drag || boardResize) return;
+  const resizeHandle = (pointer.target as Element).closest<SVGElement>(
+    "[data-resize-handle]",
+  )?.dataset.resizeHandle as ResizeHandle | undefined;
+  if (resizeMode && resizeHandle) {
+    const point = svgVisualPoint(pointer);
+    const boundary = $(".board-resize-boundary") as SVGRectElement;
+    if (!point) return;
+    boardResize = {
+      pointerId: pointer.pointerId,
+      handle: resizeHandle,
+      pointerStart: point,
+      plan: {
+        holesX: project.design.board.holes_x,
+        holesY: project.design.board.holes_y,
+        offsetX: 0,
+        offsetY: 0,
+      },
+      boundary,
+    };
+    (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
+    pointer.preventDefault();
+    return;
+  }
+  if (resizeMode) return;
   if (wireMode && (pointer.target as Element).closest("[data-pin-id]")) return;
   if (
     wireMode &&
@@ -1667,6 +1720,62 @@ $("#canvas").addEventListener("pointerdown", (event) => {
 });
 $("#canvas").addEventListener("pointermove", (event) => {
   const pointer = event as PointerEvent;
+  if (boardResize) {
+    if (pointer.pointerId !== boardResize.pointerId) return;
+    const point = svgVisualPoint(pointer);
+    if (!point) return;
+    const deltaX = Math.round(point.x - boardResize.pointerStart.x);
+    const deltaY = Math.round(point.y - boardResize.pointerStart.y);
+    const plan = planBoardResize(
+      {
+        holesX: project.design.board.holes_x,
+        holesY: project.design.board.holes_y,
+      },
+      boardResize.handle,
+      deltaX,
+      deltaY,
+      viewSide === "solder",
+    );
+    if (!plan) return;
+    boardResize.plan = plan;
+    const movesLeft = boardResize.handle.includes("left");
+    const movesRight = boardResize.handle.includes("right");
+    const movesTop = boardResize.handle.includes("top");
+    const movesBottom = boardResize.handle.includes("bottom");
+    boardResize.boundary.setAttribute("x", String(movesLeft ? deltaX : 0));
+    boardResize.boundary.setAttribute("y", String(movesTop ? deltaY : 0));
+    boardResize.boundary.setAttribute(
+      "width",
+      String(
+        project.design.board.holes_x -
+          1 +
+          (movesRight ? deltaX : 0) -
+          (movesLeft ? deltaX : 0),
+      ),
+    );
+    boardResize.boundary.setAttribute(
+      "height",
+      String(
+        project.design.board.holes_y -
+          1 +
+          (movesBottom ? deltaY : 0) -
+          (movesTop ? deltaY : 0),
+      ),
+    );
+    const boundaryX = Number(boardResize.boundary.getAttribute("x"));
+    const boundaryY = Number(boardResize.boundary.getAttribute("y"));
+    const boundaryWidth = Number(boardResize.boundary.getAttribute("width"));
+    const boundaryHeight = Number(boardResize.boundary.getAttribute("height"));
+    const feedback = $(".board-resize-feedback") as SVGTextElement;
+    const fullHoles = fullyEnclosedHoleDimensions(plan);
+    feedback.setAttribute("x", String(boundaryX + boundaryWidth / 2));
+    feedback.setAttribute("y", String(boundaryY + boundaryHeight / 2));
+    feedback.textContent = `${fullHoles.holesX} full holes wide × ${fullHoles.holesY} tall`;
+    setStatus(
+      `Resize to ${fullHoles.holesX} full holes wide × ${fullHoles.holesY} tall`,
+    );
+    return;
+  }
   if (drag) {
     if (pointer.pointerId !== drag.pointerId) return;
     const point = svgPoint(pointer);
@@ -1700,6 +1809,27 @@ $("#canvas").addEventListener("pointermove", (event) => {
   svg.setAttribute("viewBox", viewBox.join(" "));
 });
 $("#canvas").addEventListener("pointerup", (event) => {
+  if (boardResize) {
+    if ((event as PointerEvent).pointerId !== boardResize.pointerId) return;
+    const { plan } = boardResize;
+    boardResize = undefined;
+    if (
+      plan.holesX !== project.design.board.holes_x ||
+      plan.holesY !== project.design.board.holes_y
+    ) {
+      void mutate({
+        type: "resize_board",
+        holes_x: plan.holesX,
+        holes_y: plan.holesY,
+        offset_x: plan.offsetX,
+        offset_y: plan.offsetY,
+      });
+      render();
+    } else {
+      render();
+    }
+    return;
+  }
   if (drag) {
     if ((event as PointerEvent).pointerId !== drag.pointerId) return;
     const finished = drag;
@@ -1720,6 +1850,12 @@ $("#canvas").addEventListener("pointerup", (event) => {
   panStart = undefined;
 });
 $("#canvas").addEventListener("pointercancel", (event) => {
+  if (boardResize) {
+    if ((event as PointerEvent).pointerId !== boardResize.pointerId) return;
+    boardResize = undefined;
+    render();
+    return;
+  }
   if (drag) {
     if ((event as PointerEvent).pointerId !== drag.pointerId) return;
     const rotation = drag.element.dataset.rotationDegrees ?? "0";
@@ -2021,10 +2157,22 @@ function addNet(state: "accepted" | "proposed"): void {
 $("#add-net").addEventListener("click", () => addNet("accepted"));
 $("#propose-net").addEventListener("click", () => addNet("proposed"));
 $("#wire-mode").addEventListener("click", () => {
+  resizeMode = false;
   wireMode = true;
   wireDraft = undefined;
   setStatus("Click the starting pin for the active net");
   render();
+});
+$("#resize-board").addEventListener("click", () => {
+  resizeMode = !resizeMode;
+  wireMode = false;
+  wireDraft = undefined;
+  render();
+  setStatus(
+    resizeMode
+      ? "Drag a board side or corner; resizing snaps to one-hole increments"
+      : `Revision ${project.revision} · ${project.design.board.holes_x} × ${project.design.board.holes_y} holes`,
+  );
 });
 $("#cancel-wire").addEventListener("click", () => {
   wireMode = false;
