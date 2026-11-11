@@ -24,6 +24,7 @@ import {
   saveComponentDraft,
   selectRuntimeComponent,
   suggestProjectRoute,
+  trimProjectUndoHistory,
   undoProject,
   undoComponentDraft,
   type AccessRegion,
@@ -34,6 +35,7 @@ import {
   type ComponentViewerSnapshot,
   type ComponentWatcherStatus,
   type ProjectDocument,
+  type Rail,
   type Rotation,
   type RouteProposal,
   type RuntimeComponentLoad,
@@ -45,7 +47,8 @@ import {
   type Wire,
   type WireColor,
 } from "./api/project";
-import { renderBoardSvg } from "./editor/renderer";
+import { errorMessage } from "./error-message";
+import { renderBoardSvg, renderPrintLayout } from "./editor/renderer";
 import { snappedDragPosition } from "./editor/drag";
 import {
   fullyEnclosedHoleDimensions,
@@ -55,6 +58,18 @@ import {
   type ResizeHandle,
 } from "./editor/board-size";
 import { planWireReroutes, type WireRerouteTarget } from "./editor/net-routing";
+import { newComponentStagingPosition } from "./editor/component-placement";
+import { netPinLabel } from "./editor/net-pins";
+import {
+  appendOrthogonal,
+  closestWireSegmentIndex,
+  finishWireNodeDrag,
+  insertWireNode,
+  isStraightRoute,
+  orthogonalRoute,
+  snappedRoutePoint,
+  straightRoute,
+} from "./editor/wire-routing";
 import {
   pinLabelPlacement,
   renderComponentPreviewSvg,
@@ -72,6 +87,14 @@ import {
   reorderPinOperation,
   splitList,
 } from "./component-designer/editor";
+import {
+  bodyGridRect,
+  keepoutGridRect,
+  planBodyResize,
+  planHoleRegionResize,
+  planKeepoutResize,
+  type GridRect,
+} from "./component-designer/geometry-resize";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -97,6 +120,7 @@ let comparison: SemanticDiff = {
   components: [],
   nets: [],
   wires: [],
+  rails: [],
   constraints: [],
   routes: [],
 };
@@ -107,14 +131,17 @@ let viewBox: [number, number, number, number] | undefined;
 let pendingWheelZoom = 1;
 let wheelZoomFrame: number | undefined;
 let viewSide: Side = "component";
+let componentsFaded = false;
 let activeNetId: string | undefined;
 let wireMode = false;
+let railMode = false;
 let resizeMode = false;
 let routeProposal: RouteProposal | undefined;
 let rerouting = false;
 let wireDraft:
   | { start: TerminalRef; vertices: Array<{ x2: number; y2: number }> }
   | undefined;
+let railDraft: Array<{ x2: number; y2: number }> | undefined;
 let drag:
   | {
       id: string;
@@ -123,6 +150,17 @@ let drag:
       initialPosition: { x: number; y: number };
       position: { x: number; y: number };
       element: SVGGraphicsElement;
+    }
+  | undefined;
+let wireNodeDrag:
+  | {
+      wireId: string;
+      vertexIndex: number;
+      pointerId: number;
+      vertices: Array<{ x2: number; y2: number }>;
+      position: { x2: number; y2: number };
+      element: SVGCircleElement;
+      endpoint?: "start" | "end";
     }
   | undefined;
 let boardResize:
@@ -138,8 +176,26 @@ let suppressClick = false;
 let panStart:
   | { x: number; y: number; viewBox: [number, number, number, number] }
   | undefined;
+const wireSegmentLongPressDelayMs = 500;
+const wireSegmentLongPressMovementPx = 8;
+let wireSegmentPress:
+  | {
+      pointerId: number;
+      clientX: number;
+      clientY: number;
+      point: { x: number; y: number };
+      wireId: string;
+      segmentIndex: number;
+      viewBox: [number, number, number, number];
+      wireGroup: SVGGElement;
+      timer: number | undefined;
+      triggered: boolean;
+    }
+  | undefined;
 type AppMode = "perfboard" | "component";
 let appMode: AppMode = "perfboard";
+type DesignView = "working-copy" | "committed";
+let designView: DesignView = "working-copy";
 let componentViewerState: ComponentViewerState = { kind: "no_component" };
 let componentDraft: ComponentDraftSnapshot | undefined;
 let componentViewerGeneration: number | undefined;
@@ -150,6 +206,24 @@ let componentRotation: Rotation = "deg0";
 let componentLabelMode: PinLabelMode = "number";
 let selectedComponentPinId: string | undefined;
 let componentViewBox: [number, number, number, number] | undefined;
+let componentResizeMode: "body" | "keepout" | "access" | undefined;
+let componentGeometryResize:
+  | {
+      pointerId: number;
+      handle: ResizeHandle;
+      kind: "body" | "keepout" | "access";
+      index?: number;
+      bounds: GridRect;
+      initialBody?: ComponentDefinition["body"];
+      body?: ComponentDefinition["body"];
+      initialKeepout?: LocalRect;
+      keepout?: LocalRect;
+      initialAccess?: AccessRegion;
+      access?: AccessRegion;
+      boundary: SVGRectElement;
+      feedback: SVGTextElement;
+    }
+  | undefined;
 let componentPanStart:
   | { x: number; y: number; viewBox: [number, number, number, number] }
   | undefined;
@@ -174,6 +248,26 @@ function setStatus(message: string, state = "ready"): void {
 function selected(): ComponentInstance | undefined {
   return selectedId ? project.design.components?.[selectedId] : undefined;
 }
+function objectSide(objectId: string): Side | undefined {
+  const wire = project.design.wires?.[objectId];
+  if (wire) return wire.side;
+  const rail = project.design.rails?.[objectId];
+  if (rail) return rail.side;
+  const instance = project.design.components?.[objectId];
+  const definition =
+    instance && project.design.component_definitions?.[instance.definition_id];
+  if (!instance) return undefined;
+  return definition?.kind === "bridge" ? "solder" : "component";
+}
+function selectVisibleObject(objectId: string): void {
+  const side = objectSide(objectId);
+  if (side && side !== viewSide) {
+    setStatus(`Switch to the ${side} side to select this item`, "error");
+    return;
+  }
+  selectedId = objectId;
+  render();
+}
 
 function displayedComponentLoad(): RuntimeComponentLoad | undefined {
   return displayedLoad(componentViewerState);
@@ -197,7 +291,10 @@ async function mutateComponentDraft(
       componentDraft.valid ? "ready" : "error",
     );
   } catch (error) {
-    setStatus(`Could not update component draft: ${String(error)}`, "error");
+    setStatus(
+      `Could not update component draft: ${errorMessage(error)}`,
+      "error",
+    );
   }
 }
 
@@ -245,6 +342,26 @@ function setAppMode(mode: AppMode): void {
       `Revision ${project.revision} · ${project.design.board.holes_x} × ${project.design.board.holes_y} holes`,
     );
   }
+}
+
+function setDesignView(view: DesignView, moveFocus = false): void {
+  designView = view;
+  const workingCopyTab = $("#working-copy-tab") as HTMLButtonElement;
+  const committedTab = $("#committed-tab") as HTMLButtonElement;
+  const workingCopyPane = $("#working-copy-pane");
+  const committedPane = $("#committed-pane");
+  const showWorkingCopy = view === "working-copy";
+
+  workingCopyPane.toggleAttribute("hidden", !showWorkingCopy);
+  committedPane.toggleAttribute("hidden", showWorkingCopy);
+  workingCopyTab.classList.toggle("active", showWorkingCopy);
+  committedTab.classList.toggle("active", !showWorkingCopy);
+  workingCopyTab.setAttribute("aria-selected", String(showWorkingCopy));
+  committedTab.setAttribute("aria-selected", String(!showWorkingCopy));
+  workingCopyTab.tabIndex = showWorkingCopy ? 0 : -1;
+  committedTab.tabIndex = showWorkingCopy ? -1 : 0;
+
+  if (moveFocus) (showWorkingCopy ? workingCopyTab : committedTab).focus();
 }
 
 function renderComponentDesigner(): void {
@@ -302,6 +419,7 @@ function renderComponentDesigner(): void {
     "component-zoom-in",
     "component-fit",
     "show-component-keepouts",
+    "show-component-wire-keepouts",
     "show-component-access",
     "show-component-occupied",
   ]) {
@@ -309,6 +427,31 @@ function renderComponentDesigner(): void {
       $(`#${id}`) as HTMLButtonElement | HTMLInputElement | HTMLSelectElement
     ).disabled = !activeComponentDefinition() || loading;
   }
+  for (const id of [
+    "resize-component-body",
+    "resize-component-keepouts",
+    "resize-component-access",
+  ]) {
+    ($(`#${id}`) as HTMLButtonElement).disabled = !componentDraft || loading;
+  }
+  const resizeBody = $("#resize-component-body");
+  const resizeKeepouts = $("#resize-component-keepouts");
+  const resizeAccess = $("#resize-component-access");
+  resizeBody.classList.toggle("active", componentResizeMode === "body");
+  resizeKeepouts.classList.toggle("active", componentResizeMode === "keepout");
+  resizeAccess.classList.toggle("active", componentResizeMode === "access");
+  resizeBody.setAttribute(
+    "aria-pressed",
+    String(componentResizeMode === "body"),
+  );
+  resizeKeepouts.setAttribute(
+    "aria-pressed",
+    String(componentResizeMode === "keepout"),
+  );
+  resizeAccess.setAttribute(
+    "aria-pressed",
+    String(componentResizeMode === "access"),
+  );
 
   if (componentViewerState.kind === "loading") {
     $("#component-canvas").innerHTML =
@@ -401,6 +544,11 @@ function renderComponentDesigner(): void {
     null,
     2,
   );
+  ($("#draft-wire-keepouts") as HTMLTextAreaElement).value = JSON.stringify(
+    definition.wire_keepouts ?? [],
+    null,
+    2,
+  );
   ($("#draft-access") as HTMLTextAreaElement).value = JSON.stringify(
     definition.access ?? [],
     null,
@@ -418,6 +566,7 @@ function renderComponentDesigner(): void {
     <dl class="component-metadata">
       <dt>Directory</dt><dd><code>${escapeHtml(displayedComponentLoad()!.component_path)}</code></dd>
       <dt>Stable ID</dt><dd><code>${escapeHtml(definition.id)}</code></dd>
+      <dt>Kind</dt><dd>${escapeHtml(definition.kind ?? "standard")}</dd>
       <dt>Definition</dt><dd>${escapeHtml(definition.definition_version)}</dd>
       <dt>Schema</dt><dd>${definition.schema_version}</dd>
       <dt>Body</dt><dd>${definition.body.width} × ${definition.body.height} mm</dd>
@@ -433,6 +582,8 @@ function renderComponentDesigner(): void {
     .join("");
   const overlays = {
     showKeepouts: ($("#show-component-keepouts") as HTMLInputElement).checked,
+    showWireKeepouts: ($("#show-component-wire-keepouts") as HTMLInputElement)
+      .checked,
     showAccess: ($("#show-component-access") as HTMLInputElement).checked,
     showOccupiedHoles: ($("#show-component-occupied") as HTMLInputElement)
       .checked,
@@ -441,6 +592,7 @@ function renderComponentDesigner(): void {
     rotation: componentRotation,
     labelMode: componentLabelMode,
     selectedPinId: selectedComponentPinId,
+    resizeGeometry: componentDraft ? componentResizeMode : undefined,
     viewBox: componentViewBox?.join(" "),
     ...overlays,
   });
@@ -514,12 +666,11 @@ function zoomComponent(factor: number): void {
 }
 function render(): void {
   const changes = Object.fromEntries(
-    [...comparison.components, ...comparison.wires].map((item) => [
-      item.object_id,
-      item.kind,
-    ]),
+    [...comparison.components, ...comparison.wires, ...comparison.rails].map(
+      (item) => [item.object_id, item.kind],
+    ),
   );
-  const previewProject = routeProposal
+  let previewProject: ProjectDocument = routeProposal
     ? {
         ...project,
         design: {
@@ -540,6 +691,27 @@ function render(): void {
         },
       }
     : project;
+  if (railDraft?.length && activeNetId) {
+    previewProject = {
+      ...previewProject,
+      design: {
+        ...previewProject.design,
+        rails: {
+          ...(previewProject.design.rails ?? {}),
+          "rail-draft-preview": {
+            id: "rail-draft-preview",
+            net_id: activeNetId,
+            side: viewSide,
+            color: "orange",
+            vertices: railDraft,
+            locked: true,
+            notes: "Rail draft",
+          },
+        },
+      },
+    };
+  }
+  $("#print-sheet").innerHTML = renderPrintLayout(project);
   $("#canvas").innerHTML = renderBoardSvg(
     previewProject,
     selectedId,
@@ -548,12 +720,13 @@ function render(): void {
     changes,
     "board",
     resizeMode,
+    false,
+    componentsFaded,
   );
   $("#canvas").classList.toggle("resize-mode", resizeMode);
   const head = project.head_commit
     ? project.commits?.[project.head_commit]
     : undefined;
-  $("#committed-pane").classList.toggle("empty-commit", !head);
   $("#committed-canvas").innerHTML = head
     ? renderBoardSvg(
         { ...project, design: head.design, validation: head.validation },
@@ -562,6 +735,9 @@ function render(): void {
         viewSide,
         changes,
         "committed-board",
+        false,
+        false,
+        componentsFaded,
       )
     : '<p class="tool-hint">No commit yet.</p>';
   if (
@@ -604,13 +780,39 @@ function render(): void {
     .join("");
   $("#net-list").innerHTML =
     nets
-      .map(
-        (net) =>
-          `<div class="net-item ${net.state}"><strong>${net.name}</strong> · ${net.pins?.length ?? 0} pins<div>${net.state === "proposed" ? `<button data-accept-net="${net.id}">Accept</button><button data-reject-net="${net.id}">Reject</button>` : `<button data-remove-net="${net.id}">Remove</button>`}</div></div>`,
-      )
+      .map((net) => {
+        const pins = net.pins ?? [];
+        const pinList = pins.length
+          ? `<ul class="net-pin-list">${pins
+              .map(
+                (pin) =>
+                  `<li>${escapeHtml(netPinLabel(project.design, pin))}</li>`,
+              )
+              .join("")}</ul>`
+          : '<p class="net-empty">No pins assigned</p>';
+        return `<div class="net-item ${net.state}"><div class="net-heading"><strong>${escapeHtml(net.name)}</strong><span>${pins.length} ${pins.length === 1 ? "pin" : "pins"}</span></div>${pinList}<div>${net.state === "proposed" ? `<button data-accept-net="${net.id}">Accept</button><button data-reject-net="${net.id}">Reject</button>` : `<button data-remove-net="${net.id}">Remove</button>`}</div></div>`;
+      })
       .join("") || "<p>No nets defined.</p>";
+  const wires = Object.values(project.design.wires ?? {});
+  $("#wire-list").innerHTML =
+    wires
+      .map((wire, index) => {
+        const net = project.design.nets?.[wire.net_id];
+        const color =
+          typeof wire.color === "string" ? wire.color : wire.color.other;
+        return `<div class="wire-item${wire.id === selectedId ? " active" : ""}"><button class="wire-select" data-select-wire="${escapeHtml(wire.id)}"><strong>W${index + 1}</strong><span>${escapeHtml(net?.name ?? wire.net_id)} · ${escapeHtml(wire.side)} · ${escapeHtml(color)}</span></button><button class="danger wire-remove" data-remove-wire="${escapeHtml(wire.id)}" aria-label="Remove wire W${index + 1}" title="Remove wire">Remove</button></div>`;
+      })
+      .join("") || '<p class="tool-hint">No wires placed.</p>';
+  const rails = Object.values(project.design.rails ?? {});
+  $("#rail-list").innerHTML =
+    rails
+      .map((rail, index) => {
+        const net = project.design.nets?.[rail.net_id];
+        return `<div class="wire-item${rail.id === selectedId ? " active" : ""}"><button class="wire-select" data-select-rail="${escapeHtml(rail.id)}"><strong>R${index + 1}</strong><span>${escapeHtml(net?.name ?? rail.net_id)} · ${escapeHtml(rail.side)} · ${rail.vertices.length} nodes</span></button><button class="danger wire-remove" data-remove-rail="${escapeHtml(rail.id)}">Remove</button></div>`;
+      })
+      .join("") || '<p class="tool-hint">No rails placed.</p>';
   $("#route-proposal").innerHTML = routeProposal
-    ? `<article class="route-result"><strong>${routeProposal.length_mm.toFixed(2)} mm · ${routeProposal.bend_count} bends</strong><p>Cost ${routeProposal.cost.total}: length ${routeProposal.cost.length}, bends ${routeProposal.cost.bends}, crossings ${routeProposal.cost.crossings}, jumper ${routeProposal.cost.jumper_adjustment}</p>${routeProposal.jumper_match ? `<p>Jumper: ${escapeHtml(routeProposal.jumper_match.inventory_id)} (${routeProposal.jumper_match.kind})</p>` : ""}${(routeProposal.warnings ?? []).map((warning) => `<p class="warning">${escapeHtml(warning)}</p>`).join("")}${routeProposal.crossings.length ? '<label>At crossings <select id="crossing-order"><option value="over">New route over</option><option value="under">New route under</option></select></label>' : ""}<div class="button-row"><button id="accept-route">Accept</button><button id="reject-route">Reject</button></div></article>`
+    ? `<article class="route-result"><strong>${routeProposal.length_mm.toFixed(2)} mm · ${routeProposal.bend_count} bends</strong><p>Cost ${routeProposal.cost.total}: length ${routeProposal.cost.length}, bends ${routeProposal.cost.bends}, crossings ${routeProposal.cost.crossings}, board edge ${routeProposal.cost.board_edges}, jumper ${routeProposal.cost.jumper_adjustment}</p>${routeProposal.jumper_match ? `<p>Jumper: ${escapeHtml(routeProposal.jumper_match.inventory_id)} (${routeProposal.jumper_match.kind})</p>` : ""}${(routeProposal.warnings ?? []).map((warning) => `<p class="warning">${escapeHtml(warning)}</p>`).join("")}${routeProposal.crossings.length ? '<label>At crossings <select id="crossing-order"><option value="over">New route over</option><option value="under">New route under</option></select></label>' : ""}<div class="button-row"><button id="accept-route">Accept</button><button id="reject-route">Reject</button></div></article>`
     : "<p>No active proposal.</p>";
   $("#jumper-list").innerHTML =
     Object.values(project.design.jumper_inventory ?? {})
@@ -627,7 +829,12 @@ function render(): void {
       )
       .join("") || "<p>No constraints.</p>";
   $("#view-side").textContent = `View: ${viewSide}`;
+  const fadeComponents = $("#fade-components") as HTMLButtonElement;
+  fadeComponents.hidden = viewSide !== "component";
+  fadeComponents.classList.toggle("active", componentsFaded);
+  fadeComponents.setAttribute("aria-pressed", String(componentsFaded));
   $("#wire-mode").classList.toggle("active", wireMode);
+  $("#rail-mode").classList.toggle("active", railMode);
   $("#resize-board").classList.toggle("active", resizeMode);
   $("#resize-board").setAttribute("aria-pressed", String(resizeMode));
   const unlockedWireCount = Object.values(project.design.wires ?? {}).filter(
@@ -638,17 +845,26 @@ function render(): void {
   rerouteAll.textContent = rerouting ? "Rerouting…" : "Reroute all wires";
   const instance = selected();
   const wire = selectedId ? project.design.wires?.[selectedId] : undefined;
+  const rail = selectedId ? project.design.rails?.[selectedId] : undefined;
+  const wireName = wire
+    ? `W${wires.findIndex((candidate) => candidate.id === wire.id) + 1}`
+    : undefined;
   const selectedDefinition = instance
     ? project.design.component_definitions?.[instance.definition_id]
+    : undefined;
+  const libraryDefinition = instance
+    ? library.find((definition) => definition.id === instance.definition_id)
     : undefined;
   const pinTable = selectedDefinition
     ? `<h3>Pin reference</h3><table class="pin-table"><thead><tr><th>Pin</th><th>Name</th></tr></thead><tbody>${selectedDefinition.pins.map((pin) => `<tr><td>${escapeHtml(pin.number)}</td><td>${escapeHtml(pin.name)}</td></tr>`).join("")}</tbody></table>`
     : "";
   $("#inspector").innerHTML = instance
-    ? `<label>Name <input id="instance-name" value="${escapeHtml(instance.name)}" /></label><label>Notes <textarea id="instance-notes">${escapeHtml(instance.notes ?? "")}</textarea></label><div class="button-row"><button id="rotate-component">Rotate 90°</button><button id="remove-component" class="danger">Remove</button></div><p>Anchor: ${instance.position.x}, ${instance.position.y}<br>Rotation: ${instance.rotation}</p>${pinTable}`
+    ? `<label>Name <input id="instance-name" value="${escapeHtml(instance.name)}" /></label><label>Notes <textarea id="instance-notes">${escapeHtml(instance.notes ?? "")}</textarea></label><div class="button-row"><button id="rotate-component">Rotate 90°</button><button id="update-component-metadata"${libraryDefinition ? "" : " disabled"}>Update metadata</button><button id="remove-component" class="danger">Remove</button></div><p>Anchor: ${instance.position.x}, ${instance.position.y}<br>Rotation: ${instance.rotation}${selectedDefinition ? `<br>Definition: ${escapeHtml(selectedDefinition.definition_version)}` : ""}</p>${libraryDefinition ? '<p class="tool-hint">Updates the definition version, name, description, and documentation. Pins and geometry stay unchanged.</p>' : '<p class="tool-hint">This component is not available in the current library.</p>'}${pinTable}`
     : wire
-      ? `<p>Wire ${wire.id.slice(0, 8)}</p><label>Side <select id="selected-wire-side"><option${wire.side === "component" ? " selected" : ""}>component</option><option${wire.side === "solder" ? " selected" : ""}>solder</option></select></label><label>Color <select id="selected-wire-color">${["green", "red", "black", "yellow", "white", "blue", "orange"].map((color) => `<option${wire.color === color ? " selected" : ""}>${color}</option>`).join("")}</select></label>${wire.vertices.map((point, index) => `<div class="wire-vertex"><label>x2 <input data-vertex-x="${index}" type="number" value="${point.x2}" /></label><label>y2 <input data-vertex-y="${index}" type="number" value="${point.y2}" /></label>${index > 0 && index < wire.vertices.length - 1 ? `<button data-remove-vertex="${index}">Remove bend</button>` : ""}</div>`).join("")}<div class="button-row"><button id="reroute-wire"${wire.locked || rerouting ? " disabled" : ""}>Reroute selected</button><button id="evaluate-wire">Evaluate</button><button id="toggle-wire-lock">${wire.locked ? "Unlock" : "Lock"}</button><button id="remove-wire" class="danger">Remove wire</button></div>${wire.locked ? '<p class="tool-hint">Unlock this wire before rerouting it.</p>' : ""}`
-      : "<p>Select a component or wire.</p>";
+      ? `<p>Wire ${wireName}</p><label>Side <select id="selected-wire-side"><option${wire.side === "component" ? " selected" : ""}>component</option><option${wire.side === "solder" ? " selected" : ""}>solder</option></select></label><label>Color <select id="selected-wire-color">${["green", "red", "black", "yellow", "white", "blue", "orange"].map((color) => `<option${wire.color === color ? " selected" : ""}>${color}</option>`).join("")}</select></label>${wire.vertices.map((point, index) => `<div class="wire-vertex"><label>x2 <input data-vertex-x="${index}" type="number" value="${point.x2}" /></label><label>y2 <input data-vertex-y="${index}" type="number" value="${point.y2}" /></label>${index > 0 && index < wire.vertices.length - 1 ? `<button data-remove-vertex="${index}">Remove bend</button>` : ""}</div>`).join("")}<div class="button-row"><button id="toggle-wire-route"${wire.locked ? " disabled" : ""}>${isStraightRoute(wire.vertices) ? "Use 90° route" : "Make straight"}</button><button id="reroute-wire"${wire.locked || rerouting ? " disabled" : ""}>Reroute selected</button><button id="evaluate-wire">Evaluate</button><button id="toggle-wire-lock">${wire.locked ? "Unlock" : "Lock"}</button><button id="remove-wire" class="danger">Remove wire</button></div>${wire.locked ? '<p class="tool-hint">Unlock this wire before changing its route.</p>' : ""}`
+      : rail
+        ? `<p>Rail R${rails.findIndex((candidate) => candidate.id === rail.id) + 1}</p><p>${escapeHtml(project.design.nets?.[rail.net_id]?.name ?? rail.net_id)} · ${rail.side} · ${rail.vertices.length} explicit connection nodes</p>${rail.vertices.map((point) => `<div class="wire-vertex"><span>x ${point.x2 / 2}, y ${point.y2 / 2}</span></div>`).join("")}<button data-remove-rail="${escapeHtml(rail.id)}" class="danger">Remove rail</button>`
+        : "<p>Select a component, wire, or rail.</p>";
   const diagnostics = project.validation ?? [];
   $("#validation").innerHTML = diagnostics.length
     ? diagnostics
@@ -689,6 +905,13 @@ function render(): void {
         .join("")
     : "<p>No differences from the selected commit.</p>";
   const workingChanges = project.undo_stack ?? [];
+  const redoChanges = project.redo_stack ?? [];
+  const historyEntryCount = workingChanges.length + redoChanges.length;
+  $("#undo-history-summary").textContent = historyEntryCount
+    ? `${workingChanges.length} undo · ${redoChanges.length} redo entries stored in the project file.`
+    : "No undo or redo history is stored.";
+  ($("#manage-undo-history") as HTMLButtonElement).disabled =
+    historyEntryCount === 0;
   $("#operation-history").innerHTML = workingChanges.length
     ? workingChanges
         .slice()
@@ -711,7 +934,14 @@ async function refresh(): Promise<void> {
   const loadedProject = await getProject();
   const loadedComparison = loadedProject.head_commit
     ? await compareProjectRevisions(loadedProject.head_commit)
-    : { components: [], nets: [], wires: [], constraints: [], routes: [] };
+    : {
+        components: [],
+        nets: [],
+        wires: [],
+        rails: [],
+        constraints: [],
+        routes: [],
+      };
   if (projectReady && loadedProject.revision < project.revision) return;
   project = loadedProject;
   comparison = loadedComparison;
@@ -742,7 +972,10 @@ async function refreshComponentLibrary(): Promise<void> {
       `Component library refreshed · ${library.length} component type${library.length === 1 ? "" : "s"}`,
     );
   } catch (error) {
-    setStatus(`Could not refresh component library: ${String(error)}`, "error");
+    setStatus(
+      `Could not refresh component library: ${errorMessage(error)}`,
+      "error",
+    );
   } finally {
     button.disabled = false;
     button.classList.remove("refreshing");
@@ -760,7 +993,41 @@ async function mutate(
     await applyOperation(project.revision, payload);
     await refresh();
   } catch (error) {
-    setStatus(String(error), "error");
+    setStatus(errorMessage(error), "error");
+  }
+}
+
+async function updateComponentMetadata(
+  instance: ComponentInstance,
+): Promise<void> {
+  setStatus("Refreshing component metadata…");
+  try {
+    library = await getComponentLibrary();
+    const definition = library.find(
+      (candidate) => candidate.id === instance.definition_id,
+    );
+    if (!definition) {
+      render();
+      setStatus(
+        "This component is not available in the current library",
+        "error",
+      );
+      return;
+    }
+    await applyOperation(project.revision, {
+      type: "update_component_metadata",
+      instance_id: instance.id,
+      definition,
+    });
+    await refresh();
+    setStatus(
+      `Updated ${definition.name} metadata to ${definition.definition_version}; pins and geometry were preserved`,
+    );
+  } catch (error) {
+    setStatus(
+      `Could not update component metadata: ${errorMessage(error)}`,
+      "error",
+    );
   }
 }
 
@@ -843,6 +1110,100 @@ function svgPoint(event: PointerEvent): { x: number; y: number } | undefined {
   };
 }
 
+function previewWireNodeDrag(state: NonNullable<typeof wireNodeDrag>): boolean {
+  const preview = state.vertices.map((point, index) =>
+    index === state.vertexIndex ? state.position : point,
+  );
+  const canvas = $("#canvas");
+  const group = canvas.querySelector<SVGGElement>(
+    `.wire[data-wire-id="${CSS.escape(state.wireId)}"]`,
+  );
+  const points = preview
+    .map((point) => `${point.x2 / 2},${point.y2 / 2}`)
+    .join(" ");
+  group
+    ?.querySelector<SVGPolylineElement>(".wire-path")
+    ?.setAttribute("points", points);
+  group
+    ?.querySelector<SVGPolylineElement>(".wire-selection")
+    ?.setAttribute("points", points);
+  group
+    ?.querySelectorAll<SVGLineElement>("[data-wire-segment]")
+    .forEach((segment, index) => {
+      const start = preview[index]!;
+      const end = preview[index + 1]!;
+      segment.setAttribute("x1", String(start.x2 / 2));
+      segment.setAttribute("y1", String(start.y2 / 2));
+      segment.setAttribute("x2", String(end.x2 / 2));
+      segment.setAttribute("y2", String(end.y2 / 2));
+    });
+  state.element.setAttribute("cx", String(state.position.x2 / 2));
+  state.element.setAttribute("cy", String(state.position.y2 / 2));
+
+  const merge = state.vertices.some(
+    (point, index) =>
+      index !== state.vertexIndex &&
+      point.x2 === state.position.x2 &&
+      point.y2 === state.position.y2,
+  );
+  canvas
+    .querySelectorAll<SVGCircleElement>(
+      `[data-wire-id="${CSS.escape(state.wireId)}"] [data-wire-vertex-index], [data-wire-id="${CSS.escape(state.wireId)}"][data-wire-vertex-index]`,
+    )
+    .forEach((node) => {
+      const index = Number(node.dataset.wireVertexIndex);
+      node.classList.toggle(
+        "merge-target",
+        index !== state.vertexIndex &&
+          state.vertices[index]?.x2 === state.position.x2 &&
+          state.vertices[index]?.y2 === state.position.y2,
+      );
+    });
+  return merge;
+}
+
+function pinTerminalAtPosition(
+  position: { x2: number; y2: number },
+  wireId: string,
+  endpoint: "start" | "end",
+): TerminalRef | undefined {
+  const wire = project.design.wires?.[wireId];
+  const current = wire?.[endpoint];
+  const candidates = Object.values(project.design.components ?? {}).flatMap(
+    (component) => {
+      const definition =
+        project.design.component_definitions?.[component.definition_id];
+      return (definition?.pins ?? [])
+        .filter((pin) => {
+          const pinPosition = pinRoutePosition(component.id, pin.id);
+          return (
+            pinPosition?.x2 === position.x2 && pinPosition.y2 === position.y2
+          );
+        })
+        .map<TerminalRef>((pin) => ({
+          kind: "pin",
+          component_id: component.id,
+          pin_id: pin.id,
+        }));
+    },
+  );
+  return (
+    candidates.find(
+      (candidate) => JSON.stringify(candidate) === JSON.stringify(current),
+    ) ??
+    candidates.find(
+      (candidate) =>
+        candidate.kind === "pin" &&
+        project.design.nets?.[wire?.net_id ?? ""]?.pins?.some(
+          (pin) =>
+            pin.component_id === candidate.component_id &&
+            pin.pin_id === candidate.pin_id,
+        ),
+    ) ??
+    candidates[0]
+  );
+}
+
 function pinRoutePosition(
   componentId: string,
   pinId: string,
@@ -867,19 +1228,7 @@ function pinRoutePosition(
 
 function appendRoutable(target: { x2: number; y2: number }): void {
   if (!wireDraft) return;
-  const last = wireDraft.vertices.at(-1)!;
-  const dx = target.x2 - last.x2;
-  const dy = target.y2 - last.y2;
-  if (dx !== 0 && dy !== 0 && Math.abs(dx) !== Math.abs(dy)) {
-    const diagonal = Math.min(Math.abs(dx), Math.abs(dy));
-    wireDraft.vertices.push({
-      x2: last.x2 + Math.sign(dx) * diagonal,
-      y2: last.y2 + Math.sign(dy) * diagonal,
-    });
-  }
-  const end = wireDraft.vertices.at(-1)!;
-  if (end.x2 !== target.x2 || end.y2 !== target.y2)
-    wireDraft.vertices.push(target);
+  wireDraft.vertices = appendOrthogonal(wireDraft.vertices, target);
 }
 
 async function handleWirePin(
@@ -926,9 +1275,18 @@ async function handleWirePin(
     component_id: componentId,
     pin_id: pinId,
   };
+  await handleWireTerminal(terminal, position);
+}
+
+async function handleWireTerminal(
+  terminal: TerminalRef,
+  position: { x2: number; y2: number },
+): Promise<void> {
+  const netId = activeNetId;
+  if (!netId) return;
   if (!wireDraft) {
     wireDraft = { start: terminal, vertices: [position] };
-    setStatus("Starting pin assigned. Add bends or click the ending pin.");
+    setStatus("Starting node selected. Add bends or click the ending node.");
     return;
   }
   if (JSON.stringify(terminal) === JSON.stringify(wireDraft.start)) {
@@ -956,12 +1314,94 @@ async function handleWirePin(
   });
 }
 
+async function handleWireRailNode(
+  rail: Rail,
+  nodeIndex: number,
+): Promise<void> {
+  const net = activeNetId ? project.design.nets?.[activeNetId] : undefined;
+  if (!net || net.state !== "accepted") {
+    setStatus("Create and select an accepted net first", "error");
+    return;
+  }
+  if (rail.net_id !== net.id) {
+    setStatus("That rail belongs to a different net", "error");
+    return;
+  }
+  if (rail.side !== viewSide) {
+    setStatus("View the rail's side before connecting to it", "error");
+    return;
+  }
+  const position = rail.vertices[nodeIndex];
+  if (!position) return;
+  await handleWireTerminal(
+    { kind: "rail_node", rail_id: rail.id, position: { ...position } },
+    position,
+  );
+}
+
+async function addAndUseRailNode(
+  rail: Rail,
+  pointer: PointerEvent,
+): Promise<void> {
+  if (rail.locked) {
+    setStatus("Unlock this rail before adding a connection node", "error");
+    return;
+  }
+  const point = svgPoint(pointer);
+  if (!point) return;
+  const position = snappedRoutePoint(point, {
+    maxX2: (project.design.board.holes_x - 1) * 2,
+    maxY2: (project.design.board.holes_y - 1) * 2,
+  });
+  const existingIndex = rail.vertices.findIndex(
+    (node) => node.x2 === position.x2 && node.y2 === position.y2,
+  );
+  if (existingIndex >= 0) {
+    await handleWireRailNode(rail, existingIndex);
+    return;
+  }
+  const segmentIndex = closestWireSegmentIndex(rail.vertices, point);
+  if (segmentIndex === undefined) return;
+  const vertices = [
+    ...rail.vertices.slice(0, segmentIndex + 1),
+    position,
+    ...rail.vertices.slice(segmentIndex + 1),
+  ];
+  try {
+    await applyOperation(project.revision, {
+      type: "modify_rail_path",
+      rail_id: rail.id,
+      vertices,
+    });
+    await refresh();
+    const updated = project.design.rails?.[rail.id];
+    if (updated) await handleWireRailNode(updated, segmentIndex + 1);
+  } catch (error) {
+    setStatus(errorMessage(error), "error");
+  }
+}
+
 $("#perfboard-mode-button").addEventListener("click", () =>
   setAppMode("perfboard"),
 );
 $("#component-mode-button").addEventListener("click", () =>
   setAppMode("component"),
 );
+$("#working-copy-tab").addEventListener("click", () =>
+  setDesignView("working-copy"),
+);
+$("#committed-tab").addEventListener("click", () => setDesignView("committed"));
+$(".design-tabs").addEventListener("keydown", (event) => {
+  const keyboardEvent = event as KeyboardEvent;
+  let nextView: DesignView | undefined;
+  if (keyboardEvent.key === "ArrowLeft" || keyboardEvent.key === "ArrowRight")
+    nextView = designView === "working-copy" ? "committed" : "working-copy";
+  if (keyboardEvent.key === "Home") nextView = "working-copy";
+  if (keyboardEvent.key === "End") nextView = "committed";
+  if (!nextView) return;
+  keyboardEvent.preventDefault();
+  setDesignView(nextView, true);
+});
 $("#refresh-component-library").addEventListener("click", () => {
   void refreshComponentLibrary();
 });
@@ -1075,6 +1515,8 @@ $("#close-component").addEventListener("click", () => {
       componentRotation = "deg0";
       selectedComponentPinId = undefined;
       componentViewBox = undefined;
+      componentResizeMode = undefined;
+      componentGeometryResize = undefined;
       renderComponentDesigner();
       setStatus("Component closed");
     })
@@ -1180,6 +1622,12 @@ $("#apply-draft-keepouts").addEventListener("click", () =>
     keepouts,
   })),
 );
+$("#apply-draft-wire-keepouts").addEventListener("click", () =>
+  applyJsonDraftField<LocalRect[]>("draft-wire-keepouts", (keepouts) => ({
+    type: "set_wire_keepouts",
+    keepouts,
+  })),
+);
 $("#apply-draft-access").addEventListener("click", () =>
   applyJsonDraftField<AccessRegion[]>("draft-access", (access) => ({
     type: "set_access_regions",
@@ -1228,6 +1676,7 @@ $("#component-label-mode").addEventListener("change", (event) => {
 });
 for (const id of [
   "show-component-keepouts",
+  "show-component-wire-keepouts",
   "show-component-access",
   "show-component-occupied",
 ]) {
@@ -1326,6 +1775,160 @@ $("#component-pin-table").addEventListener("dragend", () => {
   clearPinRowDropIndicators();
   componentPinRowDrag = undefined;
 });
+function componentLocalPointer(
+  pointer: PointerEvent,
+): { x: number; y: number } | undefined {
+  const svg = document.querySelector<SVGSVGElement>("#component-preview");
+  const matrix = svg?.getScreenCTM()?.inverse();
+  if (!svg || !matrix) return undefined;
+  const point = svg.createSVGPoint();
+  point.x = pointer.clientX;
+  point.y = pointer.clientY;
+  const rotated = point.matrixTransform(matrix);
+  const [x, y] =
+    componentRotation === "deg0"
+      ? [rotated.x, rotated.y]
+      : componentRotation === "deg90"
+        ? [rotated.y, -rotated.x]
+        : componentRotation === "deg180"
+          ? [-rotated.x, -rotated.y]
+          : [-rotated.y, rotated.x];
+  return { x, y };
+}
+
+function updateComponentResizeFeedback(
+  resize: NonNullable<typeof componentGeometryResize>,
+): void {
+  const { x, y, width, height } = resize.bounds;
+  resize.boundary.setAttribute("x", String(x));
+  resize.boundary.setAttribute("y", String(y));
+  resize.boundary.setAttribute("width", String(width));
+  resize.boundary.setAttribute("height", String(height));
+  resize.feedback.setAttribute("x", String(x + width / 2));
+  resize.feedback.setAttribute("y", String(y + height / 2));
+  resize.feedback.textContent =
+    resize.kind === "body"
+      ? `${width} × ${height} holes`
+      : resize.kind === "keepout"
+        ? `${width} × ${height} holes kept out`
+        : `${width} × ${height} holes accessible`;
+}
+
+$("#component-canvas").addEventListener("pointerdown", (event) => {
+  const pointer = event as PointerEvent;
+  const handle = (pointer.target as Element).closest<SVGElement>(
+    "[data-component-resize-handle]",
+  );
+  if (!handle || !componentDraft || pointer.button !== 0) return;
+  const kind = handle.dataset.componentResizeKind as
+    "body" | "keepout" | "access";
+  const handleName = handle.dataset.componentResizeHandle as ResizeHandle;
+  const indexValue = handle.dataset.componentResizeIndex;
+  const index = indexValue === undefined ? undefined : Number(indexValue);
+  const controls = handle.closest<SVGGElement>(
+    "[data-component-resize-controls]",
+  );
+  const boundary = controls?.querySelector<SVGRectElement>(
+    ".component-resize-boundary",
+  );
+  const feedback = controls?.querySelector<SVGTextElement>(
+    ".component-resize-feedback",
+  );
+  if (!boundary || !feedback) return;
+  if (kind === "body") {
+    const body = componentDraft.definition.body;
+    componentGeometryResize = {
+      pointerId: pointer.pointerId,
+      handle: handleName,
+      kind,
+      bounds: bodyGridRect(body),
+      initialBody: body,
+      body,
+      boundary,
+      feedback,
+    };
+  } else if (kind === "keepout") {
+    const keepout = componentDraft.definition.keepouts?.[index ?? -1];
+    if (!keepout) return;
+    componentGeometryResize = {
+      pointerId: pointer.pointerId,
+      handle: handleName,
+      kind,
+      index,
+      bounds: keepoutGridRect(keepout),
+      initialKeepout: keepout,
+      keepout,
+      boundary,
+      feedback,
+    };
+  } else {
+    const access = componentDraft.definition.access?.[index ?? -1];
+    if (!access) return;
+    componentGeometryResize = {
+      pointerId: pointer.pointerId,
+      handle: handleName,
+      kind,
+      index,
+      bounds: keepoutGridRect(access),
+      initialAccess: access,
+      access,
+      boundary,
+      feedback,
+    };
+  }
+  pointer.preventDefault();
+  (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
+});
+
+$("#component-canvas").addEventListener("pointermove", (event) => {
+  const pointer = event as PointerEvent;
+  const resize = componentGeometryResize;
+  if (!resize || resize.pointerId !== pointer.pointerId) return;
+  const point = componentLocalPointer(pointer);
+  if (!point) return;
+  if (resize.kind === "body" && resize.initialBody) {
+    const body = planBodyResize(
+      resize.initialBody,
+      resize.handle,
+      point.x,
+      point.y,
+    );
+    if (!body) return;
+    resize.body = body;
+    resize.bounds = bodyGridRect(body);
+    setStatus(
+      `Resize body to ${resize.bounds.width} × ${resize.bounds.height} holes`,
+    );
+  } else if (resize.kind === "keepout" && resize.initialKeepout) {
+    const keepout = planKeepoutResize(
+      resize.initialKeepout,
+      resize.handle,
+      point.x,
+      point.y,
+    );
+    if (!keepout) return;
+    resize.keepout = keepout;
+    resize.bounds = keepoutGridRect(keepout);
+    setStatus(
+      `Keep out ${resize.bounds.width} × ${resize.bounds.height} holes`,
+    );
+  } else if (resize.initialAccess) {
+    const access = planHoleRegionResize(
+      resize.initialAccess,
+      resize.handle,
+      point.x,
+      point.y,
+    );
+    if (!access) return;
+    resize.access = access;
+    resize.bounds = keepoutGridRect(access);
+    setStatus(
+      `Access region covers ${resize.bounds.width} × ${resize.bounds.height} holes`,
+    );
+  }
+  updateComponentResizeFeedback(resize);
+});
+
 $("#component-canvas").addEventListener("click", (event) => {
   const pinId = (event.target as HTMLElement).closest<HTMLElement>(
     "[data-preview-pin-id]",
@@ -1364,21 +1967,9 @@ $("#component-canvas").addEventListener("pointermove", (event) => {
   const pointer = event as PointerEvent;
   if (!componentPinDrag || pointer.pointerId !== componentPinDrag.pointerId)
     return;
-  const svg = document.querySelector<SVGSVGElement>("#component-preview");
-  const matrix = svg?.getScreenCTM()?.inverse();
-  if (!svg || !matrix) return;
-  const point = svg.createSVGPoint();
-  point.x = pointer.clientX;
-  point.y = pointer.clientY;
-  const rotated = point.matrixTransform(matrix);
-  const [x, y] =
-    componentRotation === "deg0"
-      ? [rotated.x, rotated.y]
-      : componentRotation === "deg90"
-        ? [rotated.y, -rotated.x]
-        : componentRotation === "deg180"
-          ? [-rotated.x, -rotated.y]
-          : [-rotated.y, rotated.x];
+  const point = componentLocalPointer(pointer);
+  if (!point) return;
+  const { x, y } = point;
   componentPinDrag.x = Math.round(x);
   componentPinDrag.y = Math.round(y);
   componentPinDrag.element.setAttribute(
@@ -1405,6 +1996,27 @@ $("#component-fit").addEventListener("click", () => {
   componentViewBox = undefined;
   renderComponentDesigner();
 });
+for (const [id, mode] of [
+  ["resize-component-body", "body"],
+  ["resize-component-keepouts", "keepout"],
+  ["resize-component-access", "access"],
+] as const) {
+  $(`#${id}`).addEventListener("click", () => {
+    componentResizeMode = componentResizeMode === mode ? undefined : mode;
+    componentGeometryResize = undefined;
+    componentPanStart = undefined;
+    renderComponentDesigner();
+    setStatus(
+      componentResizeMode === "body"
+        ? "Drag a body edge or corner; borders snap every half hole"
+        : componentResizeMode === "keepout"
+          ? "Drag a keepout edge or corner; borders stay between holes"
+          : componentResizeMode === "access"
+            ? "Drag an access-region edge or corner; borders stay between holes"
+            : "Component geometry resize finished",
+    );
+  });
+}
 $("#component-canvas").addEventListener(
   "wheel",
   (event) => {
@@ -1418,7 +2030,9 @@ $("#component-canvas").addEventListener("pointerdown", (event) => {
   if (
     !pointer.isPrimary ||
     pointer.button !== 0 ||
-    (pointer.target as Element).closest("[data-preview-pin-id]")
+    (pointer.target as Element).closest(
+      "[data-preview-pin-id], [data-component-resize-handle]",
+    )
   )
     return;
   const svg = document.querySelector<SVGSVGElement>("#component-preview");
@@ -1454,7 +2068,47 @@ $("#component-canvas").addEventListener("pointermove", (event) => {
   svg.setAttribute("viewBox", componentViewBox.join(" "));
 });
 for (const eventName of ["pointerup", "pointercancel"]) {
-  $("#component-canvas").addEventListener(eventName, () => {
+  $("#component-canvas").addEventListener(eventName, (event) => {
+    const pointer = event as PointerEvent;
+    if (
+      componentGeometryResize &&
+      pointer.pointerId === componentGeometryResize.pointerId
+    ) {
+      const resize = componentGeometryResize;
+      componentGeometryResize = undefined;
+      if (eventName === "pointerup" && componentDraft) {
+        if (
+          resize.kind === "body" &&
+          resize.body &&
+          resize.initialBody &&
+          JSON.stringify(resize.body) !== JSON.stringify(resize.initialBody)
+        ) {
+          void mutateComponentDraft({ type: "set_body", body: resize.body });
+        } else if (
+          resize.kind === "keepout" &&
+          resize.keepout &&
+          resize.initialKeepout &&
+          resize.index !== undefined &&
+          JSON.stringify(resize.keepout) !==
+            JSON.stringify(resize.initialKeepout)
+        ) {
+          const keepouts = [...(componentDraft.definition.keepouts ?? [])];
+          keepouts[resize.index] = resize.keepout;
+          void mutateComponentDraft({ type: "set_keepouts", keepouts });
+        } else if (
+          resize.kind === "access" &&
+          resize.access &&
+          resize.initialAccess &&
+          resize.index !== undefined &&
+          JSON.stringify(resize.access) !== JSON.stringify(resize.initialAccess)
+        ) {
+          const access = [...(componentDraft.definition.access ?? [])];
+          access[resize.index] = resize.access;
+          void mutateComponentDraft({ type: "set_access_regions", access });
+        }
+      }
+      if (eventName === "pointercancel") renderComponentDesigner();
+    }
     if (componentPinDrag) {
       const drag = componentPinDrag;
       drag.element.removeAttribute("transform");
@@ -1573,11 +2227,57 @@ $("#app").addEventListener("click", (event) => {
     void mutate({ type: "remove_net", net_id: removeNet });
     return;
   }
+  const removeWire =
+    target.closest<HTMLElement>("[data-remove-wire]")?.dataset.removeWire;
+  if (removeWire) {
+    if (selectedId === removeWire) selectedId = undefined;
+    void mutate({ type: "remove_wire", wire_id: removeWire });
+    return;
+  }
+  const removeRail =
+    target.closest<HTMLElement>("[data-remove-rail]")?.dataset.removeRail;
+  if (removeRail) {
+    if (selectedId === removeRail) selectedId = undefined;
+    void mutate({ type: "remove_rail", rail_id: removeRail });
+    return;
+  }
+  const railNode = target.closest<HTMLElement>("[data-rail-node-index]");
+  const railNodeId = railNode?.dataset.railId;
+  if (wireMode && railNodeId) {
+    const rail = project.design.rails?.[railNodeId];
+    if (rail)
+      void handleWireRailNode(rail, Number(railNode.dataset.railNodeIndex));
+    return;
+  }
+  const clickedRailId = target.closest<HTMLElement>(".rail[data-rail-id]")
+    ?.dataset.railId;
+  if (wireMode && clickedRailId) {
+    const rail = project.design.rails?.[clickedRailId];
+    if (rail) void addAndUseRailNode(rail, event as PointerEvent);
+    return;
+  }
+  const selectWire =
+    target.closest<HTMLElement>("[data-select-wire]")?.dataset.selectWire;
+  if (selectWire) {
+    selectVisibleObject(selectWire);
+    return;
+  }
+  const selectRail =
+    target.closest<HTMLElement>("[data-select-rail]")?.dataset.selectRail;
+  if (selectRail) {
+    selectVisibleObject(selectRail);
+    return;
+  }
   const selectedWire =
     target.closest<HTMLElement>("[data-wire-id]")?.dataset.wireId;
   if (selectedWire) {
-    selectedId = selectedWire;
-    render();
+    selectVisibleObject(selectedWire);
+    return;
+  }
+  const selectedRail =
+    target.closest<HTMLElement>("[data-rail-id]")?.dataset.railId;
+  if (selectedRail) {
+    selectVisibleObject(selectedRail);
     return;
   }
   const pin = target.closest<HTMLElement>("[data-pin-id]");
@@ -1610,8 +2310,9 @@ $("#app").addEventListener("click", (event) => {
     "[data-component-id], [data-select-id]",
   );
   if (component) {
-    selectedId = component.dataset.componentId ?? component.dataset.selectId;
-    render();
+    const componentId =
+      component.dataset.componentId ?? component.dataset.selectId;
+    if (componentId) selectVisibleObject(componentId);
     return;
   }
   if (target.id === "add-library-component") {
@@ -1621,6 +2322,7 @@ $("#app").addEventListener("click", (event) => {
     if (!definition) return;
     const count = Object.keys(project.design.components ?? {}).length;
     const instanceId = crypto.randomUUID();
+    viewSide = definition.kind === "bridge" ? "solder" : "component";
     selectedId = instanceId;
     void mutate({
       type: "add_component",
@@ -1629,12 +2331,17 @@ $("#app").addEventListener("click", (event) => {
         id: instanceId,
         definition_id: definition.id,
         name: `${definition.name} ${count + 1}`,
-        position: { x: 2 + count * 8, y: 2 },
+        position: newComponentStagingPosition(project.design.board),
         rotation: "deg0",
         properties: {},
         notes: "",
       },
     });
+    return;
+  }
+  if (target.closest("#canvas, #committed-canvas") && selectedId) {
+    selectedId = undefined;
+    render();
   }
 });
 $("#library").addEventListener("change", (event) => {
@@ -1647,7 +2354,14 @@ $("#library").addEventListener("change", (event) => {
 });
 $("#canvas").addEventListener("pointerdown", (event) => {
   const pointer = event as PointerEvent;
-  if (!pointer.isPrimary || pointer.button !== 0 || drag || boardResize) return;
+  if (
+    !pointer.isPrimary ||
+    pointer.button !== 0 ||
+    drag ||
+    wireNodeDrag ||
+    boardResize
+  )
+    return;
   const resizeHandle = (pointer.target as Element).closest<SVGElement>(
     "[data-resize-handle]",
   )?.dataset.resizeHandle as ResizeHandle | undefined;
@@ -1672,6 +2386,129 @@ $("#canvas").addEventListener("pointerdown", (event) => {
     return;
   }
   if (resizeMode) return;
+  const pointerTarget = pointer.target as Element;
+  if (wireMode && pointerTarget.closest("[data-rail-id]")) return;
+  if (railMode) {
+    const point = svgPoint(pointer);
+    if (!point) return;
+    const snapped = snappedRoutePoint(point, {
+      maxX2: (project.design.board.holes_x - 1) * 2,
+      maxY2: (project.design.board.holes_y - 1) * 2,
+    });
+    if (!railDraft) railDraft = [snapped];
+    else if (
+      railDraft.at(-1)?.x2 !== snapped.x2 ||
+      railDraft.at(-1)?.y2 !== snapped.y2
+    )
+      railDraft.push(snapped);
+    setStatus(
+      railDraft.length === 1
+        ? "Rail started; click more half-grid nodes"
+        : `${railDraft.length} rail nodes; finish when ready`,
+    );
+    render();
+    pointer.preventDefault();
+    return;
+  }
+  const wireSegment = pointerTarget.closest<SVGLineElement>(
+    "[data-wire-segment]",
+  );
+  const segmentWireGroup = pointerTarget.closest<SVGGElement>("[data-wire-id]");
+  const segmentWireId = segmentWireGroup?.dataset.wireId;
+  const segmentWire = segmentWireId
+    ? project.design.wires?.[segmentWireId]
+    : undefined;
+  if (
+    !wireMode &&
+    !pointerTarget.closest("[data-wire-vertex-index]") &&
+    segmentWireGroup &&
+    segmentWire &&
+    segmentWire.side === viewSide
+  ) {
+    const point = svgPoint(pointer);
+    const svg = $("#board") as SVGSVGElement;
+    const currentViewBox = (svg.getAttribute("viewBox") ?? "0 0 25 18")
+      .split(" ")
+      .map(Number) as [number, number, number, number];
+    if (!point) return;
+    const segmentIndex = wireSegment
+      ? Number(wireSegment.dataset.wireSegment)
+      : closestWireSegmentIndex(segmentWire.vertices, point);
+    if (segmentIndex === undefined || !Number.isFinite(segmentIndex)) return;
+    const press = {
+      pointerId: pointer.pointerId,
+      clientX: pointer.clientX,
+      clientY: pointer.clientY,
+      point,
+      wireId: segmentWire.id,
+      segmentIndex,
+      viewBox: currentViewBox,
+      wireGroup: segmentWireGroup,
+      timer: undefined as number | undefined,
+      triggered: false,
+    };
+    press.timer = window.setTimeout(() => {
+      if (wireSegmentPress !== press) return;
+      press.timer = undefined;
+      press.triggered = true;
+      press.wireGroup.classList.remove("long-press-pending");
+      const wire = project.design.wires?.[press.wireId];
+      if (!wire || wire.side !== viewSide) return;
+      if (wire.locked) {
+        setStatus("Unlock this wire before adding a node", "error");
+        return;
+      }
+      const vertices = insertWireNode(
+        wire.vertices,
+        press.segmentIndex,
+        press.point,
+      );
+      if (vertices === wire.vertices) {
+        setStatus(
+          "This segment has no free half-grid position for another node",
+        );
+        return;
+      }
+      selectedId = wire.id;
+      void mutate({ type: "modify_wire_path", wire_id: wire.id, vertices });
+    }, wireSegmentLongPressDelayMs);
+    wireSegmentPress = press;
+    segmentWireGroup.classList.add("long-press-pending");
+    (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
+    pointer.preventDefault();
+    return;
+  }
+  const wireNode = (pointer.target as Element).closest<SVGCircleElement>(
+    "[data-wire-vertex-index]",
+  );
+  const wireGroup = wireNode?.closest<SVGGElement>("[data-wire-id]");
+  const editedWire = wireGroup?.dataset.wireId
+    ? project.design.wires?.[wireGroup.dataset.wireId]
+    : undefined;
+  if (wireNode && editedWire) {
+    if (editedWire.locked) {
+      setStatus("Unlock this wire before editing its nodes", "error");
+      return;
+    }
+    const vertexIndex = Number(wireNode.dataset.wireVertexIndex);
+    wireNodeDrag = {
+      wireId: editedWire.id,
+      vertexIndex,
+      pointerId: pointer.pointerId,
+      vertices: editedWire.vertices.map((point) => ({ ...point })),
+      position: { ...editedWire.vertices[vertexIndex]! },
+      element: wireNode,
+      endpoint:
+        wireNode.dataset.wireEndpoint === "start" ||
+        wireNode.dataset.wireEndpoint === "end"
+          ? wireNode.dataset.wireEndpoint
+          : undefined,
+    };
+    wireNode.classList.add("dragging");
+    (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
+    pointer.preventDefault();
+    return;
+  }
   if (wireMode && (pointer.target as Element).closest("[data-pin-id]")) return;
   if (
     wireMode &&
@@ -1692,6 +2529,7 @@ $("#canvas").addEventListener("pointerdown", (event) => {
     "[data-component-id]",
   );
   if (component?.dataset.componentId) {
+    if (objectSide(component.dataset.componentId) !== viewSide) return;
     const point = svgPoint(pointer);
     const instance = project.design.components?.[component.dataset.componentId];
     if (!point || !instance) return;
@@ -1718,8 +2556,35 @@ $("#canvas").addEventListener("pointerdown", (event) => {
   }
   (pointer.currentTarget as Element).setPointerCapture?.(pointer.pointerId);
 });
+$("#canvas").addEventListener("contextmenu", (event) => {
+  if ((event.target as Element).closest("[data-wire-id]"))
+    event.preventDefault();
+});
 $("#canvas").addEventListener("pointermove", (event) => {
   const pointer = event as PointerEvent;
+  if (wireSegmentPress) {
+    if (pointer.pointerId !== wireSegmentPress.pointerId) return;
+    const distance = Math.hypot(
+      pointer.clientX - wireSegmentPress.clientX,
+      pointer.clientY - wireSegmentPress.clientY,
+    );
+    if (
+      !wireSegmentPress.triggered &&
+      distance > wireSegmentLongPressMovementPx
+    ) {
+      if (wireSegmentPress.timer !== undefined)
+        window.clearTimeout(wireSegmentPress.timer);
+      wireSegmentPress.wireGroup.classList.remove("long-press-pending");
+      panStart = {
+        x: wireSegmentPress.clientX,
+        y: wireSegmentPress.clientY,
+        viewBox: wireSegmentPress.viewBox,
+      };
+      wireSegmentPress = undefined;
+    } else {
+      return;
+    }
+  }
   if (boardResize) {
     if (pointer.pointerId !== boardResize.pointerId) return;
     const point = svgVisualPoint(pointer);
@@ -1776,6 +2641,24 @@ $("#canvas").addEventListener("pointermove", (event) => {
     );
     return;
   }
+  if (wireNodeDrag) {
+    if (pointer.pointerId !== wireNodeDrag.pointerId) return;
+    const point = svgPoint(pointer);
+    if (!point) return;
+    wireNodeDrag.position = snappedRoutePoint(point, {
+      maxX2: (project.design.board.holes_x - 1) * 2,
+      maxY2: (project.design.board.holes_y - 1) * 2,
+    });
+    const merge = previewWireNodeDrag(wireNodeDrag);
+    setStatus(
+      wireNodeDrag.endpoint
+        ? "Release over a component pin to reconnect this wire end"
+        : merge
+          ? "Release to remove this node"
+          : `Move wire node to ${wireNodeDrag.position.x2 / 2}, ${wireNodeDrag.position.y2 / 2}`,
+    );
+    return;
+  }
   if (drag) {
     if (pointer.pointerId !== drag.pointerId) return;
     const point = svgPoint(pointer);
@@ -1809,6 +2692,20 @@ $("#canvas").addEventListener("pointermove", (event) => {
   svg.setAttribute("viewBox", viewBox.join(" "));
 });
 $("#canvas").addEventListener("pointerup", (event) => {
+  if (wireSegmentPress) {
+    if ((event as PointerEvent).pointerId !== wireSegmentPress.pointerId)
+      return;
+    if (wireSegmentPress.timer !== undefined)
+      window.clearTimeout(wireSegmentPress.timer);
+    wireSegmentPress.wireGroup.classList.remove("long-press-pending");
+    const triggered = wireSegmentPress.triggered;
+    wireSegmentPress = undefined;
+    if (triggered) {
+      suppressClick = true;
+      window.setTimeout(() => (suppressClick = false), 0);
+    }
+    return;
+  }
   if (boardResize) {
     if ((event as PointerEvent).pointerId !== boardResize.pointerId) return;
     const { plan } = boardResize;
@@ -1827,6 +2724,53 @@ $("#canvas").addEventListener("pointerup", (event) => {
       render();
     } else {
       render();
+    }
+    return;
+  }
+  if (wireNodeDrag) {
+    if ((event as PointerEvent).pointerId !== wireNodeDrag.pointerId) return;
+    const finished = wireNodeDrag;
+    wireNodeDrag = undefined;
+    const original = finished.vertices[finished.vertexIndex]!;
+    const moved =
+      original.x2 !== finished.position.x2 ||
+      original.y2 !== finished.position.y2;
+    finished.element.classList.remove("dragging");
+    suppressClick = moved;
+    if (moved) window.setTimeout(() => (suppressClick = false), 0);
+    if (moved) {
+      if (finished.endpoint) {
+        const terminal = pinTerminalAtPosition(
+          finished.position,
+          finished.wireId,
+          finished.endpoint,
+        );
+        if (!terminal) {
+          render();
+          setStatus(
+            "Wire end was not changed; drop it on a component pin",
+            "error",
+          );
+          return;
+        }
+        void mutate({
+          type: "reconnect_wire_endpoint",
+          wire_id: finished.wireId,
+          endpoint: finished.endpoint,
+          terminal,
+        }).then(render);
+        return;
+      }
+      const result = finishWireNodeDrag(
+        finished.vertices,
+        finished.vertexIndex,
+        finished.position,
+      );
+      void mutate({
+        type: "modify_wire_path",
+        wire_id: finished.wireId,
+        vertices: result.vertices,
+      }).then(render);
     }
     return;
   }
@@ -1850,9 +2794,24 @@ $("#canvas").addEventListener("pointerup", (event) => {
   panStart = undefined;
 });
 $("#canvas").addEventListener("pointercancel", (event) => {
+  if (wireSegmentPress) {
+    if ((event as PointerEvent).pointerId !== wireSegmentPress.pointerId)
+      return;
+    if (wireSegmentPress.timer !== undefined)
+      window.clearTimeout(wireSegmentPress.timer);
+    wireSegmentPress.wireGroup.classList.remove("long-press-pending");
+    wireSegmentPress = undefined;
+    return;
+  }
   if (boardResize) {
     if ((event as PointerEvent).pointerId !== boardResize.pointerId) return;
     boardResize = undefined;
+    render();
+    return;
+  }
+  if (wireNodeDrag) {
+    if ((event as PointerEvent).pointerId !== wireNodeDrag.pointerId) return;
+    wireNodeDrag = undefined;
     render();
     return;
   }
@@ -1875,7 +2834,12 @@ $("#inspector").addEventListener("click", (event) => {
   if (wire) {
     const removeIndex = target.closest<HTMLElement>("[data-remove-vertex]")
       ?.dataset.removeVertex;
-    if (target.id === "reroute-wire") {
+    if (target.id === "toggle-wire-route") {
+      const vertices = isStraightRoute(wire.vertices)
+        ? orthogonalRoute(wire.vertices)
+        : straightRoute(wire.vertices);
+      void mutate({ type: "modify_wire_path", wire_id: wire.id, vertices });
+    } else if (target.id === "reroute-wire") {
       void rerouteWires([
         { wireId: wire.id, start: wire.start, end: wire.end },
       ]);
@@ -1923,6 +2887,9 @@ $("#inspector").addEventListener("click", (event) => {
       instance_id: instance.id,
       rotation: nextRotation(instance.rotation),
     });
+  if (target.id === "update-component-metadata") {
+    void updateComponentMetadata(instance);
+  }
   if (target.id === "remove-component") {
     selectedId = undefined;
     void mutate({ type: "remove_component", instance_id: instance.id });
@@ -1934,10 +2901,12 @@ $("#inspector").addEventListener("change", (event) => {
   if (wire) {
     const target = event.target as HTMLElement;
     if (target.id === "selected-wire-side") {
+      const side = (target as HTMLSelectElement).value as Side;
+      if (side !== viewSide) selectedId = undefined;
       void mutate({
         type: "set_wire_side",
         wire_id: wire.id,
-        side: (target as HTMLSelectElement).value as Side,
+        side,
       });
       return;
     }
@@ -2012,6 +2981,7 @@ $("#new-board-form").addEventListener("submit", (event) => {
         components: [],
         nets: [],
         wires: [],
+        rails: [],
         constraints: [],
         routes: [],
       };
@@ -2055,6 +3025,66 @@ $("#undo-project").addEventListener("click", () => {
 });
 $("#redo-project").addEventListener("click", () => {
   void runRevisionAction(() => redoProject(project.revision));
+});
+function formatByteSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+function undoHistoryStorageBytes(): number {
+  return new Blob([
+    JSON.stringify(
+      {
+        undo_stack: project.undo_stack ?? [],
+        redo_stack: project.redo_stack ?? [],
+      },
+      null,
+      2,
+    ),
+  ]).size;
+}
+$("#manage-undo-history").addEventListener("click", () => {
+  const undoCount = project.undo_stack?.length ?? 0;
+  const redoCount = project.redo_stack?.length ?? 0;
+  const largestStack = Math.max(undoCount, redoCount);
+  const keep = $("#undo-history-keep") as HTMLInputElement;
+  keep.max = String(largestStack);
+  keep.value = String(Math.min(25, largestStack));
+  $("#undo-history-error").textContent = "";
+  $("#undo-history-size").textContent =
+    `${undoCount + redoCount} entries use approximately ${formatByteSize(undoHistoryStorageBytes())}. ` +
+    "This data is embedded in every saved project file.";
+  ($("#undo-history-dialog") as HTMLDialogElement).showModal();
+  keep.select();
+});
+$("#cancel-undo-history").addEventListener("click", () => {
+  ($("#undo-history-dialog") as HTMLDialogElement).close();
+});
+async function applyUndoHistoryLimit(keepEntries: number): Promise<void> {
+  const dialog = $("#undo-history-dialog") as HTMLDialogElement;
+  const error = $("#undo-history-error");
+  try {
+    const result = await trimProjectUndoHistory(project.revision, keepEntries);
+    await refresh();
+    dialog.close();
+    setStatus(`${result.summary}. Save the project to reclaim disk space.`);
+  } catch (trimError) {
+    error.textContent = errorMessage(trimError);
+  }
+}
+$("#trim-undo-history").addEventListener("click", () => {
+  const keepEntries = Number(
+    ($("#undo-history-keep") as HTMLInputElement).value,
+  );
+  if (!Number.isSafeInteger(keepEntries) || keepEntries < 1) {
+    $("#undo-history-error").textContent =
+      "Enter a positive whole number of entries to keep.";
+    return;
+  }
+  void applyUndoHistoryLimit(keepEntries);
+});
+$("#delete-undo-history").addEventListener("click", () => {
+  void applyUndoHistoryLimit(0);
 });
 $("#discard-project").addEventListener("click", () => {
   void runRevisionAction(() => discardProjectChanges(project.revision));
@@ -2132,11 +3162,18 @@ $("#zoom-reset").addEventListener("click", () => {
 });
 $("#view-side").addEventListener("click", () => {
   viewSide = viewSide === "component" ? "solder" : "component";
+  if (selectedId && objectSide(selectedId) !== viewSide) selectedId = undefined;
   render();
 });
+$("#fade-components").addEventListener("click", () => {
+  componentsFaded = !componentsFaded;
+  render();
+});
+$("#print-project").addEventListener("click", () => window.print());
 $("#active-net").addEventListener("change", (event) => {
   activeNetId = (event.target as HTMLSelectElement).value;
   wireDraft = undefined;
+  railDraft = undefined;
   render();
 });
 function addNet(state: "accepted" | "proposed"): void {
@@ -2158,15 +3195,60 @@ $("#add-net").addEventListener("click", () => addNet("accepted"));
 $("#propose-net").addEventListener("click", () => addNet("proposed"));
 $("#wire-mode").addEventListener("click", () => {
   resizeMode = false;
+  railMode = false;
+  railDraft = undefined;
   wireMode = true;
   wireDraft = undefined;
-  setStatus("Click the starting pin for the active net");
+  setStatus("Click a starting pin or rail node for the active net");
+  render();
+});
+$("#rail-mode").addEventListener("click", () => {
+  const net = activeNetId ? project.design.nets?.[activeNetId] : undefined;
+  if (!net || net.state !== "accepted") {
+    setStatus("Create and select an accepted net first", "error");
+    return;
+  }
+  resizeMode = false;
+  wireMode = false;
+  wireDraft = undefined;
+  railMode = true;
+  railDraft = undefined;
+  setStatus("Click the first half-grid rail node");
+  render();
+});
+$("#finish-rail").addEventListener("click", () => {
+  const netId = activeNetId;
+  if (!netId || !railDraft || railDraft.length < 2) {
+    setStatus("A rail needs at least two distinct nodes", "error");
+    return;
+  }
+  const vertices = railDraft;
+  railDraft = undefined;
+  railMode = false;
+  void mutate({
+    type: "add_rail",
+    rail: {
+      id: crypto.randomUUID(),
+      net_id: netId,
+      side: viewSide,
+      color: ($("#wire-color") as HTMLSelectElement).value as WireColor,
+      vertices,
+      locked: false,
+      notes: "",
+    },
+  });
+});
+$("#cancel-rail").addEventListener("click", () => {
+  railMode = false;
+  railDraft = undefined;
   render();
 });
 $("#resize-board").addEventListener("click", () => {
   resizeMode = !resizeMode;
   wireMode = false;
   wireDraft = undefined;
+  railMode = false;
+  railDraft = undefined;
   render();
   setStatus(
     resizeMode
@@ -2308,7 +3390,14 @@ async function initialize(): Promise<void> {
   library = loadedLibrary;
   comparison = project.head_commit
     ? await compareProjectRevisions(project.head_commit)
-    : { components: [], nets: [], wires: [], constraints: [], routes: [] };
+    : {
+        components: [],
+        nets: [],
+        wires: [],
+        rails: [],
+        constraints: [],
+        routes: [],
+      };
   projectReady = true;
   render();
   renderComponentDesigner();

@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{NetId, RoutePos, Side, TerminalRef, WireId};
+use crate::{NetId, RailId, RoutePos, Side, TerminalRef, WireId};
 
 #[derive(
     Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
@@ -44,6 +44,8 @@ pub struct RouteCostBreakdown {
     pub access: u64,
     pub side_transitions: u64,
     pub parallel_runs: u64,
+    #[serde(default)]
+    pub board_edges: u64,
     pub jumper_adjustment: i64,
     pub total: u64,
 }
@@ -93,6 +95,21 @@ pub struct Wire {
     pub notes: String,
 }
 
+/// A net-owned conductor which may start and end anywhere on the half-hole grid.
+/// Wires attach to explicit vertices through [`TerminalRef::RailNode`].
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Rail {
+    pub id: RailId,
+    pub net_id: NetId,
+    pub side: Side,
+    pub color: WireColor,
+    pub vertices: Vec<RoutePos>,
+    #[serde(default)]
+    pub locked: bool,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RouteMeasurements {
     pub length_mm: f64,
@@ -107,13 +124,7 @@ pub fn measure_route(vertices: &[RoutePos], pitch_mm: f64) -> RouteMeasurements 
         .map(|pair| {
             let dx = (pair[1].x2 - pair[0].x2).abs() as f64;
             let dy = (pair[1].y2 - pair[0].y2).abs() as f64;
-            if dx == 0.0 {
-                dy
-            } else if dy == 0.0 {
-                dx
-            } else {
-                dx * 2.0_f64.sqrt()
-            }
+            dx.hypot(dy)
         })
         .sum::<f64>();
     let bend_count = u32::try_from(
@@ -138,13 +149,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn measures_orthogonal_and_diagonal_segments_at_custom_pitch() {
+    fn measures_orthogonal_and_arbitrary_straight_segments_at_custom_pitch() {
         let horizontal = measure_route(&[RoutePos::new(0, 0), RoutePos::new(4, 0)], 2.0);
         assert_eq!(horizontal.length_mm, 4.0);
         let vertical = measure_route(&[RoutePos::new(0, 0), RoutePos::new(0, 6)], 2.0);
         assert_eq!(vertical.length_mm, 6.0);
         let diagonal = measure_route(&[RoutePos::new(0, 0), RoutePos::new(4, 4)], 2.0);
         assert!((diagonal.length_mm - 4.0 * 2.0_f64.sqrt()).abs() < 1e-10);
+        let arbitrary = measure_route(&[RoutePos::new(0, 0), RoutePos::new(6, 8)], 2.0);
+        assert!((arbitrary.length_mm - 10.0).abs() < 1e-10);
     }
 
     #[test]

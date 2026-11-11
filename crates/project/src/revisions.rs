@@ -123,6 +123,32 @@ impl ProjectDocument {
         Ok(self.history_result(summary))
     }
 
+    pub fn trim_undo_history(
+        &mut self,
+        expected_revision: DocumentRevision,
+        keep_entries: usize,
+    ) -> Result<HistoryActionResult, RevisionError> {
+        self.check_revision(expected_revision)?;
+        let undo_removed = self.undo_stack.len().saturating_sub(keep_entries);
+        let redo_removed = self.redo_stack.len().saturating_sub(keep_entries);
+        if undo_removed > 0 {
+            self.undo_stack.drain(..undo_removed);
+        }
+        if redo_removed > 0 {
+            self.redo_stack.drain(..redo_removed);
+        }
+        let removed = undo_removed + redo_removed;
+        if removed > 0 {
+            self.revision.0 += 1;
+        }
+        let summary = if keep_entries == 0 {
+            format!("Deleted {removed} undo history entries")
+        } else {
+            format!("Trimmed {removed} undo history entries; kept up to {keep_entries} per stack")
+        };
+        Ok(self.history_result(summary))
+    }
+
     pub fn discard_working_copy(
         &mut self,
         expected_revision: DocumentRevision,

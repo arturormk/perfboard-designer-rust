@@ -60,6 +60,15 @@
           <button id="zoom-in" aria-label="Zoom in">+</button>
           <button id="zoom-reset">Fit</button>
           <button id="view-side">View: component</button>
+          <button
+            id="fade-components"
+            type="button"
+            aria-pressed="false"
+            title="Make component bodies transparent so component-side wires are easier to see"
+          >
+            Fade components
+          </button>
+          <button id="print-project" type="button">Print build drawing</button>
         </section>
         <div class="workspace">
           <aside class="panel">
@@ -94,8 +103,9 @@
             <p class="tool-hint">
               Select an active net, then click <strong>Start wire</strong> and
               choose two pins. Unassigned endpoint pins are added to the net
-              automatically. Outside wire mode, clicking a pin toggles its net
-              assignment.
+              automatically. Select a wire and drag either endpoint handle onto
+              a pin to reconnect a loose end. Outside wire mode, clicking a pin
+              toggles its net assignment.
             </p>
             <h2>Manual wire</h2>
             <label class="stacked"
@@ -112,6 +122,18 @@
             >
             <button id="wire-mode">Start wire</button>
             <button id="cancel-wire">Cancel</button>
+            <h2>Rail</h2>
+            <p class="tool-hint">
+              Start a rail, click two or more half-grid points, then finish it.
+              Every clicked point is a connection node for wires on the active
+              net.
+            </p>
+            <button id="rail-mode">Start rail</button>
+            <button id="finish-rail">Finish rail</button>
+            <button id="cancel-rail">Cancel rail</button>
+            <div id="rail-list"></div>
+            <h3 class="section-subheading">Existing wires</h3>
+            <div id="wire-list"></div>
             <h2>Automatic route</h2>
             <p class="tool-hint">
               Suggest uses the first two pins of the active accepted net.
@@ -140,15 +162,47 @@
             <button id="save-jumper">Add/update jumper</button>
             <div id="jumper-list"></div>
           </aside>
-          <section class="design-panes" aria-label="Design comparison">
-            <article class="design-pane working-pane">
-              <h2>Working copy</h2>
+          <section class="design-panes" aria-label="Design views">
+            <div class="design-tabs" role="tablist" aria-label="Design view">
+              <button
+                id="working-copy-tab"
+                class="design-tab active"
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-controls="working-copy-pane"
+              >
+                Working copy
+              </button>
+              <button
+                id="committed-tab"
+                class="design-tab"
+                type="button"
+                role="tab"
+                aria-selected="false"
+                aria-controls="committed-pane"
+                tabindex="-1"
+              >
+                Committed
+              </button>
+            </div>
+            <article
+              class="design-pane working-pane"
+              id="working-copy-pane"
+              role="tabpanel"
+              aria-labelledby="working-copy-tab"
+            >
               <div id="canvas" aria-label="Working-copy board editor">
                 <div class="empty">Loading board…</div>
               </div>
             </article>
-            <article class="design-pane committed-pane" id="committed-pane">
-              <h2>Committed</h2>
+            <article
+              class="design-pane committed-pane"
+              id="committed-pane"
+              role="tabpanel"
+              aria-labelledby="committed-tab"
+              hidden
+            >
               <div
                 id="committed-canvas"
                 aria-label="Committed board view"
@@ -189,6 +243,10 @@
             <h2>Changes</h2>
             <div id="semantic-diff"></div>
             <h2>Operations</h2>
+            <p id="undo-history-summary" class="tool-hint"></p>
+            <button id="manage-undo-history" type="button">
+              Manage undo history…
+            </button>
             <div id="operation-history"></div>
           </aside>
         </div>
@@ -205,6 +263,33 @@
           <button id="save-component" type="button" disabled>Save</button>
           <button id="undo-component" type="button" disabled>Undo</button>
           <button id="redo-component" type="button" disabled>Redo</button>
+          <button
+            id="resize-component-body"
+            type="button"
+            aria-pressed="false"
+            title="Drag body edges and corners in half-hole increments"
+            disabled
+          >
+            Resize body
+          </button>
+          <button
+            id="resize-component-keepouts"
+            type="button"
+            aria-pressed="false"
+            title="Drag keepout edges and corners between holes"
+            disabled
+          >
+            Resize keepouts
+          </button>
+          <button
+            id="resize-component-access"
+            type="button"
+            aria-pressed="false"
+            title="Drag access-region edges and corners between holes"
+            disabled
+          >
+            Resize access
+          </button>
           <label
             >Pin labels
             <select id="component-label-mode">
@@ -308,6 +393,13 @@
                 Apply keepouts
               </button>
               <label class="stacked"
+                >Wire keepouts (JSON)
+                <textarea id="draft-wire-keepouts" spellcheck="false"></textarea>
+              </label>
+              <button id="apply-draft-wire-keepouts" type="button">
+                Apply wire keepouts
+              </button>
+              <label class="stacked"
                 >Access regions (JSON)
                 <textarea id="draft-access" spellcheck="false"></textarea>
               </label>
@@ -321,6 +413,10 @@
             <label class="overlay-toggle"
               ><input id="show-component-keepouts" type="checkbox" checked />
               Keepouts</label
+            >
+            <label class="overlay-toggle"
+              ><input id="show-component-wire-keepouts" type="checkbox" checked />
+              Wire keepouts</label
             >
             <label class="overlay-toggle"
               ><input id="show-component-access" type="checkbox" checked />
@@ -433,7 +529,35 @@
           </div>
         </form>
       </dialog>
+      <dialog id="undo-history-dialog" aria-labelledby="undo-history-title">
+        <h2 id="undo-history-title">Manage undo history</h2>
+        <p id="undo-history-size" class="history-size-warning" role="alert"></p>
+        <p class="dialog-description">
+          Undo snapshots can make project files very large. Trimming keeps the
+          newest operations; deleting removes all undo and redo entries. The
+          current design and commits are not changed.
+        </p>
+        <label class="stacked"
+          >Entries to keep in each stack
+          <input
+            id="undo-history-keep"
+            type="number"
+            min="1"
+            step="1"
+            value="25"
+          />
+        </label>
+        <p id="undo-history-error" class="form-error" role="alert"></p>
+        <div class="dialog-actions history-dialog-actions">
+          <button id="cancel-undo-history" type="button">Cancel</button>
+          <button id="delete-undo-history" type="button" class="danger">
+            Delete all
+          </button>
+          <button id="trim-undo-history" type="button">Trim history</button>
+        </div>
+      </dialog>
     </main>
+    <section id="print-sheet" aria-label="Printable build drawing"></section>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

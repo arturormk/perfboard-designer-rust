@@ -60,6 +60,9 @@ then click component pins to assign them. Manual wire mode connects assigned
 pins with half-grid bend points. Existing bends can be edited numerically or
 removed from the wire inspector. The component/solder view toggle mirrors only
 presentation geometry, so all saved and edited coordinates remain canonical.
+Rails are net-owned conductors that do not need to terminate at component pins.
+Create a rail by clicking two or more half-grid nodes; wires can start or end at
+any of those explicit nodes when the rail and active net match.
 
 Manual edits may temporarily leave a component out of bounds, overlapping, or
 blocking a required access region. The editor preserves the edit and reports

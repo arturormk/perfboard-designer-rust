@@ -473,7 +473,10 @@ More complicated electronic considerations should be presented as suggestions or
 
 This applies to both hand-cut stock wire and preformed jumper wires.
 
-The application does not need to support bare-wire traces or solder-bridge routing in version 1.
+General routes use insulated wire. A bridge is the one supported bare-copper
+exception: a straight link between two adjacent solder points. Bridges are
+placed after wires and components, reserve no holes, and ignore component
+keepouts.
 
 Users may ultimately choose:
 
@@ -557,13 +560,13 @@ Users and LLMs can override automatically generated routes.
 
 ### 8.2 Allowed geometry
 
-Automatically generated routes may use eight directions:
+Automatically generated routes use four directions:
 
 - Horizontal.
 - Vertical.
-- The four 45° diagonals.
 
-Thus changes in direction are normally 45°, 90°, or, when unavoidable, larger turns composed from those directions.
+Changes in direction are 90°. A wire may instead be a single straight run
+between its terminals, at any angle, without intermediate bends.
 
 Avoid arbitrary precision angles and tiny corrective bends.
 
@@ -595,13 +598,7 @@ Automatic routing should avoid such violations where reasonably possible.
 
 ### 8.4 Grid-aware routing
 
-Because perfboard holes normally follow a 2.54 mm grid, orthogonal routes should preferentially align with convenient grid positions.
-
-45° diagonal runs have lengths of:
-
-```text
-length = steps * pitch * sqrt(2)
-```
+Because perfboard holes normally follow a 2.54 mm grid, orthogonal routes should align with convenient grid positions.
 
 The router must calculate actual geometric length, not simply count grid units.
 

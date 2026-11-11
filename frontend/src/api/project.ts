@@ -32,6 +32,7 @@ export interface AccessRegion extends LocalRect {
 }
 export interface ComponentDefinition {
   schema_version: number;
+  kind?: "standard" | "bridge";
   id: string;
   definition_version: string;
   name: string;
@@ -43,6 +44,7 @@ export interface ComponentDefinition {
   pins: PinDefinition[];
   occupied_holes?: HolePos[];
   keepouts?: LocalRect[];
+  wire_keepouts?: LocalRect[];
   access?: AccessRegion[];
   documentation?: string;
 }
@@ -79,6 +81,13 @@ export interface ComponentDraftSnapshot {
   can_redo: boolean;
   diagnostics: string[];
 }
+export interface HistoryActionResult {
+  revision: number;
+  summary: string;
+  can_undo: boolean;
+  can_redo: boolean;
+  dirty: boolean;
+}
 export type ComponentDraftOperation =
   | {
       type: "set_metadata";
@@ -95,6 +104,7 @@ export type ComponentDraftOperation =
   | { type: "reorder_pin"; id: string; index: number }
   | { type: "set_occupied_holes"; holes: HolePos[] }
   | { type: "set_keepouts"; keepouts: LocalRect[] }
+  | { type: "set_wire_keepouts"; keepouts: LocalRect[] }
   | { type: "set_access_regions"; access: AccessRegion[] }
   | { type: "set_documentation"; documentation: string };
 export interface ComponentDraftSaveResult {
@@ -118,7 +128,12 @@ export interface PinRef {
 }
 export type TerminalRef =
   | { kind: "pin"; component_id: string; pin_id: string }
-  | { kind: "junction"; junction_id: string };
+  | { kind: "junction"; junction_id: string }
+  | {
+      kind: "rail_node";
+      rail_id: string;
+      position: { x2: number; y2: number };
+    };
 export interface ElectricalNet {
   id: string;
   name: string;
@@ -140,6 +155,15 @@ export interface Wire {
   net_id: string;
   start: TerminalRef;
   end: TerminalRef;
+  side: Side;
+  color: WireColor;
+  vertices: Array<{ x2: number; y2: number }>;
+  locked?: boolean;
+  notes?: string;
+}
+export interface Rail {
+  id: string;
+  net_id: string;
   side: Side;
   color: WireColor;
   vertices: Array<{ x2: number; y2: number }>;
@@ -198,6 +222,7 @@ export interface RouteProposal {
     access: number;
     side_transitions: number;
     parallel_runs: number;
+    board_edges: number;
     jumper_adjustment: number;
     total: number;
   };
@@ -231,6 +256,7 @@ export interface ProjectDocument {
     components?: Record<string, ComponentInstance>;
     nets?: Record<string, ElectricalNet>;
     wires?: Record<string, Wire>;
+    rails?: Record<string, Rail>;
     constraints?: Record<string, Constraint>;
     jumper_inventory?: Record<string, JumperInventoryEntry>;
     crossing_choices?: Record<
@@ -284,6 +310,7 @@ export interface SemanticDiff {
   components: DiffEntry[];
   nets: DiffEntry[];
   wires: DiffEntry[];
+  rails: DiffEntry[];
   constraints: DiffEntry[];
   routes: DiffEntry[];
 }
@@ -300,6 +327,11 @@ export type OperationPayload =
       type: "add_component";
       definition: ComponentDefinition;
       instance: ComponentInstance;
+    }
+  | {
+      type: "update_component_metadata";
+      instance_id: string;
+      definition: ComponentDefinition;
     }
   | { type: "remove_component"; instance_id: string }
   | { type: "move_component"; instance_id: string; position: HolePos }
@@ -318,11 +350,24 @@ export type OperationPayload =
   | { type: "accept_net_proposal"; net_id: string }
   | { type: "reject_net_proposal"; net_id: string }
   | { type: "add_wire"; wire: Wire }
+  | { type: "add_rail"; rail: Rail }
+  | { type: "remove_rail"; rail_id: string }
+  | {
+      type: "modify_rail_path";
+      rail_id: string;
+      vertices: Array<{ x2: number; y2: number }>;
+    }
   | { type: "remove_wire"; wire_id: string }
   | {
       type: "modify_wire_path";
       wire_id: string;
       vertices: Array<{ x2: number; y2: number }>;
+    }
+  | {
+      type: "reconnect_wire_endpoint";
+      wire_id: string;
+      endpoint: "start" | "end";
+      terminal: TerminalRef;
     }
   | { type: "set_wire_color"; wire_id: string; color: WireColor }
   | { type: "set_wire_side"; wire_id: string; side: Side }
@@ -430,6 +475,12 @@ export function undoProject(expectedRevision: number): Promise<void> {
 }
 export function redoProject(expectedRevision: number): Promise<void> {
   return invoke("redo_project", { expectedRevision });
+}
+export function trimProjectUndoHistory(
+  expectedRevision: number,
+  keepEntries: number,
+): Promise<HistoryActionResult> {
+  return invoke("trim_project_undo_history", { expectedRevision, keepEntries });
 }
 export function discardProjectChanges(expectedRevision: number): Promise<void> {
   return invoke("discard_project_changes", { expectedRevision });

@@ -12,6 +12,7 @@
 .env
 .env.*
 !.env.example
+__stuff
 
 # Editors and operating systems
 .idea/
@@ -23,3 +24,4 @@ Thumbs.db
 
 # Alternate Git metadata used only while the workspace's .git mount is read-only
 /.git-local/
+

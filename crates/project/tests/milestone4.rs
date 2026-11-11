@@ -8,8 +8,8 @@ use perfboard_core::{
 };
 use perfboard_project::{
     Board, OperationError, OperationOrigin, OperationPayload, OperationRequest, ProjectDocument,
-    RouteError, RouteRequest, RoutingCostConfig, apply_operation, evaluate_route, suggest_route,
-    to_snapshot_json,
+    RouteError, RouteRequest, RoutingCostConfig, WireEndpoint, apply_operation, evaluate_route,
+    suggest_route, to_snapshot_json,
 };
 
 fn definition() -> ComponentDefinition {
@@ -20,7 +20,7 @@ fn definition() -> ComponentDefinition {
 
 fn resistor_definition() -> ComponentDefinition {
     ComponentDefinition::from_toml(
-        "schema_version=1\nid='test.resistor'\ndefinition_version='1'\nname='Resistor'\nallowed_rotations=['deg0']\noccupied_holes=[{x=1,y=0},{x=2,y=0},{x=3,y=0}]\n[body]\nx=1.27\ny=-1.27\nwidth=7.62\nheight=2.54\n[[pins]]\nid='a'\nnumber='1'\nname='A'\nx=0\ny=0\n[[pins]]\nid='b'\nnumber='2'\nname='B'\nx=4\ny=0\n[[keepouts]]\nlabel='body'\nmin={x=1,y=0}\nmax={x=3,y=0}",
+        "schema_version=1\nid='test.resistor'\ndefinition_version='1'\nname='Resistor'\nallowed_rotations=['deg0']\noccupied_holes=[{x=1,y=0},{x=2,y=0},{x=3,y=0}]\n[body]\nx=1.27\ny=-1.27\nwidth=7.62\nheight=2.54\n[[pins]]\nid='a'\nnumber='1'\nname='A'\nx=0\ny=0\n[[pins]]\nid='b'\nnumber='2'\nname='B'\nx=4\ny=0\n[[keepouts]]\nlabel='body'\nmin={x=1,y=0}\nmax={x=3,y=0}\n[[wire_keepouts]]\nlabel='body'\nmin={x=1,y=0}\nmax={x=3,y=0}",
     )
     .unwrap()
 }
@@ -110,6 +110,89 @@ fn request(net_id: NetId, terminals: &[TerminalRef]) -> RouteRequest {
         preferred_side: Some(Side::Solder),
         replace_wire_id: None,
     }
+}
+
+#[test]
+fn reconnecting_a_wire_endpoint_repairs_its_route_and_net_assignments() {
+    let (mut document, ids) = fixture(&[("a", 1, 1), ("b", 3, 1), ("c", 5, 1)]);
+    let (net_id, _) = routed_net(&mut document, &ids, &["a", "b"]);
+    let start = TerminalRef::Pin {
+        component_id: ids["a"],
+        pin_id: "p".into(),
+    };
+    let end = TerminalRef::Pin {
+        component_id: ids["b"],
+        pin_id: "p".into(),
+    };
+    let wire_id = WireId::new();
+    apply(
+        &mut document,
+        OperationPayload::AddWire {
+            wire: Wire {
+                id: wire_id,
+                net_id,
+                start,
+                end: end.clone(),
+                side: Side::Solder,
+                color: WireColor::Green,
+                vertices: vec![RoutePos::new(2, 2), RoutePos::new(6, 2)],
+                locked: false,
+                notes: String::new(),
+            },
+        },
+    );
+
+    apply(
+        &mut document,
+        OperationPayload::MoveComponent {
+            instance_id: ids["b"],
+            position: HolePos::new(3, 3),
+        },
+    );
+    assert_eq!(
+        document.design.wires[&wire_id].vertices[1],
+        RoutePos::new(6, 2)
+    );
+
+    apply(
+        &mut document,
+        OperationPayload::ReconnectWireEndpoint {
+            wire_id,
+            endpoint: WireEndpoint::End,
+            terminal: end,
+        },
+    );
+    assert_eq!(
+        document.design.wires[&wire_id].vertices[1],
+        RoutePos::new(6, 6)
+    );
+
+    let replacement = TerminalRef::Pin {
+        component_id: ids["c"],
+        pin_id: "p".into(),
+    };
+    apply(
+        &mut document,
+        OperationPayload::ReconnectWireEndpoint {
+            wire_id,
+            endpoint: WireEndpoint::End,
+            terminal: replacement.clone(),
+        },
+    );
+    let net = &document.design.nets[&net_id];
+    assert!(net.pins.contains(&PinRef {
+        component_id: ids["c"],
+        pin_id: "p".into(),
+    }));
+    assert!(!net.pins.contains(&PinRef {
+        component_id: ids["b"],
+        pin_id: "p".into(),
+    }));
+    assert_eq!(document.design.wires[&wire_id].end, replacement);
+    assert_eq!(
+        document.design.wires[&wire_id].vertices[1],
+        RoutePos::new(10, 2)
+    );
 }
 
 fn required_reserved(min: HolePos, max: HolePos) -> Constraint {
@@ -203,19 +286,42 @@ fn identical_state_and_config_produce_byte_equivalent_obstacle_avoiding_routes()
 }
 
 #[test]
-fn router_uses_diagonal_moves_when_they_are_clear() {
+fn router_uses_only_orthogonal_moves() {
     let (mut document, ids) = fixture(&[("a", 1, 1), ("b", 7, 7)]);
     let (net_id, terminals) = routed_net(&mut document, &ids, &["a", "b"]);
-    let config = RoutingCostConfig::default();
-    assert!(config.diagonal_step > config.orthogonal_step);
-    assert!(config.diagonal_step < config.orthogonal_step * 2);
-    let proposal = suggest_route(&document.design, &request(net_id, &terminals), &config).unwrap();
-    assert_eq!(proposal.vertices.len(), 2);
-    let endpoints: BTreeSet<_> = proposal.vertices.into_iter().collect();
-    assert_eq!(
-        endpoints,
-        BTreeSet::from([RoutePos::new(2, 2), RoutePos::new(14, 14)])
+    let proposal = suggest_route(
+        &document.design,
+        &request(net_id, &terminals),
+        &RoutingCostConfig::default(),
+    )
+    .unwrap();
+    assert!(
+        proposal
+            .vertices
+            .windows(2)
+            .all(|pair| { pair[0].x2 == pair[1].x2 || pair[0].y2 == pair[1].y2 })
     );
+}
+
+#[test]
+fn router_avoids_an_equally_short_run_along_the_board_edge() {
+    let (mut document, ids) = fixture(&[("start", 1, 2), ("blocker", 1, 4), ("end", 1, 6)]);
+    let (net_id, terminals) = routed_net(&mut document, &ids, &["start", "end"]);
+    let proposal = suggest_route(
+        &document.design,
+        &request(net_id, &terminals),
+        &RoutingCostConfig::default(),
+    )
+    .unwrap();
+    let max_x = i64::from(document.design.board.size.intervals_x()) * 2;
+    let max_y = i64::from(document.design.board.size.intervals_y()) * 2;
+
+    assert!(
+        proposal.vertices.iter().all(|point| {
+            point.x2 != 0 && point.y2 != 0 && point.x2 != max_x && point.y2 != max_y
+        })
+    );
+    assert_eq!(proposal.cost.board_edges, 0);
 }
 
 #[test]
@@ -323,6 +429,53 @@ fn solder_side_routes_may_pass_beneath_a_component_body_but_not_its_pins() {
             RoutePos::new(pair[0].x2 + dx * step, pair[0].y2 + dy * step) == body_center
         })
     }));
+}
+
+#[test]
+fn component_side_routes_may_pass_beneath_an_elevated_body() {
+    let (mut document, ids) = fixture(&[("top", 5, 1), ("bottom", 5, 7)]);
+    let mut elevated = resistor_definition();
+    elevated.id = "test.elevated-module".into();
+    elevated.name = "Elevated module".into();
+    elevated.occupied_holes.clear();
+    elevated.wire_keepouts.clear();
+    apply(
+        &mut document,
+        OperationPayload::AddComponent {
+            definition: elevated.clone(),
+            instance: ComponentInstance {
+                id: ComponentInstanceId::new(),
+                definition_id: elevated.id,
+                name: "U1".into(),
+                position: HolePos::new(3, 4),
+                rotation: Rotation::Deg0,
+                properties: BTreeMap::new(),
+                notes: String::new(),
+            },
+        },
+    );
+    let (net_id, terminals) = routed_net(&mut document, &ids, &["top", "bottom"]);
+
+    let route = suggest_route(
+        &document.design,
+        &RouteRequest {
+            preferred_side: Some(Side::Component),
+            ..request(net_id, &terminals)
+        },
+        &RoutingCostConfig::default(),
+    )
+    .unwrap();
+
+    assert_eq!(route.vertices.len(), 2);
+    assert!(route.vertices.iter().all(|point| point.x2 == 10));
+    assert_eq!(
+        route
+            .vertices
+            .iter()
+            .map(|point| point.y2)
+            .collect::<BTreeSet<_>>(),
+        BTreeSet::from([2, 14])
+    );
 }
 
 #[test]

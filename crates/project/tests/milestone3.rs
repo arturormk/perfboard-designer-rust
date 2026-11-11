@@ -94,6 +94,35 @@ fn undo_redo_and_save_reopen_preserve_working_history() {
 }
 
 #[test]
+fn undo_history_can_be_trimmed_or_deleted_without_changing_the_design() {
+    let mut session = ProjectSession::new(document());
+    for (name, x) in [("first", 1), ("second", 3), ("third", 5)] {
+        let revision = session.document().revision;
+        session
+            .apply(request(
+                revision,
+                add_payload(ComponentInstanceId::new(), name, x),
+            ))
+            .unwrap();
+    }
+    session.undo(DocumentRevision(3)).unwrap();
+    let design = session.document().design.clone();
+
+    let (trimmed, _) = session.trim_undo_history(DocumentRevision(4), 1).unwrap();
+    assert_eq!(trimmed.revision, DocumentRevision(5));
+    assert_eq!(session.document().undo_stack.len(), 1);
+    assert_eq!(session.document().redo_stack.len(), 1);
+    assert_eq!(session.document().design, design);
+
+    let (deleted, _) = session.trim_undo_history(DocumentRevision(5), 0).unwrap();
+    assert_eq!(deleted.revision, DocumentRevision(6));
+    assert!(session.document().undo_stack.is_empty());
+    assert!(session.document().redo_stack.is_empty());
+    assert_eq!(session.document().design, design);
+    assert!(session.document().is_dirty());
+}
+
+#[test]
 fn restore_keeps_descendants_and_creates_a_dirty_working_copy() {
     let mut session = ProjectSession::new(document());
     let first_id = ComponentInstanceId::new();

@@ -42,6 +42,9 @@ pub enum ComponentDraftOperation {
     SetKeepouts {
         keepouts: Vec<Keepout>,
     },
+    SetWireKeepouts {
+        keepouts: Vec<Keepout>,
+    },
     SetAccessRegions {
         access: Vec<AccessRegion>,
     },
@@ -207,6 +210,9 @@ impl ComponentDraft {
             }
             ComponentDraftOperation::SetKeepouts { keepouts } => {
                 next.definition.keepouts = keepouts;
+            }
+            ComponentDraftOperation::SetWireKeepouts { keepouts } => {
+                next.definition.wire_keepouts = keepouts;
             }
             ComponentDraftOperation::SetAccessRegions { access } => next.definition.access = access,
             ComponentDraftOperation::SetDocumentation { documentation } => {

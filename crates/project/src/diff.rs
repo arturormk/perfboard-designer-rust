@@ -28,6 +28,7 @@ pub struct SemanticDiff {
     pub components: Vec<DiffEntry>,
     pub nets: Vec<DiffEntry>,
     pub wires: Vec<DiffEntry>,
+    pub rails: Vec<DiffEntry>,
     pub constraints: Vec<DiffEntry>,
     pub routes: Vec<DiffEntry>,
 }
@@ -139,6 +140,38 @@ impl SemanticDiff {
             if let Some((kind, summary)) = entry {
                 result.wires.push(DiffEntry {
                     object_type: "wire".into(),
+                    object_id: id.to_string(),
+                    kind,
+                    summary,
+                });
+            }
+        }
+        let rail_ids: BTreeSet<_> = before
+            .rails
+            .keys()
+            .chain(after.rails.keys())
+            .copied()
+            .collect();
+        for id in rail_ids {
+            let old = before.rails.get(&id);
+            let new = after.rails.get(&id);
+            let entry = match (old, new) {
+                (None, Some(_)) => Some((ChangeKind::Added, format!("Added rail {id}"))),
+                (Some(_), None) => Some((ChangeKind::Removed, format!("Removed rail {id}"))),
+                (Some(old), Some(new)) if old.vertices != new.vertices || old.side != new.side => {
+                    Some((
+                        ChangeKind::RouteChanged,
+                        format!("Changed route for rail {id}"),
+                    ))
+                }
+                (Some(_), Some(_)) if old != new => {
+                    Some((ChangeKind::Modified, format!("Modified rail {id}")))
+                }
+                _ => None,
+            };
+            if let Some((kind, summary)) = entry {
+                result.rails.push(DiffEntry {
+                    object_type: "rail".into(),
                     object_id: id.to_string(),
                     kind,
                     summary,

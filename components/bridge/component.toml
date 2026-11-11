@@ -1,0 +1,32 @@
+schema_version = 1
+kind = "bridge"
+id = "dev.perfboard.bridge"
+definition_version = "1.0.0"
+name = "Bridge"
+description = "Bare copper bridge between two adjacent solder points"
+origin_x = 0
+origin_y = 0
+allowed_rotations = ["deg0", "deg90", "deg180", "deg270"]
+documentation = ""
+
+[body]
+x = 0.0
+y = -0.4
+width = 2.54
+height = 0.8
+
+[[pins]]
+id = "a"
+number = "A"
+name = "Bridge end A"
+x = 0
+y = 0
+functions = ["passive"]
+
+[[pins]]
+id = "b"
+number = "B"
+name = "Bridge end B"
+x = 1
+y = 0
+functions = ["passive"]

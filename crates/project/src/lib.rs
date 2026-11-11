@@ -16,7 +16,7 @@ pub use document::{
 };
 pub use operations::{
     OperationError, OperationOrigin, OperationPayload, OperationRequest, OperationResult,
-    apply_operation,
+    WireEndpoint, apply_operation,
 };
 pub use persistence::{PersistenceError, load_project, save_project_atomic};
 pub use rendering::render_design_svg;

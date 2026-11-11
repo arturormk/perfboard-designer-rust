@@ -8,6 +8,14 @@ use crate::Rotation;
 
 pub const COMPONENT_SCHEMA_VERSION: u32 = 1;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ComponentKind {
+    #[default]
+    Standard,
+    Bridge,
+}
+
 #[derive(
     Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
 )]
@@ -82,6 +90,8 @@ const fn default_required() -> bool {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentDefinition {
     pub schema_version: u32,
+    #[serde(default, skip_serializing_if = "is_standard_component")]
+    pub kind: ComponentKind,
     pub id: String,
     pub definition_version: String,
     pub name: String,
@@ -98,6 +108,10 @@ pub struct ComponentDefinition {
     pub occupied_holes: Vec<LocalPos>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keepouts: Vec<Keepout>,
+    /// Areas that component-side wires must not cross. Unlike `keepouts`,
+    /// these do not constrain placement of other components.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub wire_keepouts: Vec<Keepout>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub access: Vec<AccessRegion>,
     #[serde(default)]
@@ -128,6 +142,15 @@ pub enum ComponentDefinitionError {
     BlankPinName(String),
     #[error("invalid rectangle in {kind} `{label}`")]
     InvalidRectangle { kind: &'static str, label: String },
+    #[error("a bridge must have exactly two pins in contiguous holes")]
+    InvalidBridgePins,
+    #[error("a bridge cannot define occupied holes, keepouts, wire keepouts, or access regions")]
+    InvalidBridgeExclusions,
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)] // Serde's skip predicate receives a reference.
+const fn is_standard_component(kind: &ComponentKind) -> bool {
+    matches!(kind, ComponentKind::Standard)
 }
 
 /// Parses a component library and rejects duplicate stable definition IDs.
@@ -216,8 +239,28 @@ impl ComponentDefinition {
         for keepout in &self.keepouts {
             validate_rect(keepout.min, keepout.max, "keepout", &keepout.label)?;
         }
+        for keepout in &self.wire_keepouts {
+            validate_rect(keepout.min, keepout.max, "wire keepout", &keepout.label)?;
+        }
         for access in &self.access {
             validate_rect(access.min, access.max, "access", &access.label)?;
+        }
+        if self.kind == ComponentKind::Bridge {
+            if !self.occupied_holes.is_empty()
+                || !self.keepouts.is_empty()
+                || !self.wire_keepouts.is_empty()
+                || !self.access.is_empty()
+            {
+                return Err(ComponentDefinitionError::InvalidBridgeExclusions);
+            }
+            if self.pins.len() != 2 {
+                return Err(ComponentDefinitionError::InvalidBridgePins);
+            }
+            let dx = u64::from(self.pins[0].x.abs_diff(self.pins[1].x));
+            let dy = u64::from(self.pins[0].y.abs_diff(self.pins[1].y));
+            if dx + dy != 1 {
+                return Err(ComponentDefinitionError::InvalidBridgePins);
+            }
         }
         Ok(())
     }
@@ -254,6 +297,7 @@ mod tests {
     fn definition() -> ComponentDefinition {
         ComponentDefinition {
             schema_version: 1,
+            kind: ComponentKind::Standard,
             id: "dev.example.part".into(),
             definition_version: "1.0.0".into(),
             name: "Part".into(),
@@ -278,6 +322,7 @@ mod tests {
             }],
             occupied_holes: vec![],
             keepouts: vec![],
+            wire_keepouts: vec![],
             access: vec![],
             documentation: String::new(),
         }
@@ -321,5 +366,44 @@ mod tests {
             parse_component_library([source.as_str(), source.as_str()]),
             Err(ComponentDefinitionError::DuplicateDefinitionId(_))
         ));
+    }
+
+    #[test]
+    fn bridge_requires_exactly_two_adjacent_pins() {
+        let mut value = definition();
+        value.kind = ComponentKind::Bridge;
+        assert_eq!(
+            value.validate(),
+            Err(ComponentDefinitionError::InvalidBridgePins)
+        );
+
+        let mut second = value.pins[0].clone();
+        second.id = "2".into();
+        second.number = "2".into();
+        second.x = 2;
+        value.pins.push(second);
+        assert_eq!(
+            value.validate(),
+            Err(ComponentDefinitionError::InvalidBridgePins)
+        );
+
+        value.pins[1].x = 1;
+        assert_eq!(value.validate(), Ok(()));
+    }
+
+    #[test]
+    fn bridge_rejects_exclusion_geometry() {
+        let mut value = definition();
+        value.kind = ComponentKind::Bridge;
+        let mut second = value.pins[0].clone();
+        second.id = "2".into();
+        second.number = "2".into();
+        second.x = 1;
+        value.pins.push(second);
+        value.occupied_holes.push(LocalPos::new(0, 0));
+        assert_eq!(
+            value.validate(),
+            Err(ComponentDefinitionError::InvalidBridgeExclusions)
+        );
     }
 }

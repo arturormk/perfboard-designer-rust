@@ -1,6 +1,8 @@
 use std::fmt::Write;
 
-use perfboard_core::{ComponentDefinition, ComponentInstance, Rotation, Side, WireColor};
+use perfboard_core::{
+    ComponentDefinition, ComponentInstance, ComponentKind, Rotation, Side, WireColor,
+};
 
 use crate::ProjectDocument;
 
@@ -14,7 +16,7 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
     let height = f64::from(board.size.intervals_y()) + padding * 2.0;
     let _ = write!(
         svg,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
         escape(&board.name),
         side
     );
@@ -45,9 +47,24 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
         let opposite = if wire.side == side { "" } else { " opposite" };
         let _ = write!(
             svg,
-            r#"<polyline class="wire{opposite}" data-wire-id="{}" points="{points}" stroke="{}"/>"#,
+            r#"<polyline class="wire-casing{opposite}" points="{points}"/><polyline class="wire{opposite}" data-wire-id="{}" points="{points}" stroke="{}"/>"#,
             wire.id,
             escape(wire_color(&wire.color))
+        );
+    }
+    for rail in document.design.rails.values() {
+        let points = rail
+            .vertices
+            .iter()
+            .map(|point| format!("{},{}", half_grid(point.x2), half_grid(point.y2)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let opposite = if rail.side == side { "" } else { " opposite" };
+        let _ = write!(
+            svg,
+            r#"<polyline class="wire-casing{opposite}" points="{points}"/><polyline class="wire rail{opposite}" data-rail-id="{}" points="{points}" stroke="{}"/>"#,
+            rail.id,
+            escape(wire_color(&rail.color))
         );
     }
     for instance in document.design.components.values() {
@@ -102,15 +119,27 @@ fn render_component(
     };
     let _ = write!(
         svg,
-        r#"<g data-component-id="{}" transform="translate({} {}) rotate({degrees})"><rect class="component" x="{}" y="{}" width="{}" height="{}" rx=".3"/>"#,
-        instance.id,
-        instance.position.x,
-        instance.position.y,
-        definition.body.x / pitch,
-        definition.body.y / pitch,
-        definition.body.width / pitch,
-        definition.body.height / pitch,
+        r#"<g data-component-id="{}" transform="translate({} {}) rotate({degrees})">"#,
+        instance.id, instance.position.x, instance.position.y,
     );
+    if definition.kind == ComponentKind::Bridge {
+        let start = &definition.pins[0];
+        let end = &definition.pins[1];
+        let _ = write!(
+            svg,
+            r#"<line class="bridge" x1="{}" y1="{}" x2="{}" y2="{}"/>"#,
+            start.x, start.y, end.x, end.y,
+        );
+    } else {
+        let _ = write!(
+            svg,
+            r#"<rect class="component" x="{}" y="{}" width="{}" height="{}" rx=".3"/>"#,
+            definition.body.x / pitch,
+            definition.body.y / pitch,
+            definition.body.width / pitch,
+            definition.body.height / pitch,
+        );
+    }
     for pin in &definition.pins {
         let _ = write!(
             svg,
@@ -130,7 +159,7 @@ fn wire_color(color: &WireColor) -> &str {
         WireColor::Red => "red",
         WireColor::Black => "black",
         WireColor::Yellow => "yellow",
-        WireColor::White => "white",
+        WireColor::White => "#e6e6e6",
         WireColor::Blue => "blue",
         WireColor::Orange => "orange",
         WireColor::Other(value) => value,
@@ -174,5 +203,10 @@ mod tests {
             Board::new("board", BoardSize::new(3, 2).unwrap(), 2.54),
         );
         assert!(render_design_svg(&document, Side::Solder).contains("translate(2 0) scale(-1 1)"));
+    }
+
+    #[test]
+    fn white_wires_render_as_a_subtle_gray() {
+        assert_eq!(wire_color(&WireColor::White), "#e6e6e6");
     }
 }

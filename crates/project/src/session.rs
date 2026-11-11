@@ -157,6 +157,18 @@ impl ProjectSession {
         Ok((result.clone(), self.event("redo", result.summary.clone())))
     }
 
+    pub fn trim_undo_history(
+        &mut self,
+        expected: DocumentRevision,
+        keep_entries: usize,
+    ) -> Result<(HistoryActionResult, SessionChangeEvent), SessionError> {
+        let result = self.document.trim_undo_history(expected, keep_entries)?;
+        Ok((
+            result.clone(),
+            self.event("history_trimmed", result.summary.clone()),
+        ))
+    }
+
     pub fn discard(
         &mut self,
         expected: DocumentRevision,

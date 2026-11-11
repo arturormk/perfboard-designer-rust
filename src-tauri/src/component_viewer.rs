@@ -569,6 +569,12 @@ fn validation_diagnostic(error: &ComponentDefinitionError) -> ComponentLoadDiagn
             "component.invalid_rectangle",
             Some(format!("{kind}.{label}")),
         ),
+        ComponentDefinitionError::InvalidBridgePins => {
+            ("component.invalid_bridge_pins", Some("pins".into()))
+        }
+        ComponentDefinitionError::InvalidBridgeExclusions => {
+            ("component.invalid_bridge_exclusions", Some("kind".into()))
+        }
         ComponentDefinitionError::InvalidToml(_) => ("component.invalid_toml", None),
         ComponentDefinitionError::DuplicateDefinitionId(_) => {
             ("component.duplicate_definition_id", Some("id".into()))

@@ -67,8 +67,7 @@ function routeEstimate(
 ): number {
   const dx = Math.abs(first.position.x2 - second.position.x2);
   const dy = Math.abs(first.position.y2 - second.position.y2);
-  const diagonal = Math.min(dx, dy);
-  return diagonal * 15 + (Math.max(dx, dy) - diagonal) * 10;
+  return (dx + dy) * 10;
 }
 
 function minimumSpanningTree(nodes: PositionedTerminal[]): Edge[] {

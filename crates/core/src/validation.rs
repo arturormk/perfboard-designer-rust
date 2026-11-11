@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::{
     BoardFeatures, BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId,
-    Diagnostic, DiagnosticCode, DiagnosticSeverity, LocalPos, ObjectReference,
+    ComponentKind, Diagnostic, DiagnosticCode, DiagnosticSeverity, LocalPos, ObjectReference,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -77,7 +77,12 @@ pub fn validate_design_placements(
                     *id,
                 ));
             }
-            if let Some(other) = occupied.insert(point, *id) {
+            // A bridge is soldered onto existing pads after the other parts. Its
+            // endpoints therefore neither reserve holes nor conflict with parts
+            // already using those holes.
+            if definition.kind != ComponentKind::Bridge
+                && let Some(other) = occupied.insert(point, *id)
+            {
                 diagnostics.push(Diagnostic {
                     code: DiagnosticCode("placement.occupied_hole".into()),
                     severity: DiagnosticSeverity::Error,
@@ -223,5 +228,74 @@ fn diagnostic(
         severity,
         message,
         objects: vec![object(id)],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{HolePos, Rotation};
+    use std::collections::BTreeMap;
+
+    fn definition(source: &str) -> ComponentDefinition {
+        ComponentDefinition::from_toml(source).unwrap()
+    }
+
+    fn instance(definition_id: &str, x: u32, y: u32) -> ComponentInstance {
+        ComponentInstance {
+            id: ComponentInstanceId::new(),
+            definition_id: definition_id.into(),
+            name: definition_id.into(),
+            position: HolePos::new(x, y),
+            rotation: Rotation::Deg0,
+            properties: BTreeMap::new(),
+            notes: String::new(),
+        }
+    }
+
+    #[test]
+    fn bridge_can_share_component_holes_and_keepouts() {
+        let part = definition(
+            "schema_version=1\nid='part'\ndefinition_version='1'\nname='Part'\nallowed_rotations=['deg0']\n[body]\nx=0\ny=0\nwidth=5\nheight=2\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0\n[[keepouts]]\nmin={x=0,y=0}\nmax={x=1,y=0}",
+        );
+        let bridge = definition(
+            "schema_version=1\nkind='bridge'\nid='bridge'\ndefinition_version='1'\nname='Bridge'\nallowed_rotations=['deg0']\n[body]\nx=0\ny=-0.2\nwidth=2.54\nheight=0.4\n[[pins]]\nid='a'\nnumber='A'\nname='A'\nx=0\ny=0\n[[pins]]\nid='b'\nnumber='B'\nname='B'\nx=1\ny=0",
+        );
+        let part_instance = instance(&part.id, 1, 1);
+        let bridge_instance = instance(&bridge.id, 1, 1);
+        let definitions = BTreeMap::from([(part.id.clone(), part), (bridge.id.clone(), bridge)]);
+        let instances = BTreeMap::from([
+            (part_instance.id, part_instance),
+            (bridge_instance.id, bridge_instance),
+        ]);
+
+        let diagnostics = validate_design_placements(
+            BoardSize::new(4, 4).unwrap(),
+            &BoardFeatures::default(),
+            &definitions,
+            &instances,
+        );
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn bridge_endpoints_must_stay_on_the_board() {
+        let bridge = definition(
+            "schema_version=1\nkind='bridge'\nid='bridge'\ndefinition_version='1'\nname='Bridge'\nallowed_rotations=['deg0']\n[body]\nx=0\ny=-0.2\nwidth=2.54\nheight=0.4\n[[pins]]\nid='a'\nnumber='A'\nname='A'\nx=0\ny=0\n[[pins]]\nid='b'\nnumber='B'\nname='B'\nx=1\ny=0",
+        );
+        let bridge_instance = instance(&bridge.id, 1, 0);
+        let definitions = BTreeMap::from([(bridge.id.clone(), bridge)]);
+        let instances = BTreeMap::from([(bridge_instance.id, bridge_instance)]);
+        let diagnostics = validate_design_placements(
+            BoardSize::new(2, 2).unwrap(),
+            &BoardFeatures::default(),
+            &definitions,
+            &instances,
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.code.0 == "placement.out_of_bounds")
+        );
     }
 }

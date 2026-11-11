@@ -1,6 +1,6 @@
 schema_version = 1
 id = "dev.perfboard.nano-like"
-definition_version = "1.2.1"
+definition_version = "1.3.0"
 name = "Nano"
 description = "Generic 30-pin Nano-compatible controller module"
 origin_x = 0
@@ -17,7 +17,7 @@ documentation = ""
 x = -1.5
 y = -4.5
 width = 18.0
-height = 45.0
+height = 43.87
 
 [[pins]]
 id = "d13"
@@ -333,9 +333,31 @@ label = "Module body"
 
 [keepouts.min]
 x = 0
-y = 0
+y = -1
 
 [keepouts.max]
+x = 6
+y = 15
+
+[[wire_keepouts]]
+label = "Left Dupont header"
+
+[wire_keepouts.min]
+x = 0
+y = 0
+
+[wire_keepouts.max]
+x = 0
+y = 14
+
+[[wire_keepouts]]
+label = "Right Dupont header"
+
+[wire_keepouts.min]
+x = 6
+y = 0
+
+[wire_keepouts.max]
 x = 6
 y = 14
 

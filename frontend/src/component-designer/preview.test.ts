@@ -118,4 +118,57 @@ describe("component preview", () => {
     expect(svg).not.toContain("preview-occupied");
     expect(svg).not.toContain("preview-pin-label");
   });
+
+  it("previews a bridge as copper instead of a component body", () => {
+    const bridge: ComponentDefinition = {
+      ...fixture,
+      kind: "bridge",
+      pins: [
+        { id: "a", number: "A", name: "A", x: 0, y: 0 },
+        { id: "b", number: "B", name: "B", x: 1, y: 0 },
+      ],
+      occupied_holes: [],
+      keepouts: [],
+      access: [],
+    };
+    const svg = renderComponentPreviewSvg(bridge, options);
+    expect(svg).toContain(
+      '<path class="preview-bridge preview-bridge-span" d="M 0.4 0 L 0.6 0"/>',
+    );
+    expect(svg).toContain(
+      '<path class="preview-bridge preview-bridge-terminals" d="M 0 -0.36 Q 0.72 0 0 0.36 M 1 -0.36 Q 0.28 0 1 0.36"/>',
+    );
+    expect(svg).not.toContain('class="preview-pin-label"');
+    expect(svg).not.toContain('class="preview-body"');
+    expect(svg).not.toContain('class="preview-orientation"');
+  });
+
+  it("renders separate body and keepout resize controls on their snap boundaries", () => {
+    const body = renderComponentPreviewSvg(fixture, {
+      ...options,
+      resizeGeometry: "body",
+    });
+    expect(body).toContain('data-component-resize-controls="body"');
+    expect(body).toContain('data-component-resize-handle="bottom-right"');
+    expect(body).not.toContain('data-component-resize-controls="keepout"');
+
+    const keepout = renderComponentPreviewSvg(fixture, {
+      ...options,
+      resizeGeometry: "keepout",
+    });
+    expect(keepout).toContain(
+      'class="preview-keepout" x="-0.5" y="-0.5" width="3" height="4"',
+    );
+    expect(keepout).toContain('data-component-resize-controls="keepout"');
+    expect(keepout).not.toContain('data-component-resize-controls="body"');
+
+    const access = renderComponentPreviewSvg(fixture, {
+      ...options,
+      showAccess: false,
+      resizeGeometry: "access",
+    });
+    expect(access).toContain('class="preview-access"');
+    expect(access).toContain('data-component-resize-controls="access"');
+    expect(access).not.toContain('data-component-resize-controls="keepout"');
+  });
 });

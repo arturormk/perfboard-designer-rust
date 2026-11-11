@@ -19,6 +19,7 @@ every definition it uses; library changes never silently alter a project.
 
 ```toml
 schema_version = 1
+kind = "standard"
 id = "com.example.part.nano-like"
 definition_version = "1.0.0"
 name = "Nano-like controller"
@@ -46,6 +47,11 @@ label = "Module body"
 min = { x = 0, y = 0 }
 max = { x = 6, y = 14 }
 
+[[wire_keepouts]]
+label = "Left pin header"
+min = { x = 0, y = 0 }
+max = { x = 0, y = 14 }
+
 [[access]]
 label = "USB connector"
 min = { x = 1, y = -2 }
@@ -58,6 +64,11 @@ allow_board_overhang = true
 ## Contract
 
 - `schema_version` is required and initially equals `1`.
+- `kind` defaults to `standard`. The special `bridge` kind has exactly two pins
+  in orthogonally adjacent holes and may not declare `occupied_holes`,
+  `keepouts`, `wire_keepouts`, or `access` regions. Bridge endpoints must remain
+  on the board, but they may share component pin holes and ignore component
+  keepouts.
 - `id` is a stable library identifier; `definition_version` or a canonical
   content hash identifies the exact definition revision.
 - Body measurements use millimetres. Pin and mounting positions use signed
@@ -71,7 +82,10 @@ allow_board_overhang = true
   its pins. They block placement and component-side routing and cannot anchor a
   bend, but a solder-side wire may run straight beneath them. Only `pins`
   describe leads that physically obstruct a route through the board.
-  `keepouts` are inclusive local-grid rectangles. `access` tables are inclusive
+  `keepouts` are inclusive local-grid rectangles which constrain placement.
+  `wire_keepouts` use the same coordinates but constrain only component-side
+  wire routing, including half-grid route points between their grid bounds;
+  component bodies do not implicitly block wires. `access` tables are inclusive
   regions with a direction, label, required flag, and explicit board-overhang
   policy.
 - Unknown fields may be retained by migration tooling, but authoritative

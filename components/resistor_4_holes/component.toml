@@ -1,8 +1,8 @@
 schema_version = 1
-id = "dev.perfboard.resistor"
-definition_version = "1.0.1"
-name = "Resistor"
-description = "Generic axial resistor with a three-hole body and one terminal hole at each end"
+id = "dev.perfboard.resistor_4_holes"
+definition_version = "1.0.0"
+name = "1 Watt"
+description = "Generic 1 Watt axial resistor with a four-hole body and one terminal hole at each end"
 origin_x = 0
 origin_y = 0
 allowed_rotations = [
@@ -16,12 +16,13 @@ occupied_holes = [
     { x = 1, y = 0 },
     { x = 2, y = 0 },
     { x = 3, y = 0 },
+    { x = 4, y = 0 },
 ]
 
 [body]
 x = 1.27
 y = -1.27
-width = 7.62
+width = 10.16
 height = 2.54
 
 [[pins]]
@@ -36,7 +37,7 @@ functions = ["passive"]
 id = "terminal_2"
 number = "2"
 name = "Terminal 2"
-x = 4
+x = 5
 y = 0
 functions = ["passive"]
 
@@ -48,5 +49,10 @@ x = 1
 y = 0
 
 [keepouts.max]
-x = 3
+x = 4
 y = 0
+
+[[wire_keepouts]]
+label = "Resistor body"
+min = { x = 1, y = 0 }
+max = { x = 4, y = 0 }

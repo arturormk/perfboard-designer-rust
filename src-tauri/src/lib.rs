@@ -131,6 +131,7 @@ fn session_api_error(error: &SessionError) -> SessionApiError {
 
 fn bundled_component_library() -> Result<Vec<ComponentDefinition>, String> {
     parse_component_library([
+        include_str!("../../components/bridge/component.toml"),
         include_str!("../../components/arduino-nano-like/component.toml"),
         include_str!("../../components/rs485-breakout/component.toml"),
     ])
@@ -307,6 +308,7 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 .map_err(|message| SessionApiError::new("component.library_invalid", message)),
             SessionRequest::GetComponentDocumentation { definition_id } => {
                 let markdown = match definition_id.as_str() {
+                    "dev.perfboard.bridge" => include_str!("../../components/bridge/README.md"),
                     "dev.perfboard.nano-like" => {
                         include_str!("../../components/arduino-nano-like/README.md")
                     }
@@ -464,6 +466,27 @@ macro_rules! history_command {
 history_command!(undo_project, undo, "undo");
 history_command!(redo_project, redo, "redo");
 history_command!(discard_project_changes, discard, "discard");
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn trim_project_undo_history(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    expected_revision: DocumentRevision,
+    keep_entries: usize,
+) -> Result<HistoryActionResult, CommandError> {
+    let mut session = state.0.lock().map_err(|error| CommandError {
+        code: "session.lock_failed",
+        message: error.to_string(),
+        expected_revision: None,
+        actual_revision: None,
+    })?;
+    let (result, event) = session
+        .trim_undo_history(expected_revision, keep_entries)
+        .map_err(CommandError::from)?;
+    publish(&app, &event);
+    Ok(result)
+}
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
@@ -672,6 +695,7 @@ async fn new_component_draft(
     }
     let definition = ComponentDefinition {
         schema_version: perfboard_core::component::COMPONENT_SCHEMA_VERSION,
+        kind: perfboard_core::ComponentKind::Standard,
         id: "dev.example.new-component".into(),
         definition_version: "0.1.0".into(),
         name: "New component".into(),
@@ -688,6 +712,7 @@ async fn new_component_draft(
         pins: Vec::new(),
         occupied_holes: Vec::new(),
         keepouts: Vec::new(),
+        wire_keepouts: Vec::new(),
         access: Vec::new(),
         documentation: String::new(),
     };
@@ -968,6 +993,7 @@ pub fn run() {
             apply_project_transaction,
             undo_project,
             redo_project,
+            trim_project_undo_history,
             discard_project_changes,
             commit_project,
             restore_project_commit,
@@ -1008,7 +1034,7 @@ mod tests {
 
     #[test]
     fn bundled_component_library_is_valid() {
-        assert_eq!(bundled_component_library().unwrap().len(), 2);
+        assert_eq!(bundled_component_library().unwrap().len(), 3);
     }
 
     #[test]
@@ -1018,7 +1044,27 @@ mod tests {
         assert!(
             library
                 .iter()
-                .any(|definition| definition.id == "dev.perfboard.resistor")
+                .any(|definition| definition.id == "dev.perfboard.resistor_3_holes")
+        );
+        assert!(
+            library
+                .iter()
+                .any(|definition| definition.id == "dev.perfboard.resistor_4_holes")
+        );
+        assert!(
+            library
+                .iter()
+                .any(|definition| definition.id == "dev.perfboard.rj45-connector")
+        );
+        assert!(
+            library
+                .iter()
+                .any(|definition| definition.id == "dev.perfboard.dupont-jumper")
+        );
+        assert!(
+            library
+                .iter()
+                .any(|definition| definition.id == "dev.perfboard.bridge")
         );
     }
 }

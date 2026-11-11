@@ -27,13 +27,13 @@ pub struct RouteRequest {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RoutingCostConfig {
     pub orthogonal_step: u64,
-    pub diagonal_step: u64,
     pub bend: u64,
     pub cramped_bend: u64,
     pub crossing: u64,
     pub access: u64,
     pub side_transition: u64,
     pub parallel_run: u64,
+    pub board_edge_step: u64,
     pub exact_jumper_bonus: u64,
     pub approximate_jumper_bonus: u64,
     pub maximum_visited_states: usize,
@@ -43,16 +43,15 @@ impl Default for RoutingCostConfig {
     fn default() -> Self {
         Self {
             orthogonal_step: 10,
-            // Slightly above sqrt(2) times an orthogonal step: straight runs
-            // win close calls, while a useful diagonal remains much cheaper
-            // than taking two orthogonal steps.
-            diagonal_step: 15,
             bend: 25,
             cramped_bend: 80,
             crossing: 60,
             access: 40,
             side_transition: 100,
             parallel_run: 8,
+            // Edge holes remain usable, but long runs there are awkward to
+            // solder and easy to damage while trimming the board.
+            board_edge_step: 12,
             exact_jumper_bonus: 100,
             approximate_jumper_bonus: 30,
             maximum_visited_states: 250_000,
@@ -79,16 +78,8 @@ struct State {
     since_bend: u32,
 }
 
-const DIRECTIONS: [(i64, i64); 8] = [
-    (1, 0),
-    (1, 1),
-    (0, 1),
-    (-1, 1),
-    (-1, 0),
-    (-1, -1),
-    (0, -1),
-    (1, -1),
-];
+const DIRECTIONS: [(i64, i64); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
+const NO_DIRECTION: u8 = 4;
 
 /// Produces a deterministic proposal without changing the design.
 ///
@@ -153,7 +144,7 @@ pub fn suggest_route(
         x2: start.x2,
         y2: start.y2,
         side,
-        direction: 8,
+        direction: NO_DIRECTION,
         since_bend: u32::MAX,
     };
     let mut queue = BinaryHeap::from([Reverse((heuristic(start, end, config), 0_u64, initial))]);
@@ -181,7 +172,7 @@ pub fn suggest_route(
             {
                 continue;
             }
-            let turning = current.direction < 8 && current.direction != direction;
+            let turning = current.direction < NO_DIRECTION && current.direction != direction;
             // A formed bend needs a physical anchoring hole. Component pins,
             // occupied holes, and junctions are already excluded by `blocked`.
             let bend = RoutePos::new(current.x2, current.y2);
@@ -207,11 +198,7 @@ pub fn suggest_route(
                 direction,
                 since_bend,
             };
-            let mut step = if dx == 0 || dy == 0 {
-                config.orthogonal_step
-            } else {
-                config.diagonal_step
-            };
+            let mut step = config.orthogonal_step;
             if turning {
                 step += config.bend;
             }
@@ -230,6 +217,9 @@ pub fn suggest_route(
             }
             if is_parallel(point, direction, &existing) {
                 step += config.parallel_run;
+            }
+            if is_board_edge(point, max_x, max_y) {
+                step += config.board_edge_step;
             }
             let next_cost = cost.saturating_add(step);
             if best.get(&next).is_none_or(|known| next_cost < *known) {
@@ -294,7 +284,7 @@ pub fn evaluate_route(
         .map(|pair| {
             let dx = (pair[1].x2 - pair[0].x2).unsigned_abs();
             let dy = (pair[1].y2 - pair[0].y2).unsigned_abs();
-            dx.min(dy) * config.diagonal_step + (dx.max(dy) - dx.min(dy)) * config.orthogonal_step
+            ((dx as f64).hypot(dy as f64) * config.orthogonal_step as f64).round() as u64
         })
         .sum();
     let bend_cost = u64::from(measurements.bend_count) * config.bend;
@@ -318,6 +308,15 @@ pub fn evaluate_route(
         })
         .count();
     let parallel_cost = u64::try_from(parallel_count).unwrap_or(u64::MAX) * config.parallel_run;
+    let max_x = i64::from(design.board.size.intervals_x()) * 2;
+    let max_y = i64::from(design.board.size.intervals_y()) * 2;
+    let board_edge_count = positions
+        .iter()
+        .skip(1)
+        .filter(|point| is_board_edge(**point, max_x, max_y))
+        .count();
+    let board_edge_cost =
+        u64::try_from(board_edge_count).unwrap_or(u64::MAX) * config.board_edge_step;
     let preferred_bend_spacing = design
         .constraints
         .values()
@@ -355,7 +354,8 @@ pub fn evaluate_route(
         .saturating_add(cramped_bend_cost)
         .saturating_add(crossing_cost)
         .saturating_add(access_cost)
-        .saturating_add(parallel_cost);
+        .saturating_add(parallel_cost)
+        .saturating_add(board_edge_cost);
     let total = if jumper_adjustment < 0 {
         base.saturating_sub(jumper_adjustment.unsigned_abs())
     } else {
@@ -414,6 +414,7 @@ pub fn evaluate_route(
             crossings: crossing_cost,
             access: access_cost,
             parallel_runs: parallel_cost,
+            board_edges: board_edge_cost,
             jumper_adjustment,
             total,
             ..RouteCostBreakdown::default()
@@ -444,32 +445,16 @@ fn blocked_positions(
     if side == Side::Component {
         for instance in design.components.values() {
             let definition = &design.component_definitions[&instance.definition_id];
-            let max_x = i64::from(design.board.size.intervals_x()) * 2;
-            let max_y = i64::from(design.board.size.intervals_y()) * 2;
-            for x2 in 0..=max_x {
-                for y2 in 0..=max_y {
-                    let local_x_mm =
-                        (x2 as f64 / 2.0 - f64::from(instance.position.x)) * design.board.pitch_mm;
-                    let local_y_mm =
-                        (y2 as f64 / 2.0 - f64::from(instance.position.y)) * design.board.pitch_mm;
-                    let (local_x_mm, local_y_mm) =
-                        inverse_rotate_mm(instance.rotation, local_x_mm, local_y_mm);
-                    if local_x_mm >= definition.body.x
-                        && local_x_mm <= definition.body.x + definition.body.width
-                        && local_y_mm >= definition.body.y
-                        && local_y_mm <= definition.body.y + definition.body.height
-                    {
-                        blocked.insert(RoutePos::new(x2, y2));
-                    }
-                }
+            if definition.kind == perfboard_core::ComponentKind::Bridge {
+                continue;
             }
-            for keepout in &definition.keepouts {
-                for x in keepout.min.x..=keepout.max.x {
-                    for y in keepout.min.y..=keepout.max.y {
-                        let (x, y) = instance.rotation.rotate_local((x, y));
+            for keepout in &definition.wire_keepouts {
+                for x2 in i64::from(keepout.min.x) * 2..=i64::from(keepout.max.x) * 2 {
+                    for y2 in i64::from(keepout.min.y) * 2..=i64::from(keepout.max.y) * 2 {
+                        let (x2, y2) = rotate_half_grid(instance.rotation, x2, y2);
                         let point = RoutePos::new(
-                            (i64::from(instance.position.x) + i64::from(x)) * 2,
-                            (i64::from(instance.position.y) + i64::from(y)) * 2,
+                            i64::from(instance.position.x) * 2 + x2,
+                            i64::from(instance.position.y) * 2 + y2,
                         );
                         blocked.insert(point);
                     }
@@ -513,6 +498,15 @@ fn blocked_positions(
     blocked.remove(&start);
     blocked.remove(&end);
     blocked
+}
+
+const fn rotate_half_grid(rotation: perfboard_core::Rotation, x2: i64, y2: i64) -> (i64, i64) {
+    match rotation {
+        perfboard_core::Rotation::Deg0 => (x2, y2),
+        perfboard_core::Rotation::Deg90 => (-y2, x2),
+        perfboard_core::Rotation::Deg180 => (-x2, -y2),
+        perfboard_core::Rotation::Deg270 => (y2, -x2),
+    }
 }
 
 fn soft_area_positions(design: &Design) -> BTreeSet<RoutePos> {
@@ -575,15 +569,6 @@ fn add_local_rect(
     }
 }
 
-fn inverse_rotate_mm(rotation: perfboard_core::Rotation, x: f64, y: f64) -> (f64, f64) {
-    match rotation {
-        perfboard_core::Rotation::Deg0 => (x, y),
-        perfboard_core::Rotation::Deg90 => (y, -x),
-        perfboard_core::Rotation::Deg180 => (-x, -y),
-        perfboard_core::Rotation::Deg270 => (-y, x),
-    }
-}
-
 fn add_rect(
     set: &mut BTreeSet<RoutePos>,
     min: perfboard_core::HolePos,
@@ -619,11 +604,14 @@ fn occupied_wire_positions(
 fn expand_path(vertices: &[RoutePos]) -> Vec<RoutePos> {
     let mut result = Vec::new();
     for pair in vertices.windows(2) {
-        let dx = (pair[1].x2 - pair[0].x2).signum();
-        let dy = (pair[1].y2 - pair[0].y2).signum();
-        let steps = (pair[1].x2 - pair[0].x2)
-            .abs()
-            .max((pair[1].y2 - pair[0].y2).abs());
+        let total_dx = pair[1].x2 - pair[0].x2;
+        let total_dy = pair[1].y2 - pair[0].y2;
+        let steps = gcd(total_dx.unsigned_abs(), total_dy.unsigned_abs()) as i64;
+        if steps == 0 {
+            continue;
+        }
+        let dx = total_dx / steps;
+        let dy = total_dy / steps;
         for step in 0..steps {
             result.push(RoutePos::new(
                 pair[0].x2 + dx * step,
@@ -662,7 +650,20 @@ fn compress_path(points: &[RoutePos]) -> Vec<RoutePos> {
 fn heuristic(from: RoutePos, to: RoutePos, config: &RoutingCostConfig) -> u64 {
     let dx = (to.x2 - from.x2).unsigned_abs();
     let dy = (to.y2 - from.y2).unsigned_abs();
-    dx.min(dy) * config.diagonal_step + (dx.max(dy) - dx.min(dy)) * config.orthogonal_step
+    (dx + dy) * config.orthogonal_step
+}
+
+const fn is_board_edge(point: RoutePos, max_x: i64, max_y: i64) -> bool {
+    point.x2 == 0 || point.y2 == 0 || point.x2 == max_x || point.y2 == max_y
+}
+
+const fn gcd(mut left: u64, mut right: u64) -> u64 {
+    while right != 0 {
+        let remainder = left % right;
+        left = right;
+        right = remainder;
+    }
+    left
 }
 
 fn is_parallel(

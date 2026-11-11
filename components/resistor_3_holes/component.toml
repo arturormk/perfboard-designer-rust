@@ -1,0 +1,57 @@
+schema_version = 1
+id = "dev.perfboard.resistor_3_holes"
+definition_version = "1.0.0"
+name = "1/4 Watt"
+description = "Generic 1/4 Watt axial resistor with a three-hole body and one terminal hole at each end"
+origin_x = 0
+origin_y = 0
+allowed_rotations = [
+    "deg0",
+    "deg90",
+    "deg180",
+    "deg270",
+]
+documentation = ""
+occupied_holes = [
+    { x = 1, y = 0 },
+    { x = 2, y = 0 },
+    { x = 3, y = 0 },
+]
+
+[body]
+x = 1.27
+y = -1.27
+width = 7.62
+height = 2.54
+
+[[pins]]
+id = "terminal_1"
+number = "1"
+name = "Terminal 1"
+x = 0
+y = 0
+functions = ["passive"]
+
+[[pins]]
+id = "terminal_2"
+number = "2"
+name = "Terminal 2"
+x = 4
+y = 0
+functions = ["passive"]
+
+[[keepouts]]
+label = "Resistor body"
+
+[keepouts.min]
+x = 1
+y = 0
+
+[keepouts.max]
+x = 3
+y = 0
+
+[[wire_keepouts]]
+label = "Resistor body"
+min = { x = 1, y = 0 }
+max = { x = 3, y = 0 }

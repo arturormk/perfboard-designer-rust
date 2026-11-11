@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use perfboard_core::{
     BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState,
     Constraint, ConstraintId, ConstraintKind, Diagnostic, DiagnosticSeverity, ElectricalNet,
-    HolePos, JumperInventoryEntry, Junction, JunctionId, NetId, OperationId, PinRef, Rotation,
-    RoutePos, RouteProposal, Side, Wire, WireColor, WireId,
+    HolePos, JumperInventoryEntry, Junction, JunctionId, NetId, OperationId, PinRef, Rail, RailId,
+    Rotation, RoutePos, RouteProposal, Side, Wire, WireColor, WireId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -19,6 +19,13 @@ pub enum OperationOrigin {
     Mcp,
     Import,
     SystemDerived,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WireEndpoint {
+    Start,
+    End,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -48,6 +55,10 @@ pub enum OperationPayload {
     AddComponent {
         definition: ComponentDefinition,
         instance: ComponentInstance,
+    },
+    UpdateComponentMetadata {
+        instance_id: ComponentInstanceId,
+        definition: ComponentDefinition,
     },
     RemoveComponent {
         instance_id: ComponentInstanceId,
@@ -95,12 +106,27 @@ pub enum OperationPayload {
     AddWire {
         wire: Wire,
     },
+    AddRail {
+        rail: Rail,
+    },
+    RemoveRail {
+        rail_id: RailId,
+    },
+    ModifyRailPath {
+        rail_id: RailId,
+        vertices: Vec<RoutePos>,
+    },
     RemoveWire {
         wire_id: WireId,
     },
     ModifyWirePath {
         wire_id: WireId,
         vertices: Vec<RoutePos>,
+    },
+    ReconnectWireEndpoint {
+        wire_id: WireId,
+        endpoint: WireEndpoint,
+        terminal: perfboard_core::TerminalRef,
     },
     SetWireColor {
         wire_id: WireId,
@@ -188,8 +214,22 @@ pub enum OperationError {
     DuplicateWire,
     #[error("wire was not found")]
     WireNotFound,
+    #[error("rail already exists")]
+    DuplicateRail,
+    #[error("rail was not found")]
+    RailNotFound,
+    #[error("rail must contain at least two vertices and no zero-length segments")]
+    UnsupportedRailRoute,
+    #[error("wire must contain at least two vertices and no zero-length segments")]
+    UnsupportedWireRoute,
     #[error("wire route passes through an unrelated component pin")]
     WireCrossesPin,
+    #[error("rail route passes through a component pin")]
+    RailCrossesPin,
+    #[error("wire endpoint must refer to an existing terminal on the wire's net")]
+    InvalidWireTerminal,
+    #[error("wire endpoint pin is assigned to a different net")]
+    PinAssignedToDifferentNet,
     #[error("junction already exists")]
     DuplicateJunction,
     #[error("junction was not found")]
@@ -202,6 +242,8 @@ pub enum OperationError {
     JumperInventoryNotFound,
     #[error("locked wire requires an explicit route replacement operation")]
     LockedWire,
+    #[error("locked rail cannot be changed")]
+    LockedRail,
     #[error("route proposal does not match the current design or its terminals")]
     InvalidRouteProposal,
     #[error("object is still referenced by circuit or routing data")]
@@ -320,8 +362,19 @@ pub(crate) fn apply_operation_untracked(
                 for vertex in &mut wire.vertices {
                     translate_route(vertex)?;
                 }
+                for terminal in [&mut wire.start, &mut wire.end] {
+                    if let perfboard_core::TerminalRef::RailNode { position, .. } = terminal {
+                        translate_route(position)?;
+                    }
+                }
                 affected_nets.insert(wire.net_id);
                 affected_wires.insert(wire.id);
+            }
+            for rail in next.design.rails.values_mut() {
+                for vertex in &mut rail.vertices {
+                    translate_route(vertex)?;
+                }
+                affected_nets.insert(rail.net_id);
             }
             for hole in &mut next.design.board.features.mounting_holes {
                 translate_hole(&mut hole.position)?;
@@ -370,6 +423,11 @@ pub(crate) fn apply_operation_untracked(
             }
             if let Some(existing) = next.design.component_definitions.get(&definition.id)
                 && existing != definition
+                && next
+                    .design
+                    .components
+                    .values()
+                    .any(|component| component.definition_id == definition.id)
             {
                 return Err(OperationError::DefinitionConflict);
             }
@@ -388,6 +446,46 @@ pub(crate) fn apply_operation_untracked(
             next.design.components.insert(instance.id, instance.clone());
             affected.insert(instance.id);
             format!("Added {}", instance.name)
+        }
+        OperationPayload::UpdateComponentMetadata {
+            instance_id,
+            definition,
+        } => {
+            let instance = next
+                .design
+                .components
+                .get(instance_id)
+                .ok_or(OperationError::InstanceNotFound)?;
+            if instance.definition_id != definition.id {
+                return Err(OperationError::DefinitionMismatch);
+            }
+            let stored = next
+                .design
+                .component_definitions
+                .get_mut(&instance.definition_id)
+                .ok_or(OperationError::InstanceNotFound)?;
+            stored
+                .definition_version
+                .clone_from(&definition.definition_version);
+            stored.name.clone_from(&definition.name);
+            stored.description.clone_from(&definition.description);
+            stored.documentation.clone_from(&definition.documentation);
+            stored
+                .validate()
+                .map_err(|error| DocumentError::InvalidComponentDefinition {
+                    id: stored.id.clone(),
+                    message: error.to_string(),
+                })?;
+            let definition_id = instance.definition_id.clone();
+            let definition_name = stored.name.clone();
+            affected.extend(
+                next.design
+                    .components
+                    .values()
+                    .filter(|component| component.definition_id == definition_id)
+                    .map(|component| component.id),
+            );
+            format!("Updated {definition_name} component metadata")
         }
         OperationPayload::RemoveComponent { instance_id } => {
             if next
@@ -473,6 +571,11 @@ pub(crate) fn apply_operation_untracked(
                 .any(|wire| wire.net_id == *net_id)
                 || next
                     .design
+                    .rails
+                    .values()
+                    .any(|rail| rail.net_id == *net_id)
+                || next
+                    .design
                     .junctions
                     .values()
                     .any(|junction| junction.net_id == *net_id)
@@ -540,6 +643,11 @@ pub(crate) fn apply_operation_untracked(
                 .wires
                 .values()
                 .any(|wire| wire.net_id == *net_id)
+                || next
+                    .design
+                    .rails
+                    .values()
+                    .any(|rail| rail.net_id == *net_id)
             {
                 return Err(OperationError::ObjectInUse);
             }
@@ -577,6 +685,9 @@ pub(crate) fn apply_operation_untracked(
             if next.design.wires.contains_key(&wire.id) {
                 return Err(OperationError::DuplicateWire);
             }
+            if !crate::connectivity::route_is_supported(&wire.vertices) {
+                return Err(OperationError::UnsupportedWireRoute);
+            }
             if crate::connectivity::route_crosses_unrelated_pin(&next.design, wire) {
                 return Err(OperationError::WireCrossesPin);
             }
@@ -606,6 +717,86 @@ pub(crate) fn apply_operation_untracked(
             affected_wires.insert(*wire_id);
             format!("Removed wire {wire_id}")
         }
+        OperationPayload::AddRail { rail } => {
+            if next.design.rails.contains_key(&rail.id) {
+                return Err(OperationError::DuplicateRail);
+            }
+            if !next.design.nets.contains_key(&rail.net_id) {
+                return Err(OperationError::NetNotFound);
+            }
+            if !crate::connectivity::route_is_supported(&rail.vertices) {
+                return Err(OperationError::UnsupportedRailRoute);
+            }
+            if crate::connectivity::rail_crosses_pin(&next.design, rail) {
+                return Err(OperationError::RailCrossesPin);
+            }
+            next.design.rails.insert(rail.id, rail.clone());
+            affected_nets.insert(rail.net_id);
+            format!("Added rail {}", rail.id)
+        }
+        OperationPayload::RemoveRail { rail_id } => {
+            let rail = next
+                .design
+                .rails
+                .get(rail_id)
+                .ok_or(OperationError::RailNotFound)?;
+            if rail.locked {
+                return Err(OperationError::LockedRail);
+            }
+            if next.design.wires.values().any(|wire| {
+                [&wire.start, &wire.end].into_iter().any(|terminal| {
+                    matches!(
+                        terminal,
+                        perfboard_core::TerminalRef::RailNode { rail_id: id, .. } if id == rail_id
+                    )
+                })
+            }) {
+                return Err(OperationError::ObjectInUse);
+            }
+            let rail = next.design.rails.remove(rail_id).expect("checked above");
+            affected_nets.insert(rail.net_id);
+            format!("Removed rail {rail_id}")
+        }
+        OperationPayload::ModifyRailPath { rail_id, vertices } => {
+            let mut rail = next
+                .design
+                .rails
+                .get(rail_id)
+                .cloned()
+                .ok_or(OperationError::RailNotFound)?;
+            if rail.locked {
+                return Err(OperationError::LockedRail);
+            }
+            if !crate::connectivity::route_is_supported(vertices) {
+                return Err(OperationError::UnsupportedRailRoute);
+            }
+            rail.vertices.clone_from(vertices);
+            if crate::connectivity::rail_crosses_pin(&next.design, &rail) {
+                return Err(OperationError::RailCrossesPin);
+            }
+            let referenced: BTreeSet<RoutePos> = next
+                .design
+                .wires
+                .values()
+                .flat_map(|wire| [&wire.start, &wire.end])
+                .filter_map(|terminal| match terminal {
+                    perfboard_core::TerminalRef::RailNode {
+                        rail_id: id,
+                        position,
+                    } if id == rail_id => Some(*position),
+                    _ => None,
+                })
+                .collect();
+            if referenced
+                .iter()
+                .any(|position| !vertices.contains(position))
+            {
+                return Err(OperationError::ObjectInUse);
+            }
+            next.design.rails.insert(*rail_id, rail.clone());
+            affected_nets.insert(rail.net_id);
+            format!("Edited rail {rail_id} path")
+        }
         OperationPayload::ModifyWirePath { wire_id, vertices } => {
             let mut candidate = next
                 .design
@@ -617,6 +808,9 @@ pub(crate) fn apply_operation_untracked(
                 return Err(OperationError::LockedWire);
             }
             candidate.vertices.clone_from(vertices);
+            if !crate::connectivity::route_is_supported(&candidate.vertices) {
+                return Err(OperationError::UnsupportedWireRoute);
+            }
             if crate::connectivity::route_crosses_unrelated_pin(&next.design, &candidate) {
                 return Err(OperationError::WireCrossesPin);
             }
@@ -627,6 +821,111 @@ pub(crate) fn apply_operation_untracked(
             affected_nets.insert(candidate.net_id);
             affected_wires.insert(*wire_id);
             format!("Edited wire {wire_id} path")
+        }
+        OperationPayload::ReconnectWireEndpoint {
+            wire_id,
+            endpoint,
+            terminal,
+        } => {
+            let mut candidate = next
+                .design
+                .wires
+                .get(wire_id)
+                .cloned()
+                .ok_or(OperationError::WireNotFound)?;
+            if candidate.locked {
+                return Err(OperationError::LockedWire);
+            }
+
+            let old_terminal = match endpoint {
+                WireEndpoint::Start => candidate.start.clone(),
+                WireEndpoint::End => candidate.end.clone(),
+            };
+            let other_terminal = match endpoint {
+                WireEndpoint::Start => &candidate.end,
+                WireEndpoint::End => &candidate.start,
+            };
+            if terminal == other_terminal {
+                return Err(OperationError::InvalidWireTerminal);
+            }
+
+            if let perfboard_core::TerminalRef::Pin {
+                component_id,
+                pin_id,
+            } = terminal
+            {
+                let pin = PinRef {
+                    component_id: *component_id,
+                    pin_id: pin_id.clone(),
+                };
+                if crate::connectivity::pin_position(&next.design, &pin).is_none() {
+                    return Err(OperationError::InvalidWireTerminal);
+                }
+                if next
+                    .design
+                    .nets
+                    .iter()
+                    .any(|(net_id, net)| *net_id != candidate.net_id && net.pins.contains(&pin))
+                {
+                    return Err(OperationError::PinAssignedToDifferentNet);
+                }
+                next.design
+                    .nets
+                    .get_mut(&candidate.net_id)
+                    .ok_or(OperationError::NetNotFound)?
+                    .pins
+                    .insert(pin);
+            }
+
+            let target_position =
+                crate::connectivity::terminal_position(&next.design, candidate.net_id, terminal)
+                    .map_err(|_| OperationError::InvalidWireTerminal)?;
+            match endpoint {
+                WireEndpoint::Start => {
+                    candidate.start.clone_from(terminal);
+                    candidate.vertices[0] = target_position;
+                }
+                WireEndpoint::End => {
+                    candidate.end.clone_from(terminal);
+                    *candidate
+                        .vertices
+                        .last_mut()
+                        .expect("validated wire has vertices") = target_position;
+                }
+            }
+            candidate.vertices.dedup();
+            if !crate::connectivity::route_is_supported(&candidate.vertices) {
+                return Err(OperationError::UnsupportedWireRoute);
+            }
+            if crate::connectivity::route_crosses_unrelated_pin(&next.design, &candidate) {
+                return Err(OperationError::WireCrossesPin);
+            }
+            next.design.wires.insert(*wire_id, candidate.clone());
+
+            if let perfboard_core::TerminalRef::Pin {
+                component_id,
+                pin_id,
+            } = old_terminal
+            {
+                let old_pin = PinRef {
+                    component_id,
+                    pin_id,
+                };
+                let old_terminal = perfboard_core::TerminalRef::from(old_pin.clone());
+                let still_connected = next.design.wires.values().any(|wire| {
+                    wire.net_id == candidate.net_id
+                        && (wire.start == old_terminal || wire.end == old_terminal)
+                });
+                if !still_connected && let Some(net) = next.design.nets.get_mut(&candidate.net_id) {
+                    net.pins.remove(&old_pin);
+                }
+            }
+            next.design.crossing_choices.retain(|_, choice| {
+                choice.first_wire_id != *wire_id && choice.second_wire_id != *wire_id
+            });
+            affected_nets.insert(candidate.net_id);
+            affected_wires.insert(*wire_id);
+            format!("Reconnected {endpoint:?} endpoint of wire {wire_id}")
         }
         OperationPayload::SetWireColor { wire_id, color } => {
             let wire = next
@@ -718,6 +1017,9 @@ pub(crate) fn apply_operation_untracked(
             replace_wire_id,
             new_route_over,
         } => {
+            if !crate::connectivity::route_is_supported(&proposal.vertices) {
+                return Err(OperationError::UnsupportedWireRoute);
+            }
             let request = crate::RouteRequest {
                 net_id: proposal.net_id,
                 start: proposal.start.clone(),
@@ -833,6 +1135,36 @@ mod tests {
     use perfboard_core::{BoardSize, MountingHole, ProjectId};
     use uuid::Uuid;
 
+    fn point_definition(name: &str) -> ComponentDefinition {
+        ComponentDefinition::from_toml(&format!(
+            "schema_version=1\nid='test.point'\ndefinition_version='1'\nname='{name}'\nallowed_rotations=['deg0']\n[body]\nx=-0.5\ny=-0.5\nwidth=1\nheight=1\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0"
+        ))
+        .unwrap()
+    }
+
+    fn point_instance(definition: &ComponentDefinition, x: u32) -> ComponentInstance {
+        ComponentInstance {
+            id: ComponentInstanceId::new(),
+            definition_id: definition.id.clone(),
+            name: definition.name.clone(),
+            position: HolePos::new(x, 1),
+            rotation: Rotation::Deg0,
+            properties: BTreeMap::new(),
+            notes: String::new(),
+        }
+    }
+
+    fn operation(document: &ProjectDocument, payload: OperationPayload) -> OperationRequest {
+        OperationRequest {
+            operation_id: OperationId::new(),
+            expected_revision: document.revision,
+            origin: OperationOrigin::User,
+            rationale: None,
+            allow_invalid_placement: false,
+            payload,
+        }
+    }
+
     #[test]
     fn stale_operation_does_not_change_document() {
         let mut document = ProjectDocument::new(
@@ -856,6 +1188,139 @@ mod tests {
             Err(OperationError::StaleRevision { .. })
         ));
         assert_eq!(document, before);
+    }
+
+    #[test]
+    fn adding_changed_definition_replaces_unused_snapshot() {
+        let mut document = ProjectDocument::new(
+            ProjectId::from_uuid(Uuid::nil()),
+            "x",
+            Board::new("x", BoardSize::new(4, 4).unwrap(), 2.54),
+        );
+        let old_definition = point_definition("Old point");
+        let old_instance = point_instance(&old_definition, 1);
+        let old_instance_id = old_instance.id;
+
+        let request = operation(
+            &document,
+            OperationPayload::AddComponent {
+                definition: old_definition,
+                instance: old_instance,
+            },
+        );
+        apply_operation(&mut document, request).unwrap();
+        let request = operation(
+            &document,
+            OperationPayload::RemoveComponent {
+                instance_id: old_instance_id,
+            },
+        );
+        apply_operation(&mut document, request).unwrap();
+
+        let changed_definition = point_definition("Changed point");
+        let changed_instance = point_instance(&changed_definition, 2);
+        let request = operation(
+            &document,
+            OperationPayload::AddComponent {
+                definition: changed_definition.clone(),
+                instance: changed_instance,
+            },
+        );
+        apply_operation(&mut document, request).unwrap();
+
+        assert_eq!(
+            document.design.component_definitions[&changed_definition.id],
+            changed_definition
+        );
+    }
+
+    #[test]
+    fn adding_changed_definition_conflicts_with_placed_snapshot() {
+        let mut document = ProjectDocument::new(
+            ProjectId::from_uuid(Uuid::nil()),
+            "x",
+            Board::new("x", BoardSize::new(4, 4).unwrap(), 2.54),
+        );
+        let old_definition = point_definition("Old point");
+        let old_instance = point_instance(&old_definition, 1);
+        let request = operation(
+            &document,
+            OperationPayload::AddComponent {
+                definition: old_definition,
+                instance: old_instance,
+            },
+        );
+        apply_operation(&mut document, request).unwrap();
+
+        let changed_definition = point_definition("Changed point");
+        let changed_instance = point_instance(&changed_definition, 2);
+        let request = operation(
+            &document,
+            OperationPayload::AddComponent {
+                definition: changed_definition,
+                instance: changed_instance,
+            },
+        );
+        assert!(matches!(
+            apply_operation(&mut document, request),
+            Err(OperationError::DefinitionConflict)
+        ));
+    }
+
+    #[test]
+    fn updating_component_metadata_preserves_pins_geometry_and_instances() {
+        let mut document = ProjectDocument::new(
+            ProjectId::from_uuid(Uuid::nil()),
+            "x",
+            Board::new("x", BoardSize::new(6, 4).unwrap(), 2.54),
+        );
+        let old_definition = point_definition("Old point");
+        let first = point_instance(&old_definition, 1);
+        let second = point_instance(&old_definition, 4);
+        for instance in [first.clone(), second.clone()] {
+            let request = operation(
+                &document,
+                OperationPayload::AddComponent {
+                    definition: old_definition.clone(),
+                    instance,
+                },
+            );
+            apply_operation(&mut document, request).unwrap();
+        }
+
+        let mut library_definition = old_definition.clone();
+        library_definition.definition_version = "2".into();
+        library_definition.name = "New point".into();
+        library_definition.description = "Updated description".into();
+        library_definition.documentation = "Updated documentation".into();
+        library_definition.body.x = 42.0;
+        library_definition.pins[0].name = "Changed pin".into();
+        library_definition.pins[0].x = 9;
+
+        let request = operation(
+            &document,
+            OperationPayload::UpdateComponentMetadata {
+                instance_id: first.id,
+                definition: library_definition.clone(),
+            },
+        );
+        let result = apply_operation(&mut document, request).unwrap();
+
+        let mut expected = old_definition;
+        expected.definition_version = library_definition.definition_version;
+        expected.name = library_definition.name;
+        expected.description = library_definition.description;
+        expected.documentation = library_definition.documentation;
+        assert_eq!(
+            document.design.component_definitions[&expected.id],
+            expected
+        );
+        assert_eq!(document.design.components[&first.id], first);
+        assert_eq!(document.design.components[&second.id], second);
+        assert_eq!(
+            result.affected_component_ids,
+            BTreeSet::from([first.id, second.id])
+        );
     }
 
     #[test]

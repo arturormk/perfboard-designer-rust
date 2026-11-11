@@ -62,9 +62,19 @@ hole and explicitly state whether they form a through-hole transition. Wires
 reference two terminals, one net and one board side; their ordered `vertices`
 use canonical half-grid coordinates (`x2`, `y2`). Wire color, lock state and
 notes are authoritative, while length, bends and connectivity diagnostics are
-derived. Paths accept horizontal, vertical and 45-degree segments. A geometric
+derived. Paths are polylines whose nodes lie on the half-hole grid; each
+segment must have non-zero length. A geometric
 crossing never joins two wires; connectivity exists only through shared
 terminal references.
+
+Rails extend that circuit model as net-owned polylines with no terminal
+requirement at either end. Like wires, their ordered vertices use canonical
+half-grid (`x2`, `y2`) coordinates and belong to one board side. A wire can use
+a `rail_node` terminal containing a rail ID and position; the position must be
+an explicit stored rail vertex, must belong to the wire's net, and must be on
+the wire's side. All explicit nodes on one rail are electrically connected.
+This deliberately makes connection points stable and editable rather than
+inferring connectivity from geometric crossings.
 
 The permanent minimal fixture is
 [`tests/fixtures/project-v1/empty-1x1.perfboard.json`](../../tests/fixtures/project-v1/empty-1x1.perfboard.json).

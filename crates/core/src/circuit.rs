@@ -3,7 +3,7 @@ use std::collections::BTreeSet;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{ComponentInstanceId, HolePos, JunctionId, NetId};
+use crate::{ComponentInstanceId, HolePos, JunctionId, NetId, RailId, RoutePos};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -27,6 +27,12 @@ pub enum TerminalRef {
     },
     Junction {
         junction_id: JunctionId,
+    },
+    /// An explicit connection node on a rail. The position must match one of
+    /// the rail's stored vertices.
+    RailNode {
+        rail_id: RailId,
+        position: RoutePos,
     },
 }
 

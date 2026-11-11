@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use perfboard_core::{
     BoardFeatures, BoardSize, CommitId, ComponentDefinition, ComponentInstance,
     ComponentInstanceId, Constraint, ConstraintId, CrossingChoice, Diagnostic, ElectricalNet,
-    JumperInventoryEntry, Junction, JunctionId, NetId, ProjectId, Wire, WireId,
+    JumperInventoryEntry, Junction, JunctionId, NetId, ProjectId, Rail, RailId, Wire, WireId,
     validate_design_placements,
 };
 use schemars::JsonSchema;
@@ -57,6 +57,8 @@ pub struct Design {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub wires: BTreeMap<WireId, Wire>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub rails: BTreeMap<RailId, Rail>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub constraints: BTreeMap<ConstraintId, Constraint>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub jumper_inventory: BTreeMap<String, JumperInventoryEntry>,
@@ -107,6 +109,8 @@ pub enum DocumentError {
     JunctionKeyMismatch,
     #[error("wire map key does not match its embedded id")]
     WireKeyMismatch,
+    #[error("rail map key does not match its embedded id")]
+    RailKeyMismatch,
     #[error("constraint map key does not match its embedded id")]
     ConstraintKeyMismatch,
     #[error("jumper inventory map key does not match its embedded id")]
@@ -131,6 +135,7 @@ impl ProjectDocument {
             nets: BTreeMap::new(),
             junctions: BTreeMap::new(),
             wires: BTreeMap::new(),
+            rails: BTreeMap::new(),
             constraints: BTreeMap::new(),
             jumper_inventory: BTreeMap::new(),
             crossing_choices: BTreeMap::new(),
@@ -153,20 +158,7 @@ impl ProjectDocument {
 
     #[must_use]
     pub fn calculate_validation(&self) -> Vec<Diagnostic> {
-        let mut diagnostics = validate_design_placements(
-            self.design.board.size,
-            &self.design.board.features,
-            &self.design.component_definitions,
-            &self.design.components,
-        );
-        diagnostics.extend(crate::connectivity::diagnostics(&self.design));
-        diagnostics.extend(crate::constraints::diagnostics(&self.design));
-        diagnostics.sort_by(|left, right| {
-            left.code
-                .cmp(&right.code)
-                .then(left.message.cmp(&right.message))
-        });
-        diagnostics
+        calculate_design_validation(&self.design)
     }
 
     /// Validates the schema envelope and all implemented domain invariants.
@@ -235,6 +227,9 @@ impl ProjectDocument {
         }
         if self.design.wires.iter().any(|(id, value)| id != &value.id) {
             return Err(DocumentError::WireKeyMismatch);
+        }
+        if self.design.rails.iter().any(|(id, value)| id != &value.id) {
+            return Err(DocumentError::RailKeyMismatch);
         }
         if self
             .design
@@ -326,10 +321,60 @@ impl ProjectDocument {
     /// # Errors
     /// Returns a JSON/domain error or an invariant error.
     pub fn from_json(json: &str) -> Result<Self, DocumentError> {
-        let document: Self = serde_json::from_str(json)?;
+        let mut document: Self = serde_json::from_str(json)?;
+        document.remove_retired_route_warnings();
         document.validate()?;
         Ok(document)
     }
+
+    /// Version 1 stores deterministic validation as a cache, including inside
+    /// revision history. Endpoint half-grid segments used to emit
+    /// `route.short_segment`, and component bodies/placement keepouts used to
+    /// emit `route.component_clearance`. After those rules changed, otherwise
+    /// valid projects could no longer pass the cache consistency check on load.
+    /// Remove only instances that the current validator no longer produces so
+    /// unrelated stale or tampered diagnostics are still rejected.
+    fn remove_retired_route_warnings(&mut self) {
+        remove_retired_route_warnings(&self.design, &mut self.validation);
+        for commit in self.commits.values_mut() {
+            remove_retired_route_warnings(&commit.design, &mut commit.validation);
+            for change in &mut commit.changes {
+                remove_retired_route_warnings(&change.before, &mut change.before_validation);
+                remove_retired_route_warnings(&change.after, &mut change.after_validation);
+            }
+        }
+        for change in self.undo_stack.iter_mut().chain(&mut self.redo_stack) {
+            remove_retired_route_warnings(&change.before, &mut change.before_validation);
+            remove_retired_route_warnings(&change.after, &mut change.after_validation);
+        }
+    }
+}
+
+fn calculate_design_validation(design: &Design) -> Vec<Diagnostic> {
+    let mut diagnostics = validate_design_placements(
+        design.board.size,
+        &design.board.features,
+        &design.component_definitions,
+        &design.components,
+    );
+    diagnostics.extend(crate::connectivity::diagnostics(design));
+    diagnostics.extend(crate::constraints::diagnostics(design));
+    diagnostics.sort_by(|left, right| {
+        left.code
+            .cmp(&right.code)
+            .then(left.message.cmp(&right.message))
+    });
+    diagnostics
+}
+
+fn remove_retired_route_warnings(design: &Design, cached: &mut Vec<Diagnostic>) {
+    let current = crate::connectivity::diagnostics(design);
+    cached.retain(|diagnostic| {
+        !matches!(
+            diagnostic.code.0.as_str(),
+            "route.short_segment" | "route.component_clearance"
+        ) || current.contains(diagnostic)
+    });
 }
 
 impl Board {
@@ -420,6 +465,60 @@ mod tests {
         assert!(matches!(
             ProjectDocument::from_json(&value.to_string()),
             Err(DocumentError::InvalidPitch)
+        ));
+    }
+
+    #[test]
+    fn retired_short_segment_warning_is_migrated_on_load() {
+        let mut document = empty_project();
+        document.validation.push(Diagnostic {
+            code: perfboard_core::DiagnosticCode("route.short_segment".into()),
+            severity: perfboard_core::DiagnosticSeverity::Warning,
+            message: "Wire contains a segment shorter than one grid interval".into(),
+            objects: vec![perfboard_core::ObjectReference {
+                kind: "wire".into(),
+                id: "retired-endpoint-warning".into(),
+            }],
+        });
+
+        let loaded =
+            ProjectDocument::from_json(&serde_json::to_string(&document).unwrap()).unwrap();
+
+        assert!(loaded.validation.is_empty());
+    }
+
+    #[test]
+    fn retired_component_clearance_warning_is_migrated_on_load() {
+        let mut document = empty_project();
+        document.validation.push(Diagnostic {
+            code: perfboard_core::DiagnosticCode("route.component_clearance".into()),
+            severity: perfboard_core::DiagnosticSeverity::Warning,
+            message: "Component-side wire passes through another component body or keepout".into(),
+            objects: vec![perfboard_core::ObjectReference {
+                kind: "wire".into(),
+                id: "old-clearance-rule".into(),
+            }],
+        });
+
+        let loaded =
+            ProjectDocument::from_json(&serde_json::to_string(&document).unwrap()).unwrap();
+
+        assert!(loaded.validation.is_empty());
+    }
+
+    #[test]
+    fn unrelated_stale_validation_is_still_rejected() {
+        let mut document = empty_project();
+        document.validation.push(Diagnostic {
+            code: perfboard_core::DiagnosticCode("unrelated.stale".into()),
+            severity: perfboard_core::DiagnosticSeverity::Warning,
+            message: "This must not be silently migrated".into(),
+            objects: Vec::new(),
+        });
+
+        assert!(matches!(
+            ProjectDocument::from_json(&serde_json::to_string(&document).unwrap()),
+            Err(DocumentError::StaleValidation)
         ));
     }
 }
