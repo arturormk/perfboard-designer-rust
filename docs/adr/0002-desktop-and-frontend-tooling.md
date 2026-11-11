@@ -1,6 +1,6 @@
 # ADR 0002: Desktop and frontend tooling
 
-- Status: accepted
+- Status: accepted (framework clause amended by ADR 0009)
 - Date: 2026-10-22
 
 ## Decision

@@ -1,0 +1,489 @@
+/* ── Component Designer ───────────────────────────────────────────────── */
+.designer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.designer-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px 8px 16px;
+  border-bottom: 1px solid var(--line-1);
+  background: var(--bg-1);
+}
+
+.designer-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--copper);
+}
+
+.designer-title > div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.designer-title strong {
+  color: var(--text-1);
+  font-weight: 650;
+}
+
+.designer-title .mono {
+  overflow: hidden;
+  color: var(--text-4);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.watch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-3);
+  font-size: 11.5px;
+}
+
+.watch i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-4);
+}
+
+.watch.watching i {
+  background: var(--ok);
+  box-shadow: 0 0 6px var(--ok);
+}
+
+.watch.error i {
+  background: var(--error);
+}
+
+.designer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.designer-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: 0;
+}
+
+.designer-stage {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  background: radial-gradient(ellipse at 50% 40%, #1b1d21 0%, var(--bg-0) 75%);
+}
+
+.stage-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.stage-spacer {
+  flex: 1;
+}
+
+.inline-select {
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+}
+
+.inline-select select {
+  width: auto;
+  height: 28px;
+  font-size: 12px;
+}
+
+.designer-preview {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 8px 24px 24px;
+  overflow: hidden;
+}
+
+.designer-preview svg {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  touch-action: none;
+}
+
+.designer-preview svg text {
+  font-family: var(--font-ui);
+  user-select: none;
+}
+
+.preview-grid-hole {
+  fill: #3a3f46;
+}
+
+.preview-axes path {
+  fill: none;
+  stroke: #4a5058;
+  stroke-width: 0.035;
+  stroke-dasharray: 0.18 0.13;
+}
+
+.preview-axes circle {
+  fill: var(--copper);
+}
+
+.preview-axes text {
+  fill: var(--text-3);
+  font-size: 0.34px;
+}
+
+.preview-body {
+  fill: var(--part-body);
+  stroke: #6b7079;
+  stroke-width: 0.07;
+}
+
+.preview-orientation {
+  fill: var(--copper);
+}
+
+.preview-bridge {
+  fill: none;
+  stroke: #e4e6e8;
+  stroke-width: 0.22;
+  stroke-linecap: round;
+}
+
+.preview-bridge-terminals {
+  stroke-width: 0.06;
+}
+
+.preview-pin {
+  cursor: pointer;
+}
+
+.layer-pins.editable .preview-pin {
+  cursor: grab;
+}
+
+.preview-pin circle {
+  fill: var(--pad);
+  stroke: var(--pad-stroke);
+  stroke-width: 0.06;
+}
+
+.preview-pin:hover circle {
+  stroke: var(--copper-strong);
+  stroke-width: 0.1;
+}
+
+.preview-pin.selected circle {
+  fill: var(--copper-strong);
+  stroke: #fff;
+  stroke-width: 0.1;
+  filter: drop-shadow(0 0 0.15px var(--copper));
+}
+
+.preview-pin-label {
+  fill: var(--text-1);
+  font-size: 0.32px;
+  font-weight: 600;
+  paint-order: stroke;
+  stroke: var(--bg-0);
+  stroke-width: 0.09px;
+  pointer-events: none;
+}
+
+.preview-keepout {
+  fill: rgb(240 106 99 / 10%);
+  stroke: rgb(240 106 99 / 70%);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.18 0.12;
+}
+
+.preview-wire-keepout {
+  fill: rgb(231 184 78 / 8%);
+  stroke: rgb(231 184 78 / 70%);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.08 0.1;
+}
+
+.preview-access rect {
+  fill: rgb(106 174 232 / 10%);
+  stroke: rgb(106 174 232 / 70%);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.12;
+}
+
+.preview-access text {
+  fill: var(--info);
+  font-size: 0.6px;
+  text-anchor: middle;
+}
+
+.preview-occupied {
+  fill: none;
+  stroke: var(--agent);
+  stroke-width: 0.08;
+  stroke-linecap: round;
+}
+
+.layer-occupied.editable svg {
+  cursor: cell;
+}
+
+.component-resize-boundary {
+  fill: none;
+  stroke: var(--copper);
+  stroke-width: 0.07;
+  stroke-dasharray: 0.25 0.14;
+  pointer-events: none;
+}
+
+.component-resize-feedback {
+  fill: var(--copper-strong);
+  font-size: 0.32px;
+  font-weight: 700;
+  paint-order: stroke fill;
+  stroke: var(--bg-0);
+  stroke-width: 0.14;
+  pointer-events: none;
+}
+
+.component-resize-controls line {
+  stroke: transparent;
+  stroke-width: 0.6;
+  pointer-events: stroke;
+}
+
+.component-resize-controls [data-component-resize-handle="top"],
+.component-resize-controls [data-component-resize-handle="bottom"] {
+  cursor: ns-resize;
+}
+
+.component-resize-controls [data-component-resize-handle="left"],
+.component-resize-controls [data-component-resize-handle="right"] {
+  cursor: ew-resize;
+}
+
+.component-resize-corner {
+  fill: var(--copper);
+  stroke: #fff;
+  stroke-width: 0.05;
+}
+
+.component-resize-controls [data-component-resize-handle="top-left"],
+.component-resize-controls [data-component-resize-handle="bottom-right"] {
+  cursor: nwse-resize;
+}
+
+.component-resize-controls [data-component-resize-handle="top-right"],
+.component-resize-controls [data-component-resize-handle="bottom-left"] {
+  cursor: nesw-resize;
+}
+
+.designer-problems {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 30%;
+  margin: 0 12px 12px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+}
+
+.problem-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.problem-line .icon {
+  margin-top: 2px;
+  flex: none;
+}
+
+.problem-line.error .icon {
+  color: var(--error);
+}
+
+.problem-line.warning .icon {
+  color: var(--warn);
+}
+
+.problem-line small {
+  display: block;
+  color: var(--text-4);
+}
+
+.designer-inspector {
+  min-height: 0;
+}
+
+.pin-list {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-m);
+}
+
+.pin-row {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 6px 0 8px;
+  border-top: 1px solid var(--line-1);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.pin-row:first-child {
+  border-top: 0;
+}
+
+.pin-row:hover {
+  background: var(--bg-2);
+}
+
+.pin-row.on {
+  background: var(--copper-soft);
+}
+
+.pin-num {
+  color: var(--copper);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.pin-name {
+  overflow: hidden;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pin-fn {
+  overflow: hidden;
+  max-width: 90px;
+  color: var(--text-3);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pin-pos {
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.pin-order {
+  display: flex;
+  opacity: 0;
+}
+
+.pin-row:hover .pin-order,
+.pin-row.on .pin-order {
+  opacity: 1;
+}
+
+.pin-editor {
+  padding: 10px;
+  border: 1px solid var(--copper-line);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+}
+
+.region-list + .region-list {
+  margin-top: 10px;
+}
+
+.region-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 0 4px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.region-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.region-label {
+  height: 26px !important;
+  font-size: 12px;
+}
+
+.region-span {
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.region-row select {
+  width: 98px;
+  height: 26px;
+  font-size: 12px;
+  flex: none;
+}
+
+.doc-editor {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.designer-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px;
+  color: var(--text-3);
+  text-align: center;
+}
+
+.designer-empty > .icon {
+  color: var(--copper);
+}
+
+.designer-empty h2 {
+  color: var(--text-1);
+  font-size: 18px;
+  font-weight: 650;
+}
+
+.designer-empty p {
+  max-width: 440px;
+}
+
+.designer-empty.compact {
+  padding: 24px;
+}

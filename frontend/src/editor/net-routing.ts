@@ -38,7 +38,7 @@ const edgeKey = (first: string, second: string): string =>
   first < second ? `${first}\u0001${second}` : `${second}\u0001${first}`;
 
 function pinPosition(
-  project: ProjectDocument,
+  project: Pick<ProjectDocument, "design">,
   pin: PinRef,
 ): { x2: number; y2: number } | undefined {
   const instance = project.design.components?.[pin.component_id];
@@ -133,7 +133,7 @@ function isSimpleConnectedTree(
 
 /** Plans endpoint changes for unlocked, pin-only net trees when an MST is shorter. */
 export function planWireReroutes(
-  project: ProjectDocument,
+  project: Pick<ProjectDocument, "design">,
 ): WireRerouteTarget[] {
   const wires = Object.values(project.design.wires ?? {}).sort((left, right) =>
     left.id.localeCompare(right.id),

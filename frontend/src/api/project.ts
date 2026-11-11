@@ -6,10 +6,24 @@ export interface HolePos {
   x: number;
   y: number;
 }
+export interface ObjectReference {
+  kind: string;
+  id: string;
+}
 export interface Diagnostic {
   code: string;
   severity: "error" | "warning" | "advisory";
   message: string;
+  objects?: ObjectReference[];
+}
+export interface NetConnectivity {
+  net_id: string;
+  islands: PinRef[][];
+}
+export interface SessionChangeEvent {
+  revision: number;
+  kind: string;
+  summary: string;
 }
 export interface PinDefinition {
   id: string;
@@ -515,4 +529,58 @@ export function evaluateProjectRoute(
   vertices: Array<{ x2: number; y2: number }>,
 ): Promise<RouteProposal> {
   return invoke("evaluate_project_route", { request, side, vertices });
+}
+export function getNetConnectivity(): Promise<NetConnectivity[]> {
+  return invoke("get_net_connectivity");
+}
+export function pickProjectPath(
+  save: boolean,
+  suggestedName?: string,
+): Promise<string | null> {
+  return invoke("pick_project_path", { save, suggestedName });
+}
+
+/** Undo/redo entry without design snapshots (see `get_project_view`). */
+export interface ChangeSummary {
+  operation_id: string;
+  origin: WorkingChange["origin"];
+  rationale?: string;
+  summary: string;
+  diff: SemanticDiff;
+}
+export interface CommitSummary {
+  id: string;
+  parent?: string;
+  name: string;
+  description: string;
+  timestamp_ms: number;
+  source_revision: number;
+  change_count: number;
+  origins: WorkingChange["origin"][];
+  rationales: string[];
+}
+/** Lightweight read model used by the editor after every change. */
+export interface ProjectView {
+  schema_version: number;
+  project_id: string;
+  name: string;
+  revision: number;
+  design: ProjectDocument["design"];
+  validation: Diagnostic[];
+  commits: CommitSummary[];
+  head_commit?: string;
+  head_design?: ProjectDocument["design"];
+  undo: ChangeSummary[];
+  redo: ChangeSummary[];
+}
+export function getProjectView(): Promise<ProjectView> {
+  return invoke("get_project_view");
+}
+export function getCommitDesign(
+  commitId: string,
+): Promise<ProjectDocument["design"]> {
+  return invoke("get_commit_design", { commitId });
+}
+export function getUndoHistoryBytes(): Promise<number> {
+  return invoke("get_undo_history_bytes");
 }

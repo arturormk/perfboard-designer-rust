@@ -227,6 +227,61 @@ pub(crate) fn diagnostics(design: &Design) -> Vec<Diagnostic> {
     result
 }
 
+/// Electrical connectivity of one net's assigned pins.
+///
+/// `islands` partitions the net's pins into groups that are already joined by
+/// wires, rails, bridges, or coincident pin positions. A fully routed net has
+/// exactly one island. The UI uses this to draw unrouted connections without
+/// re-implementing the connectivity rules.
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, schemars::JsonSchema)]
+pub struct NetConnectivity {
+    pub net_id: NetId,
+    pub islands: Vec<Vec<PinRef>>,
+}
+
+/// Computes pin islands for every accepted net.
+#[must_use]
+pub fn net_connectivity(design: &Design) -> Vec<NetConnectivity> {
+    design
+        .nets
+        .values()
+        .filter(|net| net.state == ConnectionState::Accepted)
+        .map(|net| {
+            let adjacency = adjacency(design, net.id);
+            let mut assigned = BTreeSet::new();
+            let mut islands = Vec::new();
+            for pin in &net.pins {
+                let start = TerminalRef::from(pin.clone());
+                if assigned.contains(&start) {
+                    continue;
+                }
+                let mut reached = BTreeSet::new();
+                let mut pending = vec![start];
+                while let Some(current) = pending.pop() {
+                    if !reached.insert(current.clone()) {
+                        continue;
+                    }
+                    if let Some(next) = adjacency.get(&current) {
+                        pending.extend(next.iter().cloned());
+                    }
+                }
+                let island = net
+                    .pins
+                    .iter()
+                    .filter(|candidate| reached.contains(&TerminalRef::from((*candidate).clone())))
+                    .cloned()
+                    .collect::<Vec<_>>();
+                assigned.extend(reached);
+                islands.push(island);
+            }
+            NetConnectivity {
+                net_id: net.id,
+                islands,
+            }
+        })
+        .collect()
+}
+
 fn has_short_interior_segment(vertices: &[RoutePos]) -> bool {
     vertices.windows(2).enumerate().any(|(index, pair)| {
         let is_endpoint_segment = index == 0 || index + 2 == vertices.len();
@@ -712,6 +767,50 @@ mod tests {
                 .iter()
                 .all(|item| item.code.0 != "circuit.net_incomplete")
         );
+    }
+
+    #[test]
+    fn net_connectivity_groups_pins_into_islands() {
+        let (mut design, first_id, second_id) = bridge_fixture();
+        let net_id = NetId::new();
+        design.nets.insert(
+            net_id,
+            ElectricalNet {
+                id: net_id,
+                name: "bridged".into(),
+                state: ConnectionState::Accepted,
+                pins: BTreeSet::from([
+                    PinRef {
+                        component_id: first_id,
+                        pin_id: "p".into(),
+                    },
+                    PinRef {
+                        component_id: second_id,
+                        pin_id: "p".into(),
+                    },
+                ]),
+                notes: String::new(),
+            },
+        );
+
+        let bridged = net_connectivity(&design);
+        assert_eq!(bridged.len(), 1);
+        assert_eq!(bridged[0].islands.len(), 1);
+        assert_eq!(bridged[0].islands[0].len(), 2);
+
+        let bridges = design
+            .components
+            .values()
+            .filter(|instance| {
+                design.component_definitions[&instance.definition_id].kind == ComponentKind::Bridge
+            })
+            .map(|instance| instance.id)
+            .collect::<Vec<_>>();
+        for id in bridges {
+            design.components.remove(&id);
+        }
+        let split = net_connectivity(&design);
+        assert_eq!(split[0].islands.len(), 2);
     }
 
     #[test]

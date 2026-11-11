@@ -1,0 +1,1094 @@
+/* ── Canvas host and HUD ──────────────────────────────────────────────── */
+.canvas-host {
+  position: absolute;
+  inset: 0;
+  display: flex;
+}
+
+.canvas-host.split .compare-pane,
+.canvas-host.split .work-pane {
+  flex: 1;
+}
+
+.compare-pane {
+  position: relative;
+  border-right: 1px solid var(--line-2);
+  background: rgb(0 0 0 / 18%);
+}
+
+.work-pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.pane-tag {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  z-index: 3;
+  padding: 2px 10px;
+  border-radius: 10px;
+  background: var(--bg-3);
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  transform: translateX(-50%);
+}
+
+.pane-tag.working {
+  background: var(--copper-soft);
+  color: var(--copper);
+}
+
+.canvas-empty {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: var(--text-3);
+}
+
+.board-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.board-svg.cursor-crosshair {
+  cursor: crosshair;
+}
+
+.board-svg.cursor-grabbing {
+  cursor: grabbing;
+}
+
+.board-svg.cursor-move {
+  cursor: move;
+}
+
+.hud {
+  position: absolute;
+  z-index: 10;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.hud > * {
+  pointer-events: auto;
+}
+
+.hud-top-left {
+  top: 12px;
+  left: 12px;
+  right: 50%;
+}
+
+.hud-top-center {
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.hud-top-right {
+  top: 12px;
+  right: 12px;
+}
+
+.hud-bottom-left {
+  bottom: 12px;
+  left: 12px;
+}
+
+.hud-bottom-right {
+  bottom: 12px;
+  right: 12px;
+}
+
+.side-switch,
+.tool-options,
+.zoom-group,
+.hud-btn {
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: rgb(28 31 35 / 92%);
+  box-shadow: var(--shadow-2);
+  backdrop-filter: blur(8px);
+}
+
+.side-switch {
+  position: relative;
+  display: flex;
+  padding: 3px;
+  gap: 2px;
+}
+
+.side-switch button {
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.side-switch button:hover {
+  color: var(--text-1);
+}
+
+.side-switch button.on {
+  background: var(--bg-4);
+  color: var(--text-1);
+}
+
+.side-switch.side-solder button.on {
+  background: var(--copper-soft);
+  color: var(--copper-strong);
+}
+
+.mirror-tag {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 50%;
+  padding: 1px 8px;
+  border-radius: 9px;
+  background: rgb(28 31 35 / 92%);
+  color: var(--copper);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.tool-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  min-height: 34px;
+  padding: 5px 12px;
+  max-width: 100%;
+}
+
+.tool-options > strong {
+  color: var(--copper);
+  font-weight: 650;
+}
+
+.tool-options .hint {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.hud-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.hud-field select {
+  width: auto;
+  min-width: 120px;
+  height: 26px;
+  font-size: 12px;
+}
+
+.hud-field .swatches .swatch {
+  width: 18px;
+  height: 18px;
+}
+
+.zoom-group {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+}
+
+.zoom-group .icon-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.zoom-readout {
+  min-width: 52px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.zoom-readout:hover {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.view-options {
+  position: relative;
+}
+
+.hud-btn {
+  height: 34px;
+}
+
+.hud-btn.on {
+  border-color: var(--line-3);
+  color: var(--text-1);
+}
+
+.view-options .popover {
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 292px;
+  padding: 10px 14px;
+}
+
+.popover-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid var(--line-1);
+  margin-bottom: 4px;
+}
+
+/* Route proposal card */
+.route-card {
+  width: 300px;
+  padding: 12px 14px;
+  border: 1px solid var(--copper-line);
+  border-radius: var(--radius-l);
+  background: rgb(28 31 35 / 96%);
+  box-shadow: var(--shadow-3);
+  backdrop-filter: blur(8px);
+  animation: toast-in 0.15s ease-out;
+}
+
+.route-card > header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--copper);
+}
+
+.route-card > header div {
+  display: flex;
+  flex-direction: column;
+}
+
+.route-card > header strong {
+  color: var(--text-1);
+  font-weight: 650;
+}
+
+.route-card > header span {
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.route-stats {
+  grid-template-columns: repeat(4, 1fr);
+  display: grid;
+  gap: 1px;
+  margin: 0 0 10px;
+  overflow: hidden;
+  border-radius: var(--radius-m);
+  background: var(--line-1);
+}
+
+.route-stats > div {
+  padding: 6px 8px;
+  background: var(--bg-2);
+}
+
+.route-stats dt {
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+
+.route-stats dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.route-card .route-warning,
+.route-card .route-jumper {
+  margin-bottom: 6px;
+}
+
+.route-crossing {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.route-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.net-prompt {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 260px;
+  padding: 12px;
+  border: 1px solid var(--copper-line);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+  box-shadow: var(--shadow-3);
+}
+
+.net-prompt label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.net-prompt input {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* ── SVG scene ────────────────────────────────────────────────────────── */
+.scene text {
+  font-family: var(--font-ui);
+  pointer-events: none;
+  user-select: none;
+}
+
+.substrate {
+  fill: var(--substrate);
+  stroke: var(--substrate-edge);
+  stroke-width: 0.08;
+  filter: drop-shadow(0 0.25px 0.6px rgb(0 0 0 / 55%));
+}
+
+.side-solder .substrate {
+  fill: var(--substrate-solder);
+}
+
+.hole {
+  fill: var(--hole);
+}
+
+.pad-ring {
+  fill: var(--pad-ring-component);
+}
+
+.side-solder .pad-ring {
+  fill: var(--pad-ring-solder);
+  stroke: #9d6a3b;
+  stroke-width: 0.03;
+}
+
+.hatch {
+  stroke: rgb(160 40 30 / 55%);
+  stroke-width: 0.06;
+}
+
+.forbidden {
+  stroke: rgb(160 40 30 / 70%);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.2 0.12;
+}
+
+.mounting-hole {
+  fill: #1a130c;
+  stroke: #8b6538;
+  stroke-width: 0.12;
+}
+
+/* Parts */
+.part {
+  cursor: move;
+}
+
+.mode-readonly .part,
+.mode-print .part {
+  cursor: default;
+}
+
+.part-body {
+  fill: var(--part-body);
+  stroke: var(--part-stroke);
+  stroke-width: 0.06;
+  opacity: 0.94;
+  transition: opacity 0.15s;
+}
+
+.part-notch {
+  fill: var(--copper);
+  opacity: 0.85;
+}
+
+.part.hovered .part-body {
+  stroke: #8a8f97;
+  stroke-width: 0.08;
+}
+
+.part.selected .part-body {
+  stroke: var(--copper);
+  stroke-width: 0.12;
+}
+
+.faded .part-body {
+  opacity: 0.28;
+}
+
+.faded .part.selected .part-body,
+.faded .part.hovered .part-body {
+  opacity: 0.5;
+}
+
+.part.opposite .part-body {
+  fill: none;
+  stroke: rgb(40 30 20 / 45%);
+  stroke-width: 0.06;
+  stroke-dasharray: 0.25 0.15;
+  opacity: 1;
+}
+
+.part.dim .part-body,
+.wire.dim,
+.rail.dim {
+  opacity: 0.25;
+}
+
+.keepout {
+  fill: rgb(240 106 99 / 12%);
+  stroke: rgb(240 106 99 / 55%);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.15 0.1;
+}
+
+.wire-keepout {
+  fill: rgb(231 184 78 / 10%);
+  stroke: rgb(231 184 78 / 55%);
+  stroke-width: 0.05;
+  stroke-dasharray: 0.1 0.1;
+}
+
+.access rect {
+  fill: rgb(106 174 232 / 10%);
+  stroke: rgb(106 174 232 / 50%);
+  stroke-width: 0.04;
+  stroke-dasharray: 0.12 0.1;
+}
+
+.access-arrow {
+  fill: none;
+  stroke: rgb(106 174 232 / 75%);
+  stroke-width: 0.08;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.access:not(.required) {
+  opacity: 0.6;
+}
+
+/* Pads and solder joints */
+.pad {
+  fill: var(--pad);
+  stroke: var(--pad-stroke);
+  stroke-width: 0.05;
+  cursor: pointer;
+}
+
+.pad.first {
+  fill: #e9c29b;
+}
+
+.pad.assigned {
+  fill: #f0d3a8;
+  stroke: #8a5a2b;
+}
+
+.joint {
+  fill: var(--joint);
+  stroke: #707377;
+  stroke-width: 0.05;
+  cursor: pointer;
+}
+
+.joint.assigned {
+  fill: #dfe2e6;
+}
+
+.mode-print .pad,
+.mode-print .joint {
+  cursor: default;
+}
+
+.pad:hover,
+.joint:hover {
+  stroke: var(--copper-strong);
+  stroke-width: 0.1;
+}
+
+.pad.emphasis,
+.joint.emphasis {
+  stroke: #fff4e6;
+  stroke-width: 0.12;
+  filter: drop-shadow(0 0 0.25px var(--copper-strong));
+}
+
+.has-emphasis .pad.deemphasis,
+.has-emphasis .joint.deemphasis {
+  opacity: 0.55;
+}
+
+.pad.of-selected {
+  stroke: var(--copper);
+  stroke-width: 0.08;
+}
+
+/* Wires: halo (selection), casing (insulation edge), core (colour). */
+.wire,
+.rail {
+  cursor: pointer;
+}
+
+.wire polyline,
+.rail polyline,
+.ghost-wire,
+.route-preview polyline,
+.wire-draft polyline,
+.rail-draft polyline {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.wire-hit {
+  stroke: transparent;
+  stroke-width: 0.7;
+}
+
+.wire-halo {
+  stroke: transparent;
+  stroke-width: 0.62;
+  transition: stroke 0.12s;
+}
+
+.wire-casing {
+  stroke: rgb(20 14 8 / 70%);
+  stroke-width: 0.34;
+}
+
+.wire-core {
+  stroke: var(--wire);
+  stroke-width: 0.24;
+}
+
+.wire.dark .wire-casing {
+  stroke: rgb(255 248 236 / 55%);
+}
+
+.rail .wire-casing {
+  stroke: rgb(60 60 60 / 70%);
+  stroke-width: 0.3;
+}
+
+.rail .wire-core {
+  stroke: #d9dcdf;
+  stroke-width: 0.2;
+}
+
+.rail-node {
+  fill: #e7e9eb;
+  stroke: #6a6d70;
+  stroke-width: 0.05;
+}
+
+.wire-end {
+  fill: var(--joint);
+  stroke: rgb(30 30 30 / 60%);
+  stroke-width: 0.04;
+}
+
+.wire.hovered .wire-halo,
+.rail.hovered .wire-halo {
+  stroke: rgb(255 255 255 / 20%);
+}
+
+.wire.selected .wire-halo,
+.rail.selected .wire-halo {
+  stroke: rgb(240 168 108 / 55%);
+}
+
+.wire.emphasis .wire-halo,
+.rail.emphasis .wire-halo {
+  stroke: rgb(255 255 255 / 16%);
+}
+
+.has-emphasis .wire.deemphasis,
+.has-emphasis .rail.deemphasis {
+  opacity: 0.35;
+}
+
+.wire.locked .wire-core {
+  stroke-dasharray: none;
+}
+
+.wire.opposite,
+.rail.opposite {
+  opacity: 0.32;
+}
+
+.wire.opposite .wire-casing,
+.rail.opposite .wire-casing {
+  display: none;
+}
+
+.wire.opposite .wire-core,
+.rail.opposite .wire-core {
+  stroke-width: 0.14;
+  stroke-dasharray: 0.3 0.18;
+}
+
+/* Bridges (solder-side links) */
+.bridge {
+  cursor: pointer;
+}
+
+.bridge-hit {
+  stroke: transparent;
+  stroke-width: 0.7;
+  stroke-linecap: round;
+}
+
+.bridge-wire {
+  stroke: #e4e6e8;
+  stroke-width: 0.22;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0.04px 0.04px rgb(0 0 0 / 60%));
+}
+
+.bridge-joint {
+  fill: #cfd2d6;
+  stroke: #6d7074;
+  stroke-width: 0.05;
+}
+
+.bridge.hovered .bridge-wire {
+  stroke: #fff;
+}
+
+.bridge.selected .bridge-wire {
+  stroke: var(--copper-strong);
+}
+
+.bridge.opposite {
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.bridge.opposite .bridge-joint {
+  display: none;
+}
+
+/* Unrouted connections */
+.airwire {
+  cursor: pointer;
+}
+
+.airwire-hit {
+  stroke: transparent;
+  stroke-width: 0.6;
+}
+
+.airwire-casing {
+  stroke: rgb(25 16 8 / 55%);
+  stroke-width: 0.15;
+  stroke-linecap: round;
+}
+
+.airwire-line {
+  stroke: #fffbea;
+  stroke-width: 0.07;
+  stroke-dasharray: 0.2 0.14;
+  stroke-linecap: round;
+}
+
+.airwire:hover .airwire-line,
+.airwire.emphasis .airwire-line {
+  stroke: var(--copper-strong);
+  stroke-width: 0.1;
+  opacity: 1;
+}
+
+.airwire.deemphasis {
+  opacity: 0.3;
+}
+
+.mode-print .layer-airwires {
+  display: none;
+}
+
+/* Change highlighting and agent flashes */
+.diff-added .part-body,
+.diff-added.bridge .bridge-wire {
+  stroke: var(--diff-added);
+  stroke-width: 0.14;
+}
+
+.diff-modified .part-body {
+  stroke: var(--diff-modified);
+  stroke-width: 0.14;
+}
+
+.wire.diff-added .wire-halo,
+.rail.diff-added .wire-halo {
+  stroke: rgb(108 194 138 / 55%);
+}
+
+.wire.diff-modified .wire-halo,
+.rail.diff-modified .wire-halo {
+  stroke: rgb(231 184 78 / 50%);
+}
+
+.layer-removed .part-body,
+.ghost .part-body {
+  fill: rgb(240 106 99 / 10%);
+  stroke: var(--diff-removed);
+  stroke-width: 0.08;
+  stroke-dasharray: 0.2 0.12;
+}
+
+.ghost-wire {
+  stroke: var(--diff-removed);
+  stroke-width: 0.14;
+  stroke-dasharray: 0.25 0.15;
+  opacity: 0.8;
+}
+
+.layer-removed {
+  pointer-events: none;
+}
+
+.flash .part-body,
+.flash.bridge .bridge-wire {
+  animation: agent-flash 1.4s ease-in-out 2;
+}
+
+.wire.flash .wire-halo,
+.rail.flash .wire-halo {
+  animation: agent-flash-halo 1.4s ease-in-out 2;
+}
+
+@keyframes agent-flash {
+  50% {
+    stroke: var(--agent);
+    stroke-width: 0.22;
+  }
+}
+
+@keyframes agent-flash-halo {
+  50% {
+    stroke: rgb(169 139 255 / 70%);
+  }
+}
+
+/* Labels */
+.rulers text {
+  fill: var(--text-4);
+  font-size: 0.42px;
+  font-family: var(--font-mono);
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.rulers text.major {
+  fill: var(--text-2);
+}
+
+.part-label {
+  fill: var(--part-text);
+  font-size: 0.5px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+.faded .part-label {
+  fill: rgb(30 22 12 / 80%);
+}
+
+.part-label.selected {
+  fill: var(--copper-strong);
+}
+
+.pin-label {
+  fill: #2b2219;
+  font-family: var(--font-mono);
+  font-size: 0.3px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.pin-label.long {
+  font-size: 0.22px;
+}
+
+.pin-label.names {
+  font-size: 0.2px;
+  font-family: var(--font-ui);
+}
+
+.wire-label rect {
+  fill: rgb(22 24 27 / 92%);
+  stroke: rgb(255 255 255 / 15%);
+  stroke-width: 0.03;
+}
+
+.wire-label text {
+  fill: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 0.36px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+/* Tool overlays */
+.cursor-hole {
+  fill: none;
+  stroke: var(--copper-strong);
+  stroke-width: 0.07;
+  pointer-events: none;
+}
+
+.handle {
+  fill: #fff;
+  stroke: var(--copper);
+  stroke-width: 0.07;
+  cursor: grab;
+}
+
+.handle.endpoint {
+  fill: var(--copper);
+  stroke: #fff;
+}
+
+.route-preview {
+  pointer-events: none;
+}
+
+.route-preview polyline {
+  stroke: var(--copper-strong);
+  stroke-width: 0.24;
+  stroke-dasharray: 0.4 0.2;
+  filter: drop-shadow(0 0 0.2px rgb(0 0 0 / 80%));
+  animation: march 0.8s linear infinite;
+}
+
+.crossing {
+  fill: rgb(231 184 78 / 25%);
+  stroke: var(--warn);
+  stroke-width: 0.06;
+}
+
+@keyframes march {
+  to {
+    stroke-dashoffset: -0.6;
+  }
+}
+
+.wire-draft,
+.rail-draft {
+  pointer-events: none;
+}
+
+.wire-draft polyline {
+  stroke: var(--copper-strong);
+  stroke-width: 0.22;
+  opacity: 0.9;
+}
+
+.wire-draft circle,
+.rail-draft circle {
+  fill: var(--copper-strong);
+}
+
+.rail-draft polyline {
+  stroke: #e7e9eb;
+  stroke-width: 0.2;
+  stroke-dasharray: 0.3 0.15;
+}
+
+.bridge-preview {
+  pointer-events: none;
+}
+
+.bridge-option {
+  fill: rgb(240 168 108 / 18%);
+  stroke: var(--copper-line);
+  stroke-width: 0.05;
+}
+
+.bridge-anchor {
+  fill: var(--copper);
+}
+
+.bridge-preview line {
+  stroke: #fff;
+  stroke-width: 0.22;
+  stroke-linecap: round;
+}
+
+.placement-ghost {
+  pointer-events: none;
+}
+
+.placement-ghost rect {
+  fill: rgb(240 168 108 / 22%);
+  stroke: var(--copper-strong);
+  stroke-width: 0.08;
+  stroke-dasharray: 0.25 0.12;
+}
+
+.placement-ghost circle {
+  fill: var(--copper-strong);
+  opacity: 0.8;
+}
+
+.move-outline rect {
+  fill: none;
+  stroke: var(--copper-strong);
+  stroke-width: 0.06;
+  stroke-dasharray: 0.2 0.12;
+  pointer-events: none;
+}
+
+.resize-outline {
+  fill: none;
+  stroke: var(--copper);
+  stroke-width: 0.06;
+  stroke-dasharray: 0.25 0.15;
+  pointer-events: none;
+}
+
+.resize-handles line {
+  stroke: transparent;
+  stroke-width: 0.8;
+}
+
+.resize-handles line[data-resize="top"],
+.resize-handles line[data-resize="bottom"] {
+  cursor: ns-resize;
+}
+
+.resize-handles line[data-resize="left"],
+.resize-handles line[data-resize="right"] {
+  cursor: ew-resize;
+}
+
+.resize-corner {
+  fill: var(--copper);
+  stroke: #fff;
+  stroke-width: 0.06;
+}
+
+.resize-corner[data-resize="top-left"],
+.resize-corner[data-resize="bottom-right"] {
+  cursor: nwse-resize;
+}
+
+.resize-corner[data-resize="top-right"],
+.resize-corner[data-resize="bottom-left"] {
+  cursor: nesw-resize;
+}
+
+.resize-readout rect {
+  fill: rgb(22 24 27 / 92%);
+}
+
+.resize-readout text {
+  fill: var(--copper-strong);
+  font-family: var(--font-mono);
+  font-size: 0.6px;
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.hud-bottom-center {
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.hud-bottom-center .mirror-tag {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.part-label {
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: rgb(20 21 23 / 85%);
+  stroke-width: 0.12px;
+  stroke-linejoin: round;
+}
+
+.faded .part-label {
+  stroke: rgb(255 240 220 / 60%);
+}
+
+.canvas-area {
+  container-type: inline-size;
+}
+
+.hud-bottom {
+  bottom: 12px;
+  left: 12px;
+  right: 12px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.hud-bottom .mirror-tag {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+@container (max-width: 620px) {
+  .wide-only {
+    display: none;
+  }
+
+  .tool-options .hint {
+    display: none;
+  }
+
+  .hud-top-left {
+    right: 12px;
+  }
+}

@@ -1,0 +1,108 @@
+/* Build drawing: only the print sheet is shown, on white. */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  body {
+    overflow: visible;
+    background: #fff;
+    color: #000;
+  }
+
+  .app {
+    display: block;
+    height: auto;
+  }
+
+  .app > :not(.print-sheet) {
+    display: none !important;
+  }
+
+  .print-sheet {
+    display: block;
+    font: 10pt/1.35 var(--font-ui);
+    color: #000;
+  }
+
+  .print-sheet header {
+    margin-bottom: 6mm;
+  }
+
+  .print-sheet h1 {
+    font-size: 16pt;
+  }
+
+  .print-sheet h2 {
+    margin: 6mm 0 2mm;
+    font-size: 12pt;
+  }
+
+  .print-faces {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8mm;
+    break-inside: avoid;
+  }
+
+  .print-faces figure {
+    margin: 0;
+  }
+
+  .print-faces svg {
+    width: 100%;
+    height: auto;
+  }
+
+  .print-faces figcaption {
+    margin-top: 2mm;
+    text-align: center;
+    font-weight: 600;
+  }
+
+  .print-sheet table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9pt;
+  }
+
+  .print-sheet th,
+  .print-sheet td {
+    padding: 1.2mm 2mm;
+    border-bottom: 0.2mm solid #bbb;
+    text-align: left;
+  }
+
+  .print-sheet tr {
+    break-inside: avoid;
+  }
+
+  .print-sheet .tick {
+    width: 8mm;
+    border: 0.3mm solid #666;
+  }
+
+  .print-sheet .swatch {
+    width: 3mm;
+    height: 3mm;
+    vertical-align: middle;
+    box-shadow: inset 0 0 0 0.2mm #000;
+  }
+
+  .print-parts li {
+    margin-bottom: 1mm;
+  }
+
+  .mode-print .rulers text {
+    fill: #444;
+  }
+
+  .mode-print .rulers text.major {
+    fill: #000;
+  }
+
+  .mode-print .substrate {
+    filter: none;
+  }
+}

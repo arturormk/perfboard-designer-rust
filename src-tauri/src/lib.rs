@@ -920,6 +920,88 @@ fn close_runtime_component(
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_project_view(
+    state: tauri::State<'_, SessionState>,
+) -> Result<perfboard_project::ProjectView, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(perfboard_project::ProjectView::from_document(
+        session.document(),
+    ))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_commit_design(
+    state: tauri::State<'_, SessionState>,
+    commit_id: perfboard_core::CommitId,
+) -> Result<perfboard_project::Design, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    session
+        .document()
+        .commits
+        .get(&commit_id)
+        .map(|commit| commit.design.clone())
+        .ok_or_else(|| format!("commit {commit_id} does not exist"))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_undo_history_bytes(state: tauri::State<'_, SessionState>) -> Result<usize, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(perfboard_project::undo_history_bytes(session.document()))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_net_connectivity(
+    state: tauri::State<'_, SessionState>,
+) -> Result<Vec<perfboard_project::NetConnectivity>, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(perfboard_project::net_connectivity(
+        &session.document().design,
+    ))
+}
+
+/// Shows a native project file picker and returns the chosen path, if any.
+#[tauri::command]
+async fn pick_project_path(
+    app: tauri::AppHandle,
+    save: bool,
+    suggested_name: Option<String>,
+) -> Result<Option<String>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    let dialog = app
+        .dialog()
+        .file()
+        .add_filter("Perfboard project", &["json"]);
+    if save {
+        dialog
+            .set_title("Save project")
+            .set_file_name(suggested_name.unwrap_or_else(|| "untitled.perfboard.json".into()))
+            .save_file(move |selection| {
+                let _ = sender.send(selection);
+            });
+    } else {
+        dialog
+            .set_title("Open project")
+            .pick_file(move |selection| {
+                let _ = sender.send(selection);
+            });
+    }
+    let selection = receiver
+        .await
+        .map_err(|error| format!("project file picker failed: {error}"))?;
+    selection
+        .map(|path| {
+            path.into_path()
+                .map(|path| path.to_string_lossy().into_owned())
+                .map_err(|error| format!("selected project path is unavailable: {error}"))
+        })
+        .transpose()
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
 fn save_project(state: tauri::State<'_, SessionState>, path: PathBuf) -> Result<(), String> {
     let session = state.0.lock().map_err(|error| error.to_string())?;
     save_project_atomic(session.document(), path).map_err(|error| error.to_string())
@@ -1012,6 +1094,11 @@ pub fn run() {
             save_component_draft,
             save_project,
             open_project,
+            get_net_connectivity,
+            pick_project_path,
+            get_project_view,
+            get_commit_design,
+            get_undo_history_bytes,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Perfboard Designer");

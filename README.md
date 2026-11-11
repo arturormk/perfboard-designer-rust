@@ -22,8 +22,9 @@ cargo tauri dev
 ```
 
 The Tauri command starts Vite automatically. For browser-only frontend work,
-run `npm --prefix frontend run dev`; the bridge status will report that Tauri
-is unavailable, as expected.
+run `npm --prefix frontend run dev`: without Tauri the UI uses an in-memory
+preview backend loaded with the example design, marked **Browser preview**.
+See [the frontend developer notes](docs/ui/DEVELOPER_NOTES.md).
 
 To install the locked frontend dependencies and build an optimized desktop
 executable in one step:
@@ -49,28 +50,35 @@ the milestone sequence is in [the development plan](docs/plan/DEVELOPMENT_PLAN.m
 
 ## Editor
 
-The desktop editor renders a canonical SVG board and supports component
-selection, drag placement, rotation, property editing, zoom/pan, validation,
-and save/reopen. Bundled Nano-like and RS-485 breakout definitions are
-available from the component palette. The populated example lives at
-`examples/nano-rs485.perfboard.json`.
+The window has a parts and nets panel on the left, a tool rail, the board, and
+an inspector on the right with Problems and History tabs. Press `?` for all
+keyboard shortcuts.
 
-Create an accepted net (or a proposal requiring explicit acceptance), select it,
-then click component pins to assign them. Manual wire mode connects assigned
-pins with half-grid bend points. Existing bends can be edited numerically or
-removed from the wire inspector. The component/solder view toggle mirrors only
-presentation geometry, so all saved and edited coordinates remain canonical.
-Rails are net-owned conductors that do not need to terminate at component pins.
-Create a rail by clicking two or more half-grid nodes; wires can start or end at
-any of those explicit nodes when the rail and active net match.
+- **Place parts** by choosing one in the library and clicking a hole; `R`
+  rotates. Drag parts to move them, or nudge with the arrow keys.
+- **Connect** with the wire tool (`W`): click a pin, click holes to bend, click
+  the target pin. Starting from a pin with no net asks for a net name. Dashed
+  lines show connections that are still unrouted; click one to get a suggested
+  route, then accept or discard it. Bridges (`B`) and rails (`L`) have their own
+  tools.
+- **Component side / Solder side** switches the face. The solder side is
+  mirrored, as seen when the board is flipped; only the presentation is
+  mirrored and stored coordinates stay canonical.
+- **Problems** lists validation findings with advice; clicking one frames the
+  object. Manual edits may temporarily leave a part out of bounds or
+  overlapping; the edit is kept and reported until resolved.
+- **History** shows each step with its origin. Agent steps are marked in violet
+  with the agent's rationale. Commit to create a named checkpoint, compare the
+  working copy with any commit (highlighted or side by side), or restore one.
+- **File → Print build drawing** prints both faces and a wire cut list.
 
-Manual edits may temporarily leave a component out of bounds, overlapping, or
-blocking a required access region. The editor preserves the edit and reports
-the placement problem until a later move or rotation resolves it.
+Electrical changes proposed by an agent appear under **Needs your approval** in
+the Nets panel and stay inactive until accepted. The populated example lives
+at `examples/nano-rs485.perfboard.json`.
 
 ## Component Designer
 
-Switch to Component Designer to open an existing component directory or start
+Switch to Part designer to open an existing component directory or start
 a draft in an empty directory. Metadata, body geometry, rotations, pins,
 occupied holes, keepouts, access regions, and Markdown documentation are edited
 as a separate Rust-validated draft with undo and redo. Pins can be moved on the

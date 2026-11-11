@@ -1,0 +1,75 @@
+/*
+ * Design tokens. Dark graphite workspace, copper as the single accent (it is
+ * what the user solders), violet reserved for anything an agent did.
+ */
+:root {
+  --font-ui:
+    "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system,
+    sans-serif;
+  --font-mono:
+    "JetBrains Mono", "Cascadia Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --bg-0: #101113;
+  --bg-1: #16181b;
+  --bg-2: #1c1f23;
+  --bg-3: #23272c;
+  --bg-4: #2c3137;
+  --line-1: #2a2e34;
+  --line-2: #363b42;
+  --line-3: #4a5058;
+
+  --text-1: #eceae6;
+  --text-2: #b4b2ad;
+  --text-3: #85847f;
+  --text-4: #5f5f5b;
+
+  --copper: #e0955a;
+  --copper-strong: #f0a86c;
+  --copper-soft: rgb(224 149 90 / 14%);
+  --copper-line: rgb(224 149 90 / 45%);
+  --on-copper: #1b120b;
+
+  --agent: #a98bff;
+  --agent-soft: rgb(169 139 255 / 14%);
+  --agent-line: rgb(169 139 255 / 45%);
+
+  --ok: #6cc28a;
+  --ok-soft: rgb(108 194 138 / 13%);
+  --warn: #e7b84e;
+  --warn-soft: rgb(231 184 78 / 13%);
+  --error: #f06a63;
+  --error-soft: rgb(240 106 99 / 13%);
+  --info: #6aaee8;
+
+  --diff-added: #6cc28a;
+  --diff-modified: #e7b84e;
+  --diff-removed: #f06a63;
+
+  --radius-s: 5px;
+  --radius-m: 8px;
+  --radius-l: 12px;
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 30%);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 38%), 0 1px 3px rgb(0 0 0 / 40%);
+  --shadow-3: 0 18px 48px rgb(0 0 0 / 50%), 0 2px 6px rgb(0 0 0 / 40%);
+  --focus: 0 0 0 2px var(--bg-1), 0 0 0 4px var(--copper-line);
+
+  --topbar-h: 46px;
+  --statusbar-h: 26px;
+  --panel-left-w: 288px;
+  --panel-right-w: 332px;
+  --rail-w: 48px;
+
+  /* Board */
+  --substrate: #c79b5f;
+  --substrate-edge: #a47843;
+  --substrate-solder: #b88c55;
+  --hole: #2b2016;
+  --pad-ring-component: rgb(92 62 30 / 28%);
+  --pad-ring-solder: #d49a62;
+  --pad: #d6d3cc;
+  --pad-stroke: #6d6a64;
+  --joint: #c9ccd0;
+  --part-body: #2a2d31;
+  --part-stroke: #111214;
+  --part-text: #f2efe9;
+}

@@ -5,6 +5,7 @@
 # Frontend and Tauri build output
 /frontend/node_modules/
 /frontend/dist/
+/frontend/dev-fixtures/
 /src-tauri/target/
 /src-tauri/gen/
 

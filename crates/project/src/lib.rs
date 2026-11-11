@@ -8,6 +8,7 @@ pub mod rendering;
 pub mod revisions;
 pub mod routing;
 pub mod session;
+pub mod view;
 
 pub use diff::{ChangeKind, DiffEntry, SemanticDiff};
 pub use document::{
@@ -25,6 +26,7 @@ pub use routing::{RouteError, RouteRequest, RoutingCostConfig, evaluate_route, s
 pub use session::{
     ProjectSession, SessionChangeEvent, SessionError, TransactionRequest, TransactionResult,
 };
+pub use view::{ChangeSummary, CommitSummary, ProjectView, undo_history_bytes};
 
 /// Serialize values in the canonical human-readable snapshot format.
 ///
@@ -40,4 +42,5 @@ pub fn to_snapshot_json<T: serde::Serialize>(value: &T) -> Result<String, serde_
     Ok(json)
 }
 mod connectivity;
+pub use connectivity::{NetConnectivity, net_connectivity};
 mod constraints;
