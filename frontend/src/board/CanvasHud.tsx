@@ -1,5 +1,5 @@
 /** Floating controls layered over the board canvas. */
-import { useSignal } from "@preact/signals";
+import { useSignal, type ReadonlySignal } from "@preact/signals";
 import { acceptRoute, rejectRoute } from "../state/actions";
 import {
   activeNetId,
@@ -29,7 +29,7 @@ import {
 export function CanvasHud(props: {
   onZoom: (factor: number) => void;
   onFit: () => void;
-  zoomPercent: number;
+  zoomPercent: ReadonlySignal<number>;
   wireDrafting: boolean;
   railDrafting: boolean;
   onFinishRail: () => void;

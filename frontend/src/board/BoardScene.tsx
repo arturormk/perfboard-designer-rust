@@ -7,6 +7,7 @@
  * canvas uses for hit-testing; the scene itself has no event handlers.
  */
 import type { ComponentChildren } from "preact";
+import { memo } from "preact/compat";
 import type {
   ComponentDefinition,
   ComponentInstance,
@@ -47,6 +48,11 @@ export interface SceneProps {
   airwires?: Airwire[];
   wireLabels?: Map<string, string>;
   railLabels?: Map<string, string>;
+  /**
+   * Draw the substrate and hole grid in SVG (default). The interactive
+   * canvas passes `false` and draws them on a `<BoardBase>` canvas instead.
+   */
+  baseLayer?: boolean;
   /** Extra geometry in canonical board space (tool previews, handles). */
   overlay?: ComponentChildren;
   /** Extra content in view space (readable text). */
@@ -97,6 +103,13 @@ function ComponentBody({
         data-component={opposite ? undefined : instance.id}
       >
         <line class="bridge-hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+        <line
+          class="bridge-shadow"
+          x1={a.x}
+          y1={a.y + 0.04}
+          x2={b.x}
+          y2={b.y + 0.04}
+        />
         <line class="bridge-wire" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
         <circle class="bridge-joint" cx={a.x} cy={a.y} r={0.26} />
         <circle class="bridge-joint" cx={b.x} cy={b.y} r={0.26} />
@@ -232,7 +245,42 @@ function WireShape({
   );
 }
 
+/**
+ * The scene wrapper. The expensive static layers are memoized so that
+ * camera changes, cursor moves and tool previews (the overlays) do not
+ * rebuild every part, wire and pad.
+ */
 export function BoardScene(props: SceneProps) {
+  const { overlay, viewOverlay, ...layerProps } = props;
+  const { design, side, mode, fade, emphasisNetId } = props;
+  const mirror =
+    side === "solder"
+      ? `translate(${design.board.holes_x - 1} 0) scale(-1 1)`
+      : undefined;
+  return (
+    <g
+      class={classes(
+        "scene",
+        `side-${side}`,
+        `mode-${mode}`,
+        fade && "faded",
+        emphasisNetId && "has-emphasis",
+      )}
+    >
+      <SceneLayers {...layerProps} />
+      {overlay && (
+        <g class="geometry" transform={mirror}>
+          {overlay}
+        </g>
+      )}
+      {viewOverlay && <g class="labels">{viewOverlay}</g>}
+    </g>
+  );
+}
+
+type LayerProps = Omit<SceneProps, "overlay" | "viewOverlay">;
+
+const SceneLayers = memo(function SceneLayers(props: LayerProps) {
   const {
     design,
     side,
@@ -245,12 +293,12 @@ export function BoardScene(props: SceneProps) {
     removedFrom,
     flashIds,
     dimIds,
-    fade,
     pinLabels = "numbers",
     showKeepouts,
     airwires,
     wireLabels,
     railLabels,
+    baseLayer = true,
   } = props;
   const board = design.board;
   const pitch = board.pitch_mm;
@@ -324,32 +372,26 @@ export function BoardScene(props: SceneProps) {
   const padId = `${idPrefix}-pads`;
 
   return (
-    <g
-      class={classes(
-        "scene",
-        `side-${side}`,
-        `mode-${mode}`,
-        fade && "faded",
-        emphasisNetId && "has-emphasis",
-      )}
-    >
+    <>
       <defs>
-        <pattern
-          id={holeId}
-          width="1"
-          height="1"
-          patternUnits="userSpaceOnUse"
-          x="-0.5"
-          y="-0.5"
-        >
-          <circle
-            class="pad-ring"
-            cx="0.5"
-            cy="0.5"
-            r={side === "solder" ? 0.36 : 0.27}
-          />
-          <circle class="hole" cx="0.5" cy="0.5" r="0.14" />
-        </pattern>
+        {baseLayer && (
+          <pattern
+            id={holeId}
+            width="1"
+            height="1"
+            patternUnits="userSpaceOnUse"
+            x="-0.5"
+            y="-0.5"
+          >
+            <circle
+              class="pad-ring"
+              cx="0.5"
+              cy="0.5"
+              r={side === "solder" ? 0.36 : 0.27}
+            />
+            <circle class="hole" cx="0.5" cy="0.5" r="0.14" />
+          </pattern>
+        )}
         <pattern
           id={padId}
           width="0.5"
@@ -360,22 +402,36 @@ export function BoardScene(props: SceneProps) {
         </pattern>
       </defs>
       <g class="geometry" transform={mirror}>
-        <rect
-          class="substrate"
-          x={-BOARD_MARGIN}
-          y={-BOARD_MARGIN}
-          width={board.holes_x - 1 + BOARD_MARGIN * 2}
-          height={board.holes_y - 1 + BOARD_MARGIN * 2}
-          rx={0.45}
-        />
-        <rect
-          class="hole-grid"
-          x={-0.5}
-          y={-0.5}
-          width={board.holes_x}
-          height={board.holes_y}
-          fill={`url(#${holeId})`}
-        />
+        {/* Offset copy instead of a CSS drop-shadow: filters re-rasterize
+            at screen resolution and get very slow when zoomed in. */}
+        {baseLayer && (
+          <>
+            <rect
+              class="substrate-shadow"
+              x={-BOARD_MARGIN}
+              y={-BOARD_MARGIN + 0.22}
+              width={board.holes_x - 1 + BOARD_MARGIN * 2}
+              height={board.holes_y - 1 + BOARD_MARGIN * 2}
+              rx={0.45}
+            />
+            <rect
+              class="substrate"
+              x={-BOARD_MARGIN}
+              y={-BOARD_MARGIN}
+              width={board.holes_x - 1 + BOARD_MARGIN * 2}
+              height={board.holes_y - 1 + BOARD_MARGIN * 2}
+              rx={0.45}
+            />
+            <rect
+              class="hole-grid"
+              x={-0.5}
+              y={-0.5}
+              width={board.holes_x}
+              height={board.holes_y}
+              fill={`url(#${holeId})`}
+            />
+          </>
+        )}
         {(board.forbidden_areas ?? []).map((area, index) => (
           <rect
             key={index}
@@ -584,8 +640,6 @@ export function BoardScene(props: SceneProps) {
             ))}
           </g>
         )}
-
-        {props.overlay}
       </g>
 
       {/* Readable text, positioned in view space. */}
@@ -698,11 +752,10 @@ export function BoardScene(props: SceneProps) {
                 />
               );
             })}
-        {props.viewOverlay}
       </g>
-    </g>
+    </>
   );
-}
+});
 
 const LABEL_CHAR_WIDTH = 0.29;
 

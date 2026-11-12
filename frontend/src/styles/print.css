@@ -102,7 +102,7 @@
     fill: #000;
   }
 
-  .mode-print .substrate {
-    filter: none;
+  .mode-print .substrate-shadow {
+    display: none;
   }
 }

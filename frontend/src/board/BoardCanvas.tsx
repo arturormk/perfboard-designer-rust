@@ -4,7 +4,7 @@
  * All edits are sent as engine operations through `state/actions`. Local
  * state here only covers in-progress gestures (drags, drafts, previews).
  */
-import { useSignal, useSignalEffect } from "@preact/signals";
+import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type {
   ComponentDefinition,
@@ -80,6 +80,7 @@ import {
   snappedRoutePoint,
 } from "../editor/wire-routing";
 import { netForWireStart, parsePinKey, terminalForWireEnd } from "./hit";
+import { BoardBase } from "./BoardBase";
 import { BoardScene, defaultViewBox } from "./BoardScene";
 import { CanvasHud } from "./CanvasHud";
 import { HoverCard } from "./HoverCard";
@@ -164,6 +165,59 @@ function clientToView(
   return { x: point.x, y: point.y };
 }
 
+/**
+ * Maps a client point to view units for `box`, computed from the pane's
+ * layout box rather than the SVG's CTM: during a zoom preview the SVG carries
+ * a CSS transform and an outdated viewBox, but the camera has already moved.
+ */
+function clientToBox(
+  svg: SVGSVGElement,
+  box: ViewBox,
+  clientX: number,
+  clientY: number,
+): Point | undefined {
+  const host = svg.parentElement?.getBoundingClientRect();
+  if (!host || !svg.clientWidth || !svg.clientHeight) return undefined;
+  const [x, y, width, height] = box;
+  const scale = Math.min(svg.clientWidth / width, svg.clientHeight / height);
+  const offsetX = (svg.clientWidth - width * scale) / 2;
+  const offsetY = (svg.clientHeight - height * scale) / 2;
+  return {
+    x: x + (clientX - host.left - offsetX) / scale,
+    y: y + (clientY - host.top - offsetY) / scale,
+  };
+}
+
+/**
+ * CSS transform that makes an SVG drawn with viewBox `shown` look like it was
+ * drawn with `live` (both under preserveAspectRatio="xMidYMid meet").
+ */
+function previewTransform(
+  svg: SVGSVGElement,
+  shown: ViewBox,
+  live: ViewBox,
+): string {
+  const width = svg.clientWidth;
+  const height = svg.clientHeight;
+  const map = (box: ViewBox) => {
+    const scale = Math.min(width / box[2], height / box[3]);
+    return {
+      scale,
+      ox: (width - box[2] * scale) / 2,
+      oy: (height - box[3] * scale) / 2,
+    };
+  };
+  const from = map(shown);
+  const to = map(live);
+  const k = to.scale / from.scale;
+  const tx = -k * from.ox + to.scale * (shown[0] - live[0]) + to.ox;
+  const ty = -k * from.oy + to.scale * (shown[1] - live[1]) + to.oy;
+  return `matrix(${k}, 0, 0, ${k}, ${tx}, ${ty})`;
+}
+
+/** Quiet time after the last wheel step before the full-quality redraw. */
+const ZOOM_SETTLE_MS = 250;
+
 function contentViewBox(
   target: Design,
   currentSide: "component" | "solder",
@@ -207,6 +261,22 @@ export function BoardCanvas() {
   const netPrompt = useSignal<NetPrompt | null>(null);
   const hoverClient = useSignal<{ x: number; y: number } | null>(null);
   const spaceDown = useSignal(false);
+  // `viewBox` is the live camera. `shownBox` is what the SVG is actually drawn
+  // with: re-rasterizing the scene at a new scale is slow in WebKitGTK, so
+  // while the wheel is turning the SVG keeps its old viewBox and is scaled
+  // with a cheap CSS transform; the real redraw happens once zooming settles.
+  // Both are bound straight to the DOM, so camera changes never re-render.
+  const shownBox = useSignal<ViewBox | null>(null);
+  const zoomPreview = useRef<number | null>(null);
+  const viewBoxAttr = useComputed(
+    () => (shownBox.value ?? viewBox.value)?.join(" ") ?? "",
+  );
+  const zoomPercent = useComputed(() => {
+    const box = viewBox.value;
+    const target = designSignal.value;
+    if (!box || !target) return 100;
+    return Math.round((contentViewBox(target, side.value)[2] / box[2]) * 100);
+  });
 
   const current = designSignal.value;
 
@@ -337,6 +407,36 @@ export function BoardCanvas() {
     };
   }, []);
 
+  // Keep the drawn SVGs in step with the camera, or preview while zooming.
+  useSignalEffect(() => {
+    const live = viewBox.value;
+    const svgs = [svgRef.current, compareRef.current];
+    if (live && zoomPreview.current !== null) {
+      const shown = shownBox.peek() ?? live;
+      for (const svg of svgs)
+        if (svg) svg.style.transform = previewTransform(svg, shown, live);
+      return;
+    }
+    shownBox.value = live;
+    for (const svg of svgs) if (svg) svg.style.transform = "";
+  });
+
+  useEffect(
+    () => () => {
+      if (zoomPreview.current !== null)
+        window.clearTimeout(zoomPreview.current);
+    },
+    [],
+  );
+
+  function settleZoom(): void {
+    if (zoomPreview.current === null) return;
+    window.clearTimeout(zoomPreview.current);
+    zoomPreview.current = null;
+    const live = viewBox.peek();
+    viewBox.value = live && ([...live] as ViewBox); // re-run the sync effect
+  }
+
   // Wheel zoom around the cursor; non-passive so the page does not scroll.
   useEffect(() => {
     const svg = svgRef.current;
@@ -344,8 +444,11 @@ export function BoardCanvas() {
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
       const box = viewBox.peek();
-      const point = clientToView(svg, event.clientX, event.clientY);
+      const point = box && clientToBox(svg, box, event.clientX, event.clientY);
       if (!box || !point) return;
+      if (zoomPreview.current !== null)
+        window.clearTimeout(zoomPreview.current);
+      zoomPreview.current = window.setTimeout(settleZoom, ZOOM_SETTLE_MS);
       if (
         event.ctrlKey ||
         Math.abs(event.deltaY) >= Math.abs(event.deltaX) ||
@@ -380,7 +483,7 @@ export function BoardCanvas() {
   }
 
   if (!current) return <div class="canvas-empty">Loading board…</div>;
-  if (!viewBox.value) viewBox.value = contentViewBox(current, side.peek());
+  if (!viewBox.peek()) viewBox.value = contentViewBox(current, side.peek());
   const target = current;
   const board = target.board;
   const maxX2 = (board.holes_x - 1) * 2;
@@ -495,6 +598,8 @@ export function BoardCanvas() {
   function onPointerDown(event: PointerEvent): void {
     const svg = svgRef.current;
     if (!svg) return;
+    // Interactions need the real geometry, not the zoom preview.
+    settleZoom();
     netPrompt.value = null;
     const element = event.target as Element;
     const point = canonical(event);
@@ -795,7 +900,12 @@ export function BoardCanvas() {
   function onPointerMove(event: PointerEvent): void {
     const svg = svgRef.current;
     if (!svg) return;
-    const point = canonical(event);
+    // Hover and cursor feedback wait until the zoom preview settles.
+    if (zoomPreview.current !== null) return;
+    const active = gesture.peek();
+    // While panning, the cursor stays over the same board point; skip the
+    // cursor signals so the pan does not re-render the canvas.
+    const point = active?.kind === "pan" ? undefined : canonical(event);
     if (point) {
       cursor.value = point;
       const hole = holeAt(point);
@@ -803,7 +913,6 @@ export function BoardCanvas() {
       if (hole?.x !== previous?.x || hole?.y !== previous?.y)
         cursorHole.value = hole ?? null;
     }
-    const active = gesture.peek();
     if (!active) {
       updateHover(event);
       return;
@@ -816,7 +925,7 @@ export function BoardCanvas() {
       const dx = (event.clientX - active.client.x) * scale;
       const dy = (event.clientY - active.client.y) * scale;
       if (!active.moved && Math.hypot(dx, dy) / scale < 3) return;
-      gesture.value = { ...active, moved: true };
+      if (!active.moved) gesture.value = { ...active, moved: true };
       viewBox.value = [x - dx, y - dy, width, height];
       return;
     }
@@ -1042,6 +1151,13 @@ export function BoardCanvas() {
       {pending && (
         <g class="route-preview">
           <polyline
+            class="route-casing"
+            points={pending.proposal.vertices
+              .map((v) => `${v.x2 / 2},${v.y2 / 2}`)
+              .join(" ")}
+          />
+          <polyline
+            class="route-line"
             points={pending.proposal.vertices
               .map((v) => `${v.x2 / 2},${v.y2 / 2}`)
               .join(" ")}
@@ -1110,7 +1226,6 @@ export function BoardCanvas() {
       />
     ) : null;
 
-  const box = viewBox.value!;
   const sceneProps = {
     side: side.value,
     pinLabels: pinLabels.value,
@@ -1138,10 +1253,15 @@ export function BoardCanvas() {
             {view.value?.commits.find((c) => c.id === view.value?.head_commit)
               ?.name ?? "base"}
           </div>
+          <BoardBase
+            board={compareTarget.board}
+            side={side.value}
+            viewBox={viewBox}
+          />
           <svg
             ref={compareRef}
             class="board-svg readonly"
-            viewBox={box.join(" ")}
+            viewBox={viewBoxAttr}
             preserveAspectRatio="xMidYMid meet"
           >
             <BoardScene
@@ -1149,6 +1269,7 @@ export function BoardCanvas() {
               design={compareTarget}
               mode="readonly"
               idPrefix="cmp"
+              baseLayer={false}
               changeKinds={changeKinds.value}
               showChanges
             />
@@ -1157,10 +1278,11 @@ export function BoardCanvas() {
       )}
       <div class="work-pane">
         {split && <div class="pane-tag working">Working copy</div>}
+        <BoardBase board={board} side={side.value} viewBox={viewBox} />
         <svg
           ref={svgRef}
           class={`board-svg${cursorClass ? ` cursor-${cursorClass}` : ""}`}
-          viewBox={box.join(" ")}
+          viewBox={viewBoxAttr}
           preserveAspectRatio="xMidYMid meet"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
@@ -1183,6 +1305,7 @@ export function BoardCanvas() {
             design={shown}
             mode="edit"
             idPrefix="work"
+            baseLayer={false}
             selection={selected}
             hoveredId={
               hover.value && "id" in hover.value ? hover.value.id : undefined
@@ -1203,9 +1326,7 @@ export function BoardCanvas() {
         <CanvasHud
           onZoom={zoomCenter}
           onFit={() => (viewBox.value = contentViewBox(target, side.peek()))}
-          zoomPercent={Math.round(
-            (contentViewBox(target, side.peek())[2] / box[2]) * 100,
-          )}
+          zoomPercent={zoomPercent}
           wireDrafting={Boolean(wireDraft.value)}
           railDrafting={Boolean(railDraft.value)}
           onFinishRail={finishRail}
