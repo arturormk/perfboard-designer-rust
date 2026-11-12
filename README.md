@@ -113,8 +113,11 @@ keyboard shortcuts.
 - **File → Print build drawing** prints both faces and a wire cut list.
 
 Electrical changes proposed by an agent appear under **Needs your approval** in
-the Nets panel and stay inactive until accepted. The populated example lives
-at `examples/nano-rs485.perfboard.json`.
+the Nets panel and stay inactive until accepted.
+
+The app starts on an empty board, ready for your own project; **File → New
+board…** sets another size in holes. A small sample with two parts and four
+wires is at `examples/nano-rs485.perfboard.json`.
 
 ## Component Designer
 

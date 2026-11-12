@@ -120,8 +120,8 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-Three Rust integration tests and `clippy -D warnings` already fail on the base
-commit; see FINDINGS.md.
+The Rust checks in the [README](../../README.md#quality-checks) pass as well;
+the test and Clippy failures recorded in FINDINGS.md have been resolved.
 
 ## Known gaps
 

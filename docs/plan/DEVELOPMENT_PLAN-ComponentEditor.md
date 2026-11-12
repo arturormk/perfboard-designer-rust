@@ -1,6 +1,6 @@
 # Component Designer development plan
 
-Status: proposed  
+Status: active (CE0–CE3 complete)  
 Source of truth: [`docs/BLUEPRINT-ComponentEditor.md`](../BLUEPRINT-ComponentEditor.md)  
 Related source: [`docs/BLUEPRINT.md`](../BLUEPRINT.md)  
 Scope: live component viewer first, followed by graphical and LLM-assisted

@@ -26,9 +26,10 @@ general filesystem or command-execution capabilities.
   structured error DTOs. Its initial transport is length-prefixed JSON over an
   ephemeral IPv4 loopback TCP socket, chosen for portability across Linux,
   macOS, and Windows.
-- At application startup, Tauri creates a random session ID and 256-bit bearer
-  token, binds only to `127.0.0.1`, and writes a per-session descriptor in the
-  current user's runtime directory. Unix directories and files are restricted
+- At application startup, Tauri creates a random session ID and a bearer
+  token made of two random UUIDv4 values (244 random bits), binds only to
+  `127.0.0.1`, and writes a per-session descriptor in the current user's
+  runtime directory. Unix directories and files are restricted
   to modes `0700` and `0600`. The descriptor is deleted on clean shutdown.
 - Discovery authenticates a `Ping`, so malformed files, dead listeners, and
   unrelated processes that inherited a reused port are not treated as live.

@@ -223,7 +223,7 @@ Exit criteria:
 
 ### Milestone 1 — Core model and simple graphical board
 
-Status: complete (2026-10-22)
+Status: complete (2026-10-23)
 
 Goal: create, render, edit, save, and reopen a board with placed components.
 
@@ -319,7 +319,7 @@ Exit criteria:
 
 ### Milestone 4 — Constraints, automatic routing, and jumper preferences
 
-Status: complete (2026-10-23)
+Status: complete (2026-10-24)
 
 Goal: produce reproducible route proposals optimized for hand assembly, without disturbing accepted work.
 
@@ -360,7 +360,7 @@ Exit criteria:
 
 ### Milestone 5 — MCP integration
 
-Status: complete (2026-10-24)
+Status: complete (2026-10-25)
 
 Goal: let an external MCP client inspect and edit the active working copy with identical semantics to the UI.
 

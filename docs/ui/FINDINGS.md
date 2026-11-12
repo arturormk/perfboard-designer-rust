@@ -72,10 +72,12 @@ helpers (`editor/*`, `component-designer/*`) and the typed command layer
   (bundled RS-485 part now placed out of bounds),
   `milestone2::non_octilinear_wire_is_rejected_atomically`, and
   `mcp-server milestone5::real_stdio_server_reads_and_mutates_the_shared_session`.
-  They look like fixture drift after the component renames in `414482a`.
+  They had drifted from the component library and wire-rule changes in
+  `06c79c5`. *Resolved in `029c460`.*
 - **Clippy baseline.** `cargo clippy -- -D warnings` fails on three lints from
   newer Clippy (`too_many_lines` in `component_draft.rs`, plus lints in
   `routing.rs`, `constraints.rs`, `connectivity.rs`). None are in new code.
+  *Resolved in `8f267a8`.*
 - **Contract drift risk (ADR 0004).** TypeScript types in `api/project.ts` are
   hand-written mirrors of Rust types. Generated types (for example `ts-rs` or
   `specta`) would have caught the missing `Diagnostic.objects`.
