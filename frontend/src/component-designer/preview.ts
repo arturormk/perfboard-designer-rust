@@ -177,7 +177,7 @@ function geometryResizeControls(
       : kind === "keepout"
         ? `${width} × ${height} holes kept out`
         : `${width} × ${height} holes accessible`;
-  return `<g class="component-resize-controls" data-component-resize-controls="${kind}"${indexAttribute}><rect class="component-resize-boundary" x="${x}" y="${y}" width="${width}" height="${height}"/><text class="component-resize-feedback" x="${x + width / 2}" y="${y + height / 2}" text-anchor="middle">${feedback}</text>${edges.map(([handle, x1, y1, x2, y2]) => `<line ${common(handle)} x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`).join("")}${corners.map(([handle, cx, cy]) => `<rect class="component-resize-corner" ${common(handle)} x="${cx - 0.18}" y="${cy - 0.18}" width=".36" height=".36" rx=".07"/>`).join("")}</g>`;
+  return `<g class="component-resize-controls" data-component-resize-controls="${kind}"${indexAttribute}><rect class="component-resize-boundary" x="${x}" y="${y}" width="${width}" height="${height}"/><text class="component-resize-feedback" x="${x + width / 2}" y="${y + height / 2}" text-anchor="middle" dy="0.35em">${feedback}</text>${edges.map(([handle, x1, y1, x2, y2]) => `<line ${common(handle)} x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`).join("")}${corners.map(([handle, cx, cy]) => `<rect class="component-resize-corner" ${common(handle)} x="${cx - 0.18}" y="${cy - 0.18}" width=".36" height=".36" rx=".07"/>`).join("")}</g>`;
 }
 
 export function renderComponentPreviewSvg(
@@ -245,7 +245,7 @@ export function renderComponentPreviewSvg(
       const label = pinLabel(pin, options.labelMode);
       if (!label) return "";
       const placement = pinLabelPlacement(options.rotation, pin.x, pin.y);
-      return `<text class="preview-pin-label" data-preview-pin-label-id="${escape(pin.id)}" x="${placement.x}" y="${placement.y}" text-anchor="${placement.textAnchor}" dominant-baseline="central">${escape(label)}</text>`;
+      return `<text class="preview-pin-label" data-preview-pin-label-id="${escape(pin.id)}" x="${placement.x}" y="${placement.y}" text-anchor="${placement.textAnchor}" dy="0.35em">${escape(label)}</text>`;
     })
     .join("");
   const rotation = rotationDegrees(options.rotation);

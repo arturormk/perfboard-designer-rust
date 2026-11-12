@@ -846,7 +846,6 @@
   font-size: 0.42px;
   font-family: var(--font-mono);
   text-anchor: middle;
-  dominant-baseline: central;
 }
 
 .rulers text.major {
@@ -874,7 +873,6 @@
   font-size: 0.3px;
   font-weight: 700;
   text-anchor: middle;
-  dominant-baseline: central;
 }
 
 .pin-label.long {
@@ -898,7 +896,6 @@
   font-size: 0.36px;
   font-weight: 600;
   text-anchor: middle;
-  dominant-baseline: central;
 }
 
 /* Tool overlays */
@@ -1067,7 +1064,6 @@
   font-size: 0.6px;
   font-weight: 600;
   text-anchor: middle;
-  dominant-baseline: central;
 }
 
 .hud-bottom-center {
@@ -1083,7 +1079,6 @@
 
 .part-label {
   text-anchor: middle;
-  dominant-baseline: central;
   paint-order: stroke;
   stroke: rgb(20 21 23 / 85%);
   stroke-width: 0.12px;

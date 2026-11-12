@@ -81,7 +81,7 @@ import {
 } from "../editor/wire-routing";
 import { netForWireStart, parsePinKey, terminalForWireEnd } from "./hit";
 import { BoardBase } from "./BoardBase";
-import { BoardScene, defaultViewBox } from "./BoardScene";
+import { BoardScene, TEXT_CENTER_DY, defaultViewBox } from "./BoardScene";
 import { CanvasHud } from "./CanvasHud";
 import { HoverCard } from "./HoverCard";
 
@@ -1535,7 +1535,7 @@ function ResizeHandles({
         transform={`translate(${left + width / 2} ${top + height / 2})`}
       >
         <rect x={-3.2} y={-0.7} width={6.4} height={1.4} rx={0.7} />
-        <text>
+        <text dy={TEXT_CENTER_DY}>
           {drag?.plan.holesX ?? holesX} × {drag?.plan.holesY ?? holesY} holes
         </text>
       </g>

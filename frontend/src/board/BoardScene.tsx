@@ -662,6 +662,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                   stateOf(instance.id),
                 )}
                 transform={label.transform}
+                dy={TEXT_CENTER_DY}
               >
                 {label.text}
               </text>
@@ -680,6 +681,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                 key={instance.id}
                 class={classes("part-label", label.vertical && "vertical")}
                 transform={label.transform}
+                dy={TEXT_CENTER_DY}
               >
                 {label.text}
               </text>
@@ -701,6 +703,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                   )}
                   x={vx(point.x)}
                   y={point.y}
+                  dy={TEXT_CENTER_DY}
                 >
                   {pinLabels === "names" && text.length > 5
                     ? `${text.slice(0, 5)}`
@@ -763,6 +766,17 @@ const LABEL_CHAR_WIDTH = 0.29;
  * Centres a part name on its body, running along the longer side so tall
  * modules (an Arduino Nano on its side) still get a readable label.
  */
+/**
+ * Vertical offset that centers digits and capitals on the text's y coordinate.
+ *
+ * `dominant-baseline: central` would be the idiomatic way, but WebKitGTK (the
+ * Tauri webview on Linux) ignores it for sub-pixel font sizes, and every label
+ * in board units is under 1px. `em` lengths are resolved from the computed
+ * font size without font metrics, so this works in every engine. 0.35em is
+ * half the typical cap height.
+ */
+export const TEXT_CENTER_DY = "0.35em";
+
 function partLabel(
   name: string,
   bounds: { x: number; y: number; width: number; height: number },
@@ -800,7 +814,7 @@ export function WireLabel({
   return (
     <g class="wire-label" transform={`translate(${x} ${y})`}>
       <rect x={-width / 2} y={-0.3} width={width} height={0.6} rx={0.3} />
-      <text x={0} y={0.02}>
+      <text x={0} y={0} dy={TEXT_CENTER_DY}>
         {text}
       </text>
     </g>
@@ -826,6 +840,7 @@ function Rulers({
           class={x % 5 === 0 ? "major" : undefined}
           x={viewX(x, holesX, side)}
           y={-1.25}
+          dy={TEXT_CENTER_DY}
         >
           {x}
         </text>
@@ -836,6 +851,7 @@ function Rulers({
           class={y % 5 === 0 ? "major" : undefined}
           x={-1.3}
           y={y}
+          dy={TEXT_CENTER_DY}
         >
           {y}
         </text>
