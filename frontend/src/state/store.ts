@@ -61,6 +61,8 @@ export interface PendingRoute {
 }
 
 // ── Engine data ────────────────────────────────────────────────────────────
+/** Application version from the backend; empty until it has answered. */
+export const appVersion = signal("");
 export const engine = signal<EngineState>({ kind: "connecting" });
 export const view = signal<ProjectView | null>(null);
 export const library = signal<ComponentDefinition[]>([]);

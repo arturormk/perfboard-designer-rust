@@ -1,0 +1,45 @@
+name: Release
+
+# Releases are cut by pushing a tag for an even-minor version, e.g. v0.2.0.
+# See docs/adr/0010-versioning.md and "Releasing" in README.md.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+# Release jobs can publish, so actions are pinned to commit SHAs and no
+# caches are restored (a poisoned cache could otherwise reach the bundles).
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # gh release create
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      - name: Check that the tag names this release
+        run: cargo run -q -p perfboard-version -- --check-tag "$GITHUB_REF_NAME"
+      - run: npm --prefix frontend ci
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --version '^2' --locked
+      - name: Build bundles
+        run: cargo tauri build --bundles deb,appimage --config '{"bundle":{"active":true}}'
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag \
+            --title "Perfboard Designer $GITHUB_REF_NAME" --generate-notes \
+            target/release/bundle/deb/*.deb \
+            target/release/bundle/appimage/*.AppImage

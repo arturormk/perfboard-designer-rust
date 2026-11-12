@@ -2304,6 +2304,7 @@ dependencies = [
  "perfboard-core",
  "perfboard-project",
  "perfboard-session-ipc",
+ "perfboard-version",
  "serde",
  "serde_json",
  "sha2",
@@ -2322,6 +2323,7 @@ dependencies = [
  "perfboard-core",
  "perfboard-project",
  "perfboard-session-ipc",
+ "perfboard-version",
  "rmcp",
  "schemars 1.2.3",
  "serde",
@@ -2354,6 +2356,13 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "perfboard-version"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

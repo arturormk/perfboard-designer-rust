@@ -344,6 +344,7 @@ impl SessionRequestHandler for DesktopSessionHandler {
 #[derive(Debug, Eq, PartialEq, Serialize)]
 pub struct BootstrapInfo {
     pub app_name: &'static str,
+    pub version: &'static str,
     pub schema_version: u32,
 }
 
@@ -351,6 +352,7 @@ pub struct BootstrapInfo {
 fn get_bootstrap_info() -> BootstrapInfo {
     BootstrapInfo {
         app_name: "Perfboard Designer",
+        version: env!("PERFBOARD_VERSION"),
         schema_version: perfboard_project::PROJECT_SCHEMA_VERSION.0,
     }
 }
@@ -1114,6 +1116,7 @@ mod tests {
             get_bootstrap_info(),
             BootstrapInfo {
                 app_name: "Perfboard Designer",
+                version: env!("PERFBOARD_VERSION"),
                 schema_version: perfboard_project::PROJECT_SCHEMA_VERSION.0
             }
         );

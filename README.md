@@ -48,6 +48,41 @@ npm --prefix frontend run build
 The authoritative product scope is in [the blueprint](docs/BLUEPRINT.md), and
 the milestone sequence is in [the development plan](docs/plan/DEVELOPMENT_PLAN.md).
 
+## Versioning
+
+Versions follow `v{major}.{minor}.{patch}`, where the parity of the minor
+number tells you what kind of build you have:
+
+| Line | Example | Patch number |
+| --- | --- | --- |
+| Odd minor: development | `v0.1.26` | Commit count of `HEAD`, automatic |
+| Even minor: release | `v0.2.0`, `v0.2.1` | Set by hand, only for releases |
+
+The declared line lives in `[workspace.package] version` in `Cargo.toml`
+(`0.1.0` on a development line, whose patch must stay `0`). Print the
+effective version with:
+
+```sh
+cargo run -q -p perfboard-version
+```
+
+The running app shows it at the bottom of the File menu, and the MCP server
+reports it to clients and with `perfboard-mcp-server --version`. Builds of a
+development line need Git history; from a source archive, set
+`PERFBOARD_COMMIT_COUNT`. See [ADR 0010](docs/adr/0010-versioning.md).
+
+### Releasing
+
+1. Set the release version (even minor) in `Cargo.toml` and
+   `frontend/package.json`, for example `0.2.0`, and move the
+   `Unreleased` notes in [CHANGELOG.md](CHANGELOG.md) under it. Commit.
+2. Tag and push: `git tag v0.2.0 && git push origin main v0.2.0`. The release
+   workflow checks the tag, builds Linux `.deb` and AppImage bundles, and
+   opens a draft GitHub release to review and publish.
+3. Set the next development line, `0.3.0`, in both files and commit.
+
+Fix releases (`v0.2.1`) are cut the same way from a branch at `v0.2.0`.
+
 ## Editor
 
 The window has a parts and nets panel on the left, a tool rail, the board, and
@@ -147,6 +182,10 @@ Passing validation means that project geometry and basic connectivity are
 internally consistent; it is never a guarantee of electrical correctness or
 safety.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-MIT
+[MIT](LICENSE)

@@ -5,7 +5,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { getBootstrapInfo } from "./bootstrap";
+import { formatVersion, getBootstrapInfo } from "./bootstrap";
 
 describe("Rust bootstrap boundary", () => {
   beforeEach(() => vi.mocked(invoke).mockReset());
@@ -13,14 +13,21 @@ describe("Rust bootstrap boundary", () => {
   it("invokes the typed Tauri command", async () => {
     vi.mocked(invoke).mockResolvedValue({
       app_name: "Perfboard Designer",
+      version: "0.1.26",
       schema_version: 1,
     });
 
     await expect(getBootstrapInfo()).resolves.toEqual({
       app_name: "Perfboard Designer",
+      version: "0.1.26",
       schema_version: 1,
     });
     expect(invoke).toHaveBeenCalledOnce();
     expect(invoke).toHaveBeenCalledWith("get_bootstrap_info");
+  });
+
+  it("prefixes numeric versions with v", () => {
+    expect(formatVersion("0.1.26")).toBe("v0.1.26");
+    expect(formatVersion("browser preview")).toBe("browser preview");
   });
 });

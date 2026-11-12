@@ -1,0 +1,20 @@
+[package]
+name = "perfboard-version"
+description = "Version resolution for Perfboard Designer builds"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "perfboard-version"
+path = "src/main.rs"

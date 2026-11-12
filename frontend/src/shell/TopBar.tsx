@@ -11,6 +11,7 @@ import {
 } from "../state/actions";
 import {
   appMode,
+  appVersion,
   changeCount,
   dirty,
   filePath,
@@ -21,6 +22,7 @@ import {
   engine,
   canCommit,
 } from "../state/store";
+import { formatVersion } from "../api/bootstrap";
 import { Icon } from "../ui/Icon";
 import { openDialog } from "./dialogs";
 
@@ -95,6 +97,11 @@ function FileMenu() {
           <button role="menuitem" onClick={run(() => openDialog("shortcuts"))}>
             <Icon name="keyboard" size={15} /> Keyboard shortcuts <kbd>?</kbd>
           </button>
+          {appVersion.value && (
+            <div class="menu-version">
+              Perfboard Designer {formatVersion(appVersion.value)}
+            </div>
+          )}
         </div>
       )}
     </div>

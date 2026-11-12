@@ -630,6 +630,7 @@ export async function installMockBackend(): Promise<void> {
   const commands: Record<string, (args: Record<string, unknown>) => unknown> = {
     get_bootstrap_info: () => ({
       app_name: "Perfboard Designer",
+      version: "browser preview",
       schema_version: 1,
     }),
     get_project_view: () => view(),

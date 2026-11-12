@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # The version's patch number is the commit count.
       - name: Install Tauri system dependencies
         run: |
           sudo apt-get update
@@ -24,6 +26,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # The version's patch number is the commit count.
       - name: Install Tauri system dependencies
         run: |
           sudo apt-get update
@@ -35,6 +39,8 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+      - name: Report version
+        run: echo "Perfboard Designer $(cargo run -q -p perfboard-version)" >> "$GITHUB_STEP_SUMMARY"
 
   frontend:
     runs-on: ubuntu-24.04
@@ -43,6 +49,8 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # The version's patch number is the commit count.
       - uses: actions/setup-node@v4
         with:
           node-version: 22

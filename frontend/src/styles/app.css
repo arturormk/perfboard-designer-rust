@@ -880,6 +880,16 @@ textarea::placeholder {
   text-transform: uppercase;
 }
 
+.menu-version {
+  margin-top: 5px;
+  padding: 7px 9px 3px;
+  border-top: 1px solid var(--line-1);
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  user-select: text;
+}
+
 .menu-list .recent {
   overflow: hidden;
   color: var(--text-2);

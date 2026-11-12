@@ -8,7 +8,7 @@ use perfboard_session_ipc::{IpcError, SessionClient, SessionRequest, SessionResp
 use rmcp::{
     ServerHandler, ServiceExt,
     handler::server::wrapper::Parameters,
-    model::{CallToolResult, ServerCapabilities, ServerConfig},
+    model::{CallToolResult, Implementation, ServerCapabilities, ServerConfig},
     tool, tool_handler, tool_router,
     transport::stdio,
 };
@@ -520,6 +520,10 @@ impl PerfboardMcp {
 impl ServerHandler for PerfboardMcp {
     fn get_info(&self) -> ServerConfig {
         ServerConfig::new(ServerCapabilities::builder().enable_tools().build())
+            .with_server_info(
+                Implementation::new("perfboard-designer", env!("PERFBOARD_VERSION"))
+                    .with_title("Perfboard Designer"),
+            )
             .with_instructions(INSTRUCTIONS)
     }
 }
@@ -573,6 +577,10 @@ fn unexpected(response: &SessionResponse) -> CallToolResult {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("perfboard-mcp-server {}", env!("PERFBOARD_VERSION"));
+        return Ok(());
+    }
     let service = PerfboardMcp::default().serve(stdio()).await?;
     service.waiting().await?;
     Ok(())
@@ -630,5 +638,12 @@ mod tests {
         assert!(instructions.len() < 512);
         assert!(instructions.contains("Read get_project or get_design"));
         assert!(instructions.contains("untrusted"));
+    }
+
+    #[test]
+    fn server_reports_the_application_version() {
+        let info = PerfboardMcp::default().get_info();
+        assert_eq!(info.server_info.name, "perfboard-designer");
+        assert_eq!(info.server_info.version, env!("PERFBOARD_VERSION"));
     }
 }
