@@ -40,14 +40,15 @@ fn apply_allowing_invalid(
 #[test]
 #[allow(clippy::too_many_lines)] // The full vertical slice is intentionally one scenario.
 fn place_move_rotate_save_and_reopen_example_components() {
-    let nano = ComponentDefinition::from_toml(include_str!(
-        "../../../components/arduino-nano-like/component.toml"
-    ))
-    .unwrap();
-    let rs485 = ComponentDefinition::from_toml(include_str!(
-        "../../../components/rs485-breakout/component.toml"
-    ))
-    .unwrap();
+    // The scenario rebuilds the example project, so it uses the definition
+    // snapshots stored in it: the bundled library evolves independently.
+    let example = include_str!("../../../examples/nano-rs485.perfboard.json");
+    let milestone2_example = ProjectDocument::from_json(example).unwrap();
+    let snapshot = |id: &str| -> ComponentDefinition {
+        milestone2_example.design.component_definitions[id].clone()
+    };
+    let nano = snapshot("dev.perfboard.nano-like");
+    let rs485 = snapshot("dev.perfboard.rs485-breakout");
     let nano_id = ComponentInstanceId::from_uuid(
         Uuid::parse_str("018f1000-0000-7000-8000-000000000101").unwrap(),
     );
@@ -131,8 +132,6 @@ fn place_move_rotate_save_and_reopen_example_components() {
 
     assert_eq!(document.revision, DocumentRevision(6));
     assert_eq!(document.validation, Vec::new());
-    let example = include_str!("../../../examples/nano-rs485.perfboard.json");
-    let milestone2_example = ProjectDocument::from_json(example).unwrap();
     assert_eq!(milestone2_example.project_id, document.project_id);
     assert_eq!(milestone2_example.design.board, document.design.board);
     assert_eq!(

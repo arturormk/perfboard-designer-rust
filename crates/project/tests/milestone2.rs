@@ -205,7 +205,8 @@ fn conflicting_pin_assignment_is_atomic() {
 }
 
 #[test]
-fn non_octilinear_wire_is_rejected_atomically() {
+// Segments may run at any angle (BLUEPRINT 8.2), but never have zero length.
+fn zero_length_wire_segment_is_rejected_atomically() {
     let mut document = fixture();
     let by_name: BTreeMap<_, _> = document
         .design
@@ -247,7 +248,11 @@ fn non_octilinear_wire_is_rejected_atomically() {
                     end: end.into(),
                     side: Side::Component,
                     color: WireColor::White,
-                    vertices: vec![RoutePos::new(2, 8), RoutePos::new(14, 10)],
+                    vertices: vec![
+                        RoutePos::new(2, 8),
+                        RoutePos::new(2, 8),
+                        RoutePos::new(14, 8),
+                    ],
                     locked: false,
                     notes: String::new(),
                 }

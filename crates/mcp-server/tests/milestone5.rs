@@ -76,7 +76,7 @@ async fn real_stdio_server_reads_and_mutates_the_shared_session() {
     let document = ProjectDocument::new(
         ProjectId::new(),
         "MCP fixture",
-        Board::new("board", BoardSize::new(12, 8).unwrap(), 2.54),
+        Board::new("board", BoardSize::new(24, 8).unwrap(), 2.54),
     );
     let definition = ComponentDefinition::from_toml(include_str!(
         "../../../components/rs485-breakout/component.toml"
@@ -136,7 +136,7 @@ async fn real_stdio_server_reads_and_mutates_the_shared_session() {
         .call_tool(CallToolRequestParams::new("apply_operations").with_arguments(arguments))
         .await
         .unwrap();
-    assert_eq!(changed.is_error, Some(false));
+    assert_eq!(changed.is_error, Some(false), "{changed:?}");
     assert_eq!(
         changed.structured_content.as_ref().unwrap()["data"]["value"]["revision"],
         1
