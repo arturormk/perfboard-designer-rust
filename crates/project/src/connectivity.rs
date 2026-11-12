@@ -496,14 +496,19 @@ pub(crate) fn route_is_supported(vertices: &[RoutePos]) -> bool {
     vertices.len() >= 2 && vertices.windows(2).all(|pair| pair[0] != pair[1])
 }
 
-fn segment_step(pair: &[RoutePos]) -> (i64, i64, i64) {
-    let total_dx = pair[1].x2 - pair[0].x2;
-    let total_dy = pair[1].y2 - pair[0].y2;
-    let steps = gcd(total_dx.unsigned_abs(), total_dy.unsigned_abs()) as i64;
+/// Splits a segment into its smallest repeated grid step: returns
+/// `(step_x, step_y, count)` so that the points `start + step * i` for
+/// `i in 0..=count` are every grid point on the segment. A zero-length segment
+/// yields `(0, 0, 0)`.
+pub(crate) fn segment_step(pair: &[RoutePos]) -> (i64, i64, i64) {
+    let delta_x = pair[1].x2 - pair[0].x2;
+    let delta_y = pair[1].y2 - pair[0].y2;
+    // The gcd divides both deltas, so it is at most |delta| and fits in i64.
+    let steps = gcd(delta_x.unsigned_abs(), delta_y.unsigned_abs()).cast_signed();
     if steps == 0 {
         (0, 0, 0)
     } else {
-        (total_dx / steps, total_dy / steps, steps)
+        (delta_x / steps, delta_y / steps, steps)
     }
 }
 
@@ -798,7 +803,7 @@ mod tests {
         assert_eq!(bridged[0].islands.len(), 1);
         assert_eq!(bridged[0].islands[0].len(), 2);
 
-        let bridges = design
+        let bridge_ids = design
             .components
             .values()
             .filter(|instance| {
@@ -806,7 +811,7 @@ mod tests {
             })
             .map(|instance| instance.id)
             .collect::<Vec<_>>();
-        for id in bridges {
+        for id in bridge_ids {
             design.components.remove(&id);
         }
         let split = net_connectivity(&design);

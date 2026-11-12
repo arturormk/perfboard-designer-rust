@@ -218,27 +218,14 @@ fn route_enters_area(
     let min_y2 = i64::from(area.min.y) * 2;
     let max_y2 = i64::from(area.max.y) * 2;
     vertices.windows(2).any(|pair| {
-        let total_dx = pair[1].x2 - pair[0].x2;
-        let total_dy = pair[1].y2 - pair[0].y2;
-        let steps = gcd(total_dx.unsigned_abs(), total_dy.unsigned_abs()) as i64;
+        let (dx, dy, steps) = crate::connectivity::segment_step(pair);
         if steps == 0 {
             return false;
         }
-        let dx = total_dx / steps;
-        let dy = total_dy / steps;
         (0..=steps).any(|step| {
             let x2 = pair[0].x2 + dx * step;
             let y2 = pair[0].y2 + dy * step;
             (min_x2..=max_x2).contains(&x2) && (min_y2..=max_y2).contains(&y2)
         })
     })
-}
-
-const fn gcd(mut left: u64, mut right: u64) -> u64 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
 }

@@ -146,7 +146,7 @@ fn load_component_library(root: &Path) -> Result<Vec<ComponentDefinition>, Strin
         )
     })?;
     let mut definition_paths = entries
-        .filter_map(|entry| entry.ok())
+        .filter_map(Result::ok)
         .map(|entry| entry.path().join("component.toml"))
         .filter(|path| path.is_file())
         .collect::<Vec<_>>();

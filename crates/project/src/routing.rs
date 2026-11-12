@@ -284,7 +284,7 @@ pub fn evaluate_route(
         .map(|pair| {
             let dx = (pair[1].x2 - pair[0].x2).unsigned_abs();
             let dy = (pair[1].y2 - pair[0].y2).unsigned_abs();
-            ((dx as f64).hypot(dy as f64) * config.orthogonal_step as f64).round() as u64
+            euclidean_cost(dx, dy, config.orthogonal_step)
         })
         .sum();
     let bend_cost = u64::from(measurements.bend_count) * config.bend;
@@ -601,17 +601,22 @@ fn occupied_wire_positions(
     result
 }
 
+/// Cost of a straight run of `dx` by `dy` half-hole units at `unit` per unit,
+/// rounded to the nearest integer.
+#[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "board-sized, non-negative values are far inside f64's exact integer range"
+)]
+fn euclidean_cost(dx: u64, dy: u64, unit: u64) -> u64 {
+    ((dx as f64).hypot(dy as f64) * unit as f64).round() as u64
+}
+
 fn expand_path(vertices: &[RoutePos]) -> Vec<RoutePos> {
     let mut result = Vec::new();
     for pair in vertices.windows(2) {
-        let total_dx = pair[1].x2 - pair[0].x2;
-        let total_dy = pair[1].y2 - pair[0].y2;
-        let steps = gcd(total_dx.unsigned_abs(), total_dy.unsigned_abs()) as i64;
-        if steps == 0 {
-            continue;
-        }
-        let dx = total_dx / steps;
-        let dy = total_dy / steps;
+        let (dx, dy, steps) = crate::connectivity::segment_step(pair);
         for step in 0..steps {
             result.push(RoutePos::new(
                 pair[0].x2 + dx * step,
@@ -655,15 +660,6 @@ fn heuristic(from: RoutePos, to: RoutePos, config: &RoutingCostConfig) -> u64 {
 
 const fn is_board_edge(point: RoutePos, max_x: i64, max_y: i64) -> bool {
     point.x2 == 0 || point.y2 == 0 || point.x2 == max_x || point.y2 == max_y
-}
-
-const fn gcd(mut left: u64, mut right: u64) -> u64 {
-    while right != 0 {
-        let remainder = left % right;
-        left = right;
-        right = remainder;
-    }
-    left
 }
 
 fn is_parallel(

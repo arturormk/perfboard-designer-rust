@@ -116,8 +116,8 @@ fn undo_history_can_be_trimmed_or_deleted_without_changing_the_design() {
 
     let (deleted, _) = session.trim_undo_history(DocumentRevision(5), 0).unwrap();
     assert_eq!(deleted.revision, DocumentRevision(6));
-    assert!(session.document().undo_stack.is_empty());
-    assert!(session.document().redo_stack.is_empty());
+    assert_eq!(session.document().undo_stack, Vec::new());
+    assert_eq!(session.document().redo_stack, Vec::new());
     assert_eq!(session.document().design, design);
     assert!(session.document().is_dirty());
 }

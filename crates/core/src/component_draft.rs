@@ -147,52 +147,8 @@ impl ComponentDraft {
                 normalized.dedup();
                 next.definition.allowed_rotations = normalized;
             }
-            ComponentDraftOperation::UpsertPin {
-                previous_id,
-                mut pin,
-            } => {
-                pin.id = normalized_string(&pin.id);
-                pin.number = normalized_string(&pin.number);
-                pin.name = normalized_string(&pin.name);
-                pin.aliases = normalized_strings(pin.aliases);
-                pin.functions = normalized_strings(pin.functions);
-                let existing = if let Some(previous_id) = previous_id {
-                    Some(
-                        next.definition
-                            .pins
-                            .iter()
-                            .position(|item| item.id == previous_id)
-                            .ok_or(ComponentDraftError::PinNotFound(previous_id))?,
-                    )
-                } else {
-                    next.definition
-                        .pins
-                        .iter()
-                        .position(|item| item.id == pin.id)
-                };
-                if next
-                    .definition
-                    .pins
-                    .iter()
-                    .enumerate()
-                    .any(|(index, item)| Some(index) != existing && item.id == pin.id)
-                {
-                    return Err(ComponentDraftError::DuplicatePinId(pin.id));
-                }
-                if next
-                    .definition
-                    .pins
-                    .iter()
-                    .enumerate()
-                    .any(|(index, item)| Some(index) != existing && item.number == pin.number)
-                {
-                    return Err(ComponentDraftError::DuplicatePinNumber(pin.number));
-                }
-                if let Some(index) = existing {
-                    next.definition.pins[index] = pin;
-                } else {
-                    next.definition.pins.push(pin);
-                }
+            ComponentDraftOperation::UpsertPin { previous_id, pin } => {
+                upsert_pin(&mut next.definition.pins, previous_id, pin)?;
             }
             ComponentDraftOperation::RemovePin { id } => {
                 let Some(index) = next.definition.pins.iter().position(|pin| pin.id == id) else {
@@ -281,6 +237,47 @@ impl ComponentDraft {
         self.undo.clear();
         self.redo.clear();
     }
+}
+
+/// Inserts `pin`, or replaces the pin identified by `previous_id` (or by the
+/// pin's own id), keeping stable ids and physical numbers unique.
+fn upsert_pin(
+    pins: &mut Vec<PinDefinition>,
+    previous_id: Option<String>,
+    mut pin: PinDefinition,
+) -> Result<(), ComponentDraftError> {
+    pin.id = normalized_string(&pin.id);
+    pin.number = normalized_string(&pin.number);
+    pin.name = normalized_string(&pin.name);
+    pin.aliases = normalized_strings(pin.aliases);
+    pin.functions = normalized_strings(pin.functions);
+    let existing = if let Some(previous_id) = previous_id {
+        Some(
+            pins.iter()
+                .position(|item| item.id == previous_id)
+                .ok_or(ComponentDraftError::PinNotFound(previous_id))?,
+        )
+    } else {
+        pins.iter().position(|item| item.id == pin.id)
+    };
+    let others = || {
+        pins.iter()
+            .enumerate()
+            .filter(move |(index, _)| Some(*index) != existing)
+            .map(|(_, item)| item)
+    };
+    if others().any(|item| item.id == pin.id) {
+        return Err(ComponentDraftError::DuplicatePinId(pin.id));
+    }
+    if others().any(|item| item.number == pin.number) {
+        return Err(ComponentDraftError::DuplicatePinNumber(pin.number));
+    }
+    if let Some(index) = existing {
+        pins[index] = pin;
+    } else {
+        pins.push(pin);
+    }
+    Ok(())
 }
 
 fn reorder_pin(

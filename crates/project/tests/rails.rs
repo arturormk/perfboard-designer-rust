@@ -26,6 +26,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) -> Result<()
 }
 
 #[test]
+#[allow(clippy::too_many_lines)] // One end-to-end rail scenario, kept in order.
 fn wires_connect_through_explicit_nodes_on_a_net_owned_rail() {
     let mut document = ProjectDocument::new(
         ProjectId::new(),

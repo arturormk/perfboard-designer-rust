@@ -484,7 +484,7 @@ mod tests {
         let loaded =
             ProjectDocument::from_json(&serde_json::to_string(&document).unwrap()).unwrap();
 
-        assert!(loaded.validation.is_empty());
+        assert_eq!(loaded.validation, Vec::new());
     }
 
     #[test]
@@ -503,7 +503,7 @@ mod tests {
         let loaded =
             ProjectDocument::from_json(&serde_json::to_string(&document).unwrap()).unwrap();
 
-        assert!(loaded.validation.is_empty());
+        assert_eq!(loaded.validation, Vec::new());
     }
 
     #[test]
