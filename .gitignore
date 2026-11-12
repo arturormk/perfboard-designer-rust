@@ -9,6 +9,9 @@
 /src-tauri/target/
 /src-tauri/gen/
 
+# Component Designer keeps the previous files as *.bak on save
+*.bak
+
 # Local configuration and secrets
 .env
 .env.*
