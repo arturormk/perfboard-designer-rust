@@ -1,10 +1,15 @@
 # Perfboard Designer
 
+[![Built with Codex: backend and initial UI](https://img.shields.io/badge/Codex-backend%20%26%20initial%20UI-000000)](https://openai.com/codex/)
+[![Built with Claude Code: UI revamp](https://img.shields.io/badge/Claude%20Code-UI%20revamp-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
+
 Perfboard Designer is a local-first desktop application for designing small
 circuits on isolated-pad perfboard. The project is under active development.
 Milestone 5 provides the graphical editor, revisioned transactions,
 deterministic automatic routing, and local MCP access to the active desktop
 working copy from Codex or Claude Code.
+
+![Perfboard Designer showing an Arduino Nano RS-485 board with two RJ45 connectors](docs/screenshots/nano-rs485-board.png)
 
 ## Prerequisites
 
