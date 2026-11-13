@@ -11,6 +11,7 @@ import {
   importRecentProjects,
   applyTransaction,
   commitProject,
+  renameProject,
   compareProjectRevisions,
   createProject,
   discardProjectChanges,
@@ -383,6 +384,17 @@ export async function commit(
     toast("success", `Committed “${name}”`);
   }
   return Boolean(result);
+}
+
+/** Renames the project; resolves false when nothing changed or it failed. */
+export async function renameCurrentProject(value: string): Promise<boolean> {
+  const name = value.trim();
+  if (!name || name === view.peek()?.name) return false;
+  const result = await guarded("Could not rename the project", async () => {
+    await renameProject(revision(), name);
+    return true;
+  });
+  return result ?? false;
 }
 
 export async function compareWith(commitId: string | undefined): Promise<void> {

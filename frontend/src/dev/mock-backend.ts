@@ -877,6 +877,12 @@ export async function installMockBackend(): Promise<void> {
       emit();
       return { id };
     },
+    rename_project: ({ expectedRevision, name }) => {
+      stale(expectedRevision as number);
+      doc.name = (name as string).trim();
+      doc.revision += 1;
+      emit();
+    },
     restore_project_commit: ({ commitId }) => {
       const commit = commits.find((item) => item.id === commitId)!;
       apply([], "user");

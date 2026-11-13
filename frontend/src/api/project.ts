@@ -632,6 +632,12 @@ export function commitProject(
 ): Promise<Commit> {
   return invoke("commit_project", { expectedRevision, name, description });
 }
+export function renameProject(
+  expectedRevision: number,
+  name: string,
+): Promise<void> {
+  return invoke("rename_project", { expectedRevision, name });
+}
 export function restoreProjectCommit(
   expectedRevision: number,
   commitId: string,

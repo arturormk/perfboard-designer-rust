@@ -145,7 +145,6 @@ export function TopBar() {
       </div>
       <FileMenu />
       <div class="doc-title">
-        <strong>{current?.name ?? "Perfboard Designer"}</strong>
         <span
           class={dirty.value ? "dirty" : ""}
           title={filePath.value ?? "This project has not been saved to a file"}

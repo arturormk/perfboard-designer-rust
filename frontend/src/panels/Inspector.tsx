@@ -21,6 +21,7 @@ import {
   mergeNets,
   removeNet,
   removeSelection,
+  renameCurrentProject,
   renameNet,
   select,
 } from "../state/actions";
@@ -1287,6 +1288,34 @@ function MergeNetSection({
 
 // ── Board (nothing selected) ────────────────────────────────────────────────
 
+function ProjectNameInput() {
+  const name = view.value?.name ?? "";
+  return (
+    <input
+      key={name}
+      class="title-input"
+      defaultValue={name}
+      aria-label="Project name"
+      title="Rename the project"
+      spellcheck={false}
+      onBlur={(event) => {
+        const input = event.target as HTMLInputElement;
+        void renameCurrentProject(input.value).then((ok) => {
+          if (!ok) input.value = name;
+        });
+      }}
+      onKeyDown={(event) => {
+        const input = event.target as HTMLInputElement;
+        if (event.key === "Enter") input.blur();
+        else if (event.key === "Escape") {
+          input.value = name;
+          input.blur();
+        }
+      }}
+    />
+  );
+}
+
 function BoardInspector({ design: current }: { design: Design }) {
   const board = current.board;
   const widthMm = (board.holes_x - 1) * board.pitch_mm;
@@ -1299,7 +1328,7 @@ function BoardInspector({ design: current }: { design: Design }) {
     <div class="inspector">
       <InspectorHead
         icon={<Icon name="board" />}
-        title={view.value?.name ?? "Project"}
+        title={<ProjectNameInput />}
         subtitle={`${board.holes_x} × ${board.holes_y} holes · ${board.pitch_mm} mm pitch`}
       />
       <Section title="Board">

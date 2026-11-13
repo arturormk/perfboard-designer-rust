@@ -573,6 +573,27 @@ fn commit_project(
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
+fn rename_project(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    expected_revision: DocumentRevision,
+    name: String,
+) -> Result<(), CommandError> {
+    let mut session = state.0.lock().map_err(|error| CommandError {
+        code: "session.lock_failed",
+        message: error.to_string(),
+        expected_revision: None,
+        actual_revision: None,
+    })?;
+    let event = session
+        .rename(expected_revision, &name)
+        .map_err(CommandError::from)?;
+    publish(&app, &event);
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
 fn restore_project_commit(
     state: tauri::State<'_, SessionState>,
     app: tauri::AppHandle,
@@ -1248,6 +1269,7 @@ pub fn run() {
             trim_project_undo_history,
             discard_project_changes,
             commit_project,
+            rename_project,
             restore_project_commit,
             compare_project_revisions,
             suggest_project_route,

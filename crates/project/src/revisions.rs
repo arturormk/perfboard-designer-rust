@@ -62,6 +62,8 @@ pub enum RevisionError {
     BlankCommitName,
     #[error("commit was not found")]
     CommitNotFound,
+    #[error("project name must not be blank")]
+    BlankProjectName,
 }
 
 #[allow(clippy::missing_errors_doc)] // Methods return the self-explanatory RevisionError variants.
@@ -162,6 +164,27 @@ impl ProjectDocument {
         self.redo_stack.clear();
         self.revision.0 += 1;
         Ok(self.history_result("Discarded working-copy changes".into()))
+    }
+
+    /// Renames the project. The name is document metadata, not part of the
+    /// design, so it is not an undo step; the revision still advances so the
+    /// working copy reads as unsaved and stale writers are rejected.
+    pub fn rename(
+        &mut self,
+        expected_revision: DocumentRevision,
+        name: &str,
+    ) -> Result<String, RevisionError> {
+        self.check_revision(expected_revision)?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(RevisionError::BlankProjectName);
+        }
+        if name != self.name {
+            let old = std::mem::replace(&mut self.name, name.to_owned());
+            self.revision.0 += 1;
+            return Ok(format!("Renamed project {old} to {name}"));
+        }
+        Ok(format!("Project is already named {name}"))
     }
 
     pub fn commit(

@@ -25,6 +25,10 @@ Development line `v0.1.x`: the first public development builds.
 - Nets: rename them by editing the name in the inspector (`rename_net`; names
   must be unique, ignoring case), and remove unused ones from the Nets panel or
   the inspector. A net cannot be removed while wires or rails use it.
+- Projects can be renamed: with nothing selected, edit the project name at the
+  top of the inspector. Enter or leaving the field saves it, Escape cancels,
+  and blank names are refused. The name is saved with the file; a rename is
+  not an undo step. The header now shows only the file name.
 - Merge nets: pick **Merge into…** in a net's inspector, or rename a net to
   the name of an existing one (`merge_nets`). Pins, wires, rails, junctions and
   net constraints move to the target net, which keeps its name, and the source

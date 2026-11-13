@@ -201,6 +201,15 @@ impl ProjectSession {
         ))
     }
 
+    pub fn rename(
+        &mut self,
+        expected: DocumentRevision,
+        name: &str,
+    ) -> Result<SessionChangeEvent, SessionError> {
+        let summary = self.document.rename(expected, name)?;
+        Ok(self.event("rename", summary))
+    }
+
     pub fn restore(
         &mut self,
         expected: DocumentRevision,
