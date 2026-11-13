@@ -98,7 +98,7 @@ function FileMenu() {
           </button>
           <button
             role="menuitem"
-            title="Cut guide and bending templates as a true-scale PDF"
+            title="Cut guide and bending templates for wires and rails, as a true-scale PDF"
             onClick={run(() => void exportWireTemplates())}
           >
             <Icon name="print" size={15} /> Export wire templates…

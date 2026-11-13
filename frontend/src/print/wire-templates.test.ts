@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { Wire } from "../api/project";
+import type { Rail, Wire } from "../api/project";
 import type { Design, RoutePoint } from "../model/geometry";
 import {
   bendPositions,
@@ -8,6 +8,11 @@ import {
   groupWireTemplates,
   layoutTemplate,
   LEAD_MM,
+  mergeWindows,
+  RAIL_WINDOW_MM,
+  railConnections,
+  railEnds,
+  railPieces,
   shapeKey,
   simplifyPolyline,
   templateSegments,
@@ -219,7 +224,7 @@ describe("cutColumns", () => {
       160,
       2.54,
     );
-    expect(columns.map((column) => column.wire.id)).toEqual(["a", "b", "c"]);
+    expect(columns.map((column) => column.id)).toEqual(["a", "b", "c"]);
     expect(columns[0]).toMatchObject({ fromMm: 0, part: 1, parts: 1 });
     expect(columns[0]!.toMm).toBeCloseTo(12 * 2.54 + 2 * LEAD_MM);
   });
@@ -276,5 +281,180 @@ describe("bendPositions", () => {
       2.54,
     );
     expect(column!.bends[0]!.alongMm).toBeCloseTo(LEAD_MM + 3 * 2.54);
+  });
+});
+
+function rail(
+  id: string,
+  vertices: RoutePoint[],
+  side: Rail["side"] = "solder",
+): Rail {
+  return { id, net_id: "n", side, color: "black", vertices };
+}
+
+function designWithRails(rails: Rail[], wires: Wire[] = []): Design {
+  return {
+    ...designWith(wires),
+    rails: Object.fromEntries(rails.map((item) => [item.id, item])),
+  } as unknown as Design;
+}
+
+describe("rails", () => {
+  // The sample project's GND rail: straight, with three taps.
+  const straight = rail("r", [
+    p(19, 25),
+    p(19, 12),
+    p(19, 3),
+    p(19, 1),
+    p(19, 0),
+  ]);
+  // An L with a tap on each run and a bare corner.
+  const bent = rail("l", [p(0, 0), p(4, 0), p(10, 0), p(10, 3), p(10, 6)]);
+  // Ends between holes: they cannot go into one.
+  const offGrid = rail("h", [p(0.5, 0), p(3, 0), p(6.5, 0)]);
+  const half = RAIL_WINDOW_MM / 2;
+
+  it("windows taps, but not ends on holes or a corner with nothing on it", () => {
+    const design = designWithRails([straight, bent]);
+    expect(railConnections(design, straight)).toEqual([1, 2, 3]);
+    expect(railConnections(design, bent)).toEqual([1, 3]);
+  });
+
+  it("windows a corner that a wire is attached to", () => {
+    const tapped = {
+      ...wire("w", "red", [p(10, 0), p(10, -4)]),
+      start: { kind: "rail_node", rail_id: "l", position: p(10, 0) },
+    } as unknown as Wire;
+    expect(railConnections(designWithRails([bent], [tapped]), bent)).toEqual([
+      1, 2, 3,
+    ]);
+  });
+
+  it("puts rail ends on holes into them on wire leads", () => {
+    const [piece] = railPieces(
+      designWithRails([straight]),
+      new Map([["r", "R1"]]),
+    );
+    expect(piece!.ends).toEqual([
+      { leadMm: LEAD_MM, intoHole: true },
+      { leadMm: LEAD_MM, intoHole: true },
+    ]);
+    expect(piece!.pathMm).toBeCloseTo(25 * 2.54);
+    expect(piece!.cutMm).toBeCloseTo(25 * 2.54 + 2 * LEAD_MM);
+    expect(piece!.bends).toEqual([]);
+    // Taps at 13, 22 and 24 pitches from the start, after the top lead.
+    expect(piece!.windows.length).toBe(3);
+    const at = (pitches: number) => LEAD_MM + pitches * 2.54;
+    piece!.windows.forEach((window, index) => {
+      expect(window.fromMm).toBeCloseTo(at([13, 22, 24][index]!) - half);
+      expect(window.toMm).toBeCloseTo(at([13, 22, 24][index]!) + half);
+    });
+    expect(piece!.points[0]).toEqual({ x2: -38, y2: 50 });
+  });
+
+  it("gives an end between holes a bare tip with a centred window", () => {
+    const design = designWithRails([offGrid]);
+    expect(railConnections(design, offGrid)).toEqual([0, 1, 2]);
+    const [piece] = railPieces(design, new Map());
+    expect(piece!.ends).toEqual([
+      { leadMm: half, intoHole: false },
+      { leadMm: half, intoHole: false },
+    ]);
+    expect(piece!.cutMm).toBeCloseTo(6 * 2.54 + RAIL_WINDOW_MM);
+    expect(piece!.windows[0]).toEqual({ fromMm: 0, toMm: RAIL_WINDOW_MM });
+  });
+
+  it("places bends after the top lead, like the windows", () => {
+    const [piece] = railPieces(designWithRails([bent]), new Map());
+    expect(piece!.bends.map((bend) => bend.angle)).toEqual([90]);
+    expect(piece!.bends[0]!.alongMm).toBeCloseTo(10 * 2.54 + LEAD_MM);
+  });
+
+  it("gives rails their own cut columns after the wires", () => {
+    const design = designWithRails(
+      [bent],
+      [wire("a", "red", [p(0, 0), p(4, 0)])],
+    );
+    const labels = new Map([
+      ["a", "W1"],
+      ["l", "R1"],
+    ]);
+    const columns = cutColumns(
+      groupWireTemplates(design, labels),
+      labels,
+      160,
+      2.54,
+      railPieces(design, labels),
+    );
+    expect(columns.map((column) => column.id)).toEqual(["a", "l"]);
+    expect(columns[1]!.ends[0]).toEqual({ leadMm: LEAD_MM, intoHole: true });
+    expect(columns[1]!.windows.length).toBe(2);
+  });
+
+  it("draws windows and rings the holes rail leads go into", () => {
+    const layout = layoutTemplate(bent.vertices, 2.54, LEAD_MM, {
+      connections: [1, 3],
+      windowMm: 3,
+      ends: [
+        { leadMm: LEAD_MM, intoHole: true },
+        { leadMm: half, intoHole: false },
+      ],
+    });
+    expect(layout.bendHoles.length).toBe(1);
+    expect(layout.windows.length).toBe(2);
+    const [startLead, endLead] = layout.leads.map(([a, b]) =>
+      Math.hypot(b.x - a.x, b.y - a.y),
+    );
+    expect(startLead).toBeCloseTo(LEAD_MM);
+    expect(endLead).toBeCloseTo(half);
+    // A tap's window is 3 mm along the path, centred on the tap.
+    const window = layout.windows[0]!;
+    const length = window
+      .slice(1)
+      .reduce(
+        (total, point, index) =>
+          total +
+          Math.hypot(point.x - window[index]!.x, point.y - window[index]!.y),
+        0,
+      );
+    expect(length).toBeCloseTo(3);
+    // Each run between nodes is dimensioned: 4 + 6 across, 3 + 3 down.
+    expect(layout.dimensions.map((mark) => mark.spacing)).toEqual([
+      "4 pitches",
+      "6 pitches",
+      "3 pitches",
+      "3 pitches",
+    ]);
+  });
+
+  it("staggers consecutive short dimensions so labels do not collide", () => {
+    const ends = railEnds(straight);
+    const layout = layoutTemplate(straight.vertices, 2.54, LEAD_MM, {
+      connections: [1, 2, 3],
+      windowMm: 3,
+      ends,
+    });
+    const offsets = layout.dimensions.map((mark) =>
+      Math.hypot(
+        mark.from.x - mark.witness[0]![0].x,
+        mark.from.y - mark.witness[0]![0].y,
+      ),
+    );
+    // 13 and 9 pitches fit their labels; 2 and 1 pitches do not.
+    expect(offsets[0]).toBeCloseTo(offsets[1]!);
+    expect(offsets[3]!).toBeGreaterThan(offsets[2]!);
+  });
+
+  it("merges overlapping windows", () => {
+    expect(
+      mergeWindows([
+        { fromMm: 5, toMm: 8 },
+        { fromMm: 0, toMm: 3 },
+        { fromMm: 7, toMm: 10 },
+      ]),
+    ).toEqual([
+      { fromMm: 0, toMm: 3 },
+      { fromMm: 5, toMm: 10 },
+    ]);
   });
 });

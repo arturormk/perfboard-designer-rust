@@ -6,7 +6,7 @@
  * same shape share one template, because a bent wire can be turned over or
  * rotated before it goes into the board.
  */
-import type { Wire, WireColor } from "../api/project";
+import type { Rail, Wire, WireColor } from "../api/project";
 import type { Design, RoutePoint } from "../model/geometry";
 import { WIRE_COLORS, wireColorName } from "../model/naming";
 
@@ -216,6 +216,8 @@ export interface TemplateLayout {
   leads: [Vec, Vec][];
   /** Where each lead is bent 90° down into its hole. */
   bendHoles: Vec[];
+  /** Bare windows along the path, one per rail connection point. */
+  windows: Vec[][];
   /** Reference hole grid around the wire, at board pitch. */
   holes: Vec[];
   dimensions: DimensionMark[];
@@ -239,12 +241,28 @@ function textEnds(at: Vec, text: string, angle: number): Vec[] {
   ];
 }
 
-/** Lays a shape out in millimetres, origin at the top-left of the drawing. */
+/**
+ * Lays a shape out in millimetres, origin at the top-left of the drawing.
+ *
+ * With `rail`, the shape is a rail: each end has its own lead (bent into a
+ * hole, or a short bare tip where the end lies between holes), every run
+ * between two of its nodes is dimensioned, and each listed connection node
+ * gets a bare window of `rail.windowMm` centred on it.
+ */
 export function layoutTemplate(
   points: RoutePoint[],
   pitchMm: number,
   leadMm = LEAD_MM,
+  rail?: {
+    connections: number[];
+    windowMm: number;
+    ends: [WireEnd, WireEnd];
+  },
 ): TemplateLayout {
+  const ends: [WireEnd, WireEnd] = rail?.ends ?? [
+    { leadMm, intoHole: true },
+    { leadMm, intoHole: true },
+  ];
   const raw = points.map((point) => ({
     x: (point.x2 / 2) * pitchMm,
     y: (point.y2 / 2) * pitchMm,
@@ -257,24 +275,54 @@ export function layoutTemplate(
   const last = raw[raw.length - 1]!;
   const startOut = unit(raw[1]!, first);
   const endOut = unit(raw[raw.length - 2]!, last);
+  const startLead = ends[0].leadMm;
+  const endLead = ends[1].leadMm;
   const rawLeads: [Vec, Vec][] = [
     [
       first,
-      { x: first.x + startOut.x * leadMm, y: first.y + startOut.y * leadMm },
+      {
+        x: first.x + startOut.x * startLead,
+        y: first.y + startOut.y * startLead,
+      },
     ],
-    [last, { x: last.x + endOut.x * leadMm, y: last.y + endOut.y * leadMm }],
+    [last, { x: last.x + endOut.x * endLead, y: last.y + endOut.y * endLead }],
   ];
 
   const centroid = {
     x: raw.reduce((sum, point) => sum + point.x, 0) / raw.length,
     y: raw.reduce((sum, point) => sum + point.y, 0) / raw.length,
   };
-  const segments = templateSegments(points, pitchMm);
+  // A rail keeps its connection nodes, so each run between them gets its
+  // own dimension; a wire is dimensioned bend to bend.
+  const nodes = rail
+    ? raw
+    : simplifyPolyline(points).map((point) => ({
+        x: (point.x2 / 2) * pitchMm,
+        y: (point.y2 / 2) * pitchMm,
+      }));
+  const segments = rail
+    ? points.slice(1).map((point, index) => {
+        const dx = (point.x2 - points[index]!.x2) / 2;
+        const dy = (point.y2 - points[index]!.y2) / 2;
+        return { dx, dy, lengthMm: Math.hypot(dx, dy) * pitchMm };
+      })
+    : templateSegments(points, pitchMm);
+  // Labels wider than their run would collide with the next run's labels:
+  // consecutive short runs alternate between two dimension levels.
+  let previousShortLevel = -1;
   const rawDimensions: DimensionMark[] = segments.flatMap((segment, index) => {
     // Half-pitch jogs are too short to label; the hole grid shows them.
-    if (segment.lengthMm < pitchMm * 0.99) return [];
-    const a = raw[index]!;
-    const b = raw[index + 1]!;
+    if (segment.lengthMm < pitchMm * 0.99) {
+      previousShortLevel = -1;
+      return [];
+    }
+    const labelMm = `${segment.lengthMm.toFixed(2)} mm`.length * TEXT_MM * 0.6;
+    const short = labelMm > segment.lengthMm;
+    const level = short && previousShortLevel === 0 ? 1 : 0;
+    previousShortLevel = short ? level : -1;
+    const offset = DIMENSION_OFFSET_MM + level * (TEXT_MM * 2.4 + 1);
+    const a = nodes[index]!;
+    const b = nodes[index + 1]!;
     const along = unit(a, b);
     let normal = { x: along.y, y: -along.x };
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
@@ -292,20 +340,59 @@ export function layoutTemplate(
     if (angle <= -90) angle += 180;
     return [
       {
-        from: shift(a, DIMENSION_OFFSET_MM),
-        to: shift(b, DIMENSION_OFFSET_MM),
+        from: shift(a, offset),
+        to: shift(b, offset),
         witness: [
-          [shift(a, 1.2), shift(a, DIMENSION_OFFSET_MM + 1)],
-          [shift(b, 1.2), shift(b, DIMENSION_OFFSET_MM + 1)],
+          [shift(a, 1.2), shift(a, offset + 1)],
+          [shift(b, 1.2), shift(b, offset + 1)],
         ],
         length: `${segment.lengthMm.toFixed(2)} mm`,
         spacing: describeSpacing(segment),
-        lengthAt: shift(mid, DIMENSION_OFFSET_MM + TEXT_MM * 0.75),
-        spacingAt: shift(mid, DIMENSION_OFFSET_MM + TEXT_MM * 1.85),
+        lengthAt: shift(mid, offset + TEXT_MM * 0.75),
+        spacingAt: shift(mid, offset + TEXT_MM * 1.85),
         angle,
       },
     ];
   });
+
+  // Each window runs half its length either side of its node, following the
+  // path round any corner and stopping at the path's ends (an end's bare tip
+  // beyond the node is its lead).
+  const along = raw.map((_, index) =>
+    raw
+      .slice(1, index + 1)
+      .reduce(
+        (total, point, at) =>
+          total + Math.hypot(point.x - raw[at]!.x, point.y - raw[at]!.y),
+        0,
+      ),
+  );
+  const pathTotal = along[along.length - 1] ?? 0;
+  const pointAt = (distance: number): Vec => {
+    for (let index = 1; index < raw.length; index += 1) {
+      if (distance <= along[index]! + 1e-9 || index === raw.length - 1) {
+        const a = raw[index - 1]!;
+        const b = raw[index]!;
+        const run = along[index]! - along[index - 1]! || 1;
+        const t = (distance - along[index - 1]!) / run;
+        return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
+      }
+    }
+    return raw[0]!;
+  };
+  const rawWindows: Vec[][] = mergeWindows(
+    (rail?.connections ?? []).map((index) => ({
+      fromMm: Math.max(0, along[index]! - rail!.windowMm / 2),
+      toMm: Math.min(pathTotal, along[index]! + rail!.windowMm / 2),
+    })),
+  ).map(({ fromMm, toMm }) => [
+    pointAt(fromMm),
+    ...along
+      .map((distance, index) => ({ distance, index }))
+      .filter(({ distance }) => distance > fromMm && distance < toMm)
+      .map(({ index }) => raw[index]!),
+    pointAt(toMm),
+  ]);
 
   // Fit the drawing: wire, leads and dimension lines, plus a margin.
   const extent = [
@@ -351,7 +438,10 @@ export function layoutTemplate(
     height: maxY - minY,
     path: raw.map(move),
     leads: rawLeads.map(([a, b]) => [move(a), move(b)] as [Vec, Vec]),
-    bendHoles: [move(first), move(last)],
+    bendHoles: [first, last]
+      .filter((_, index) => ends[index]!.intoHole)
+      .map(move),
+    windows: rawWindows.map((window) => window.map(move)),
     holes,
     dimensions: rawDimensions.map((mark) => ({
       ...mark,
@@ -397,12 +487,43 @@ export function bendPositions(vertices: RoutePoint[], pitchMm: number): Bend[] {
   return bends;
 }
 
+/** How one end of a wire or rail finishes. */
+export interface WireEnd {
+  /** Bare conductor beyond the end node. */
+  leadMm: number;
+  /** The lead is bent 90° down into the end node's hole. */
+  intoHole: boolean;
+}
+
+/** A stretch along a straightened wire or rail, from its top cut. */
+export interface Stretch {
+  fromMm: number;
+  toMm: number;
+}
+
+/** Joins overlapping or touching stretches, in order. */
+export function mergeWindows(stretches: Stretch[]): Stretch[] {
+  const merged: Stretch[] = [];
+  for (const stretch of [...stretches].sort((a, b) => a.fromMm - b.fromMm)) {
+    const last = merged[merged.length - 1];
+    if (last && stretch.fromMm <= last.toMm + 1e-9)
+      last.toMm = Math.max(last.toMm, stretch.toMm);
+    else merged.push({ ...stretch });
+  }
+  return merged;
+}
+
 export interface CutColumn {
-  wire: Wire;
+  id: string;
+  color: WireColor;
   cutMm: number;
   pathMm: number;
+  /** Bare lead at the top and bottom ends. */
+  ends: [WireEnd, WireEnd];
   /** Bends, measured from the top cut (the start terminal's end). */
   bends: Bend[];
+  /** Insulation to remove at a rail's connection points. */
+  windows: Stretch[];
   /** Stretch of the straightened wire this column shows, from its top end. */
   fromMm: number;
   toMm: number;
@@ -420,10 +541,23 @@ export function cutColumns(
   labels: Map<string, string>,
   columnMm: number,
   pitchMm: number,
+  rails: RailPiece[] = [],
 ): CutColumn[] {
   const span = Math.max(10, Math.floor(columnMm / 10) * 10);
   const label = (wire: Wire) => labels.get(wire.id) ?? wire.id;
-  return groups.flatMap((group) =>
+  const split = (
+    base: Omit<CutColumn, "fromMm" | "toMm" | "part" | "parts">,
+  ): CutColumn[] => {
+    const parts = Math.max(1, Math.ceil(base.cutMm / span - 1e-9));
+    return Array.from({ length: parts }, (_, part) => ({
+      ...base,
+      fromMm: part * span,
+      toMm: Math.min(base.cutMm, (part + 1) * span),
+      part: part + 1,
+      parts,
+    }));
+  };
+  const wireColumns = groups.flatMap((group) =>
     group.shapes
       .flatMap((shape) => shape.wires.map((wire) => ({ wire, shape })))
       .sort((a, b) =>
@@ -431,22 +565,170 @@ export function cutColumns(
           numeric: true,
         }),
       )
-      .flatMap(({ wire, shape }) => {
-        const parts = Math.max(1, Math.ceil(shape.cutMm / span - 1e-9));
-        const bends = bendPositions(wire.vertices, pitchMm).map((bend) => ({
-          ...bend,
-          alongMm: bend.alongMm + LEAD_MM,
-        }));
-        return Array.from({ length: parts }, (_, part) => ({
-          wire,
+      .flatMap(({ wire, shape }) =>
+        split({
+          id: wire.id,
+          color: wire.color,
           cutMm: shape.cutMm,
           pathMm: shape.pathMm,
-          bends,
-          fromMm: part * span,
-          toMm: Math.min(shape.cutMm, (part + 1) * span),
-          part: part + 1,
-          parts,
-        }));
-      }),
+          ends: [
+            { leadMm: LEAD_MM, intoHole: true },
+            { leadMm: LEAD_MM, intoHole: true },
+          ],
+          bends: bendPositions(wire.vertices, pitchMm).map((bend) => ({
+            ...bend,
+            alongMm: bend.alongMm + LEAD_MM,
+          })),
+          windows: [],
+        }),
+      ),
   );
+  const railColumns = rails.flatMap((piece) =>
+    split({
+      id: piece.rail.id,
+      color: piece.rail.color,
+      cutMm: piece.cutMm,
+      pathMm: piece.pathMm,
+      ends: piece.ends,
+      bends: piece.bends,
+      windows: piece.windows,
+    }),
+  );
+  return [...wireColumns, ...railColumns];
+}
+
+// ── Rails ───────────────────────────────────────────────────────────────────
+
+/**
+ * Bare insulation window at each rail connection point, centred on it. About
+ * a pad and a half: room to solder without the next window running into it.
+ */
+export const RAIL_WINDOW_MM = 3;
+
+export interface RailPiece {
+  rail: Rail;
+  /** Every node in path order, mirrored if the rail is on the solder side. */
+  points: RoutePoint[];
+  /** Indices into `points` where insulation is removed. */
+  connections: number[];
+  ends: [WireEnd, WireEnd];
+  pathMm: number;
+  /** Path plus both ends' leads. */
+  cutMm: number;
+  /** Measured from the top cut, like the windows. */
+  bends: Bend[];
+  windows: Stretch[];
+}
+
+const onHole = (point: RoutePoint) => point.x2 % 2 === 0 && point.y2 % 2 === 0;
+
+/**
+ * A rail end on a hole goes into it on a lead like a wire's; where the
+ * rail is used only at its taps, the builder can clip it while installing.
+ * An end between holes cannot, so it gets a bare tip that centres a window
+ * on the end node instead.
+ */
+export function railEnds(rail: Rail): [WireEnd, WireEnd] {
+  const end = (point: RoutePoint): WireEnd =>
+    onHole(point)
+      ? { leadMm: LEAD_MM, intoHole: true }
+      : { leadMm: RAIL_WINDOW_MM / 2, intoHole: false };
+  return [
+    end(rail.vertices[0]!),
+    end(rail.vertices[rail.vertices.length - 1]!),
+  ];
+}
+
+/**
+ * Where a rail needs a window in its insulation: every node in a straight
+ * run (a node there exists only to be connected to), any corner a wire is
+ * attached to, and an end between holes. An end on a hole is bare already:
+ * it is the lead. Other corners are bends only.
+ */
+export function railConnections(design: Design, rail: Rail): number[] {
+  const points = rail.vertices;
+  const wired = (point: RoutePoint) =>
+    Object.values(design.wires ?? {}).some((wire) =>
+      [wire.start, wire.end].some(
+        (terminal) =>
+          terminal.kind === "rail_node" &&
+          terminal.rail_id === rail.id &&
+          terminal.position.x2 === point.x2 &&
+          terminal.position.y2 === point.y2,
+      ),
+    );
+  return points.flatMap((point, index) => {
+    const before = points[index - 1];
+    const after = points[index + 1];
+    if (!before || !after) return onHole(point) ? [] : [index];
+    const cross =
+      (point.x2 - before.x2) * (after.y2 - point.y2) -
+      (point.y2 - before.y2) * (after.x2 - point.x2);
+    const forward =
+      (point.x2 - before.x2) * (after.x2 - point.x2) +
+      (point.y2 - before.y2) * (after.y2 - point.y2);
+    const straight = cross === 0 && forward > 0;
+    return straight || wired(point) ? [index] : [];
+  });
+}
+
+/** Every rail as a piece to cut, bend and strip, in label order. */
+export function railPieces(
+  design: Design,
+  labels: Map<string, string>,
+): RailPiece[] {
+  const pitch = design.board.pitch_mm;
+  const label = (rail: Rail) => labels.get(rail.id) ?? rail.id;
+  return Object.values(design.rails ?? {})
+    .filter((rail) => simplifyPolyline(rail.vertices).length >= 2)
+    .sort((a, b) =>
+      label(a).localeCompare(label(b), undefined, { numeric: true }),
+    )
+    .map((rail) => {
+      const vertices = rail.vertices;
+      const along = vertices.map((_, index) =>
+        vertices
+          .slice(1, index + 1)
+          .reduce(
+            (total, point, at) =>
+              total +
+              (Math.hypot(
+                point.x2 - vertices[at]!.x2,
+                point.y2 - vertices[at]!.y2,
+              ) /
+                2) *
+                pitch,
+            0,
+          ),
+      );
+      const pathMm = along[along.length - 1]!;
+      const ends = railEnds(rail);
+      const overhang = ends[0].leadMm;
+      const cutMm = pathMm + ends[0].leadMm + ends[1].leadMm;
+      const connections = railConnections(design, rail);
+      return {
+        rail,
+        points:
+          rail.side === "solder"
+            ? vertices.map((point) => ({ x2: -point.x2, y2: point.y2 }))
+            : vertices.map((point) => ({ ...point })),
+        connections,
+        ends,
+        pathMm,
+        cutMm,
+        bends: bendPositions(vertices, pitch).map((bend) => ({
+          ...bend,
+          alongMm: bend.alongMm + overhang,
+        })),
+        windows: mergeWindows(
+          connections.map((index) => ({
+            fromMm: Math.max(0, along[index]! + overhang - RAIL_WINDOW_MM / 2),
+            toMm: Math.min(
+              cutMm,
+              along[index]! + overhang + RAIL_WINDOW_MM / 2,
+            ),
+          })),
+        ),
+      };
+    });
 }

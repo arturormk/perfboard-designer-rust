@@ -415,7 +415,7 @@ export async function exportWireTemplates(): Promise<void> {
     footer: `${current.name} · revision ${current.revision} · ${new Date().toLocaleDateString()}`,
   });
   if (pages.length === 0) {
-    toast("info", "There are no wires to export");
+    toast("info", "There are no wires or rails to export");
     return;
   }
   try {

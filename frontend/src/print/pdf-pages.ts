@@ -7,14 +7,22 @@
  * presentation attributes are used (no CSS), so any SVG renderer agrees.
  */
 import type { Design } from "../model/geometry";
-import { describeWire, wireColorCss } from "../model/naming";
+import {
+  describeWire,
+  railLabels,
+  wireColorCss,
+  wireColorName,
+} from "../model/naming";
 import {
   cutColumns,
   groupWireTemplates,
   layoutTemplate,
   LEAD_MM,
+  RAIL_WINDOW_MM,
+  railPieces,
   type ColorGroup,
   type CutColumn,
+  type RailPiece,
   type TemplateLayout,
   type WireShape,
 } from "./wire-templates";
@@ -310,7 +318,9 @@ function cutColumn(
   x: number,
   top: number,
 ): string {
-  const { fromMm, toMm, cutMm, pathMm, wire } = column;
+  const { fromMm, toMm, cutMm, pathMm, ends } = column;
+  const topLead = ends[0].leadMm;
+  const bodyEnd = topLead + pathMm;
   const centre = x + CUT_COLUMN_W / 2;
   const gridTop = top + CUT_LABEL_H;
   const y = (along: number) => gridTop + along - fromMm;
@@ -345,7 +355,7 @@ function cutColumn(
         fill: "#555",
       }),
     );
-  for (const lead of [stretch(0, LEAD_MM), stretch(LEAD_MM + pathMm, cutMm)])
+  for (const lead of [stretch(0, topLead), stretch(bodyEnd, cutMm)])
     if (lead)
       parts.push(
         line(centre, lead[0], centre, lead[1], {
@@ -353,7 +363,7 @@ function cutColumn(
           width: 0.8,
         }),
       );
-  const body = stretch(LEAD_MM, LEAD_MM + pathMm);
+  const body = stretch(topLead, bodyEnd);
   if (body) {
     parts.push(
       line(centre, body[0], centre, body[1], {
@@ -361,12 +371,35 @@ function cutColumn(
         width: WIRE_WIDTH_MM + 0.35,
       }),
       line(centre, body[0], centre, body[1], {
-        color: wireColorCss(wire.color),
+        color: wireColorCss(column.color),
         width: WIRE_WIDTH_MM,
       }),
     );
   }
-  for (const along of [LEAD_MM, LEAD_MM + pathMm].filter(visible))
+  for (const window of column.windows) {
+    const bare = stretch(window.fromMm, window.toMm);
+    if (!bare) continue;
+    parts.push(
+      line(centre, bare[0], centre, bare[1], {
+        color: LEAD_COLOR,
+        width: WIRE_WIDTH_MM + 0.35,
+      }),
+    );
+    // Slice lines across the insulation at each edge of the window.
+    for (const along of [window.fromMm, window.toMm].filter(
+      (edge) => visible(edge) && edge > 1e-9 && edge < cutMm - 1e-9,
+    ))
+      parts.push(
+        line(centre - 2, y(along), centre + 2, y(along), {
+          color: "#000",
+          width: 0.25,
+        }),
+      );
+  }
+  // Dashed strip ticks where a lead bends down into its hole.
+  for (const along of [topLead, bodyEnd].filter(
+    (at, index) => ends[index]!.intoHole && visible(at),
+  ))
     parts.push(
       line(centre - 3, y(along), centre + 3, y(along), {
         color: "#000",
@@ -410,23 +443,37 @@ function spanOf(columns: CutColumn[]): number {
 
 function cutGuidePages(
   groups: ColorGroup[],
+  rails: RailPiece[],
   labels: Map<string, string>,
   frame: Frame,
   pitchMm: number,
 ): PageContent[] {
   const title = "Wire cut guide";
   const width = frame.right - frame.left;
+  const railNote =
+    rails.length > 0
+      ? ` Rails (R…) follow the wires. Their ends have leads like a wire’s (clip them if the rail is soldered only at its taps); the tan windows, ${RAIL_WINDOW_MM} mm long and centred on each connection point, are where the insulation is sliced off once the rail is bent.`
+      : "";
   const intro = wrapText(
-    `Lay each wire on its column straight from the spool and mark the cut lines, the bends (◀ with their angle) and the dashed strip ticks (≈ ${LEAD_MM} mm from each end, where the leads bend down into their holes). The top of each column is the wire’s start end. Grid squares are 10 mm; numbers are centimetres from the top cut. Wires are in colour order, then by number.`,
+    `Lay each wire on its column straight from the spool and mark the cut lines, the bends (◀ with their angle) and the dashed strip ticks (≈ ${LEAD_MM} mm from each end, where the leads bend down into their holes). The top of each column is the wire’s start end. Grid squares are 10 mm; numbers are centimetres from the top cut. Wires are in colour order, then by number.${railNote}`,
     width,
     2.8,
   );
   const introH = intro.length * 3.8 + 2;
   const maxSpan =
     Math.floor((frame.bottom - frame.top - introH - CUT_LABEL_H) / 10) * 10;
-  const columns = cutColumns(groups, labels, maxSpan, pitchMm);
+  const columns = cutColumns(groups, labels, maxSpan, pitchMm, rails);
   if (columns.length === 0) return [];
   const perRow = Math.max(1, Math.floor(width / CUT_COLUMN_W));
+  // Rails start a row of their own.
+  const railIds = new Set(rails.map((piece) => piece.rail.id));
+  const rows: CutColumn[][] = [];
+  for (const list of [
+    columns.filter((column) => !railIds.has(column.id)),
+    columns.filter((column) => railIds.has(column.id)),
+  ])
+    for (let start = 0; start < list.length; start += perRow)
+      rows.push(list.slice(start, start + perRow));
 
   const pages: PageContent[] = [{ title, body: [] }];
   let y = frame.top;
@@ -436,8 +483,7 @@ function cutGuidePages(
     ),
   );
   y += introH;
-  for (let start = 0; start < columns.length; start += perRow) {
-    const row = columns.slice(start, start + perRow);
+  for (const row of rows) {
     const span = spanOf(row);
     const height = CUT_LABEL_H + span;
     if (y + height > frame.bottom) {
@@ -452,7 +498,7 @@ function cutGuidePages(
       body.push(
         cutColumn(
           column,
-          labels.get(column.wire.id) ?? column.wire.id,
+          labels.get(column.id) ?? column.id,
           frame.left + slot * CUT_COLUMN_W,
           y,
         ),
@@ -525,6 +571,29 @@ function templateDrawing(
     polyline(layout.path, { color: "#000", width: WIRE_WIDTH_MM + 0.35 }),
     polyline(layout.path, { color, width: WIRE_WIDTH_MM }),
   );
+  // Rail connection points: bare windows, with slice lines at their edges.
+  for (const window of layout.windows) {
+    parts.push(
+      polyline(window, { color: LEAD_COLOR, width: WIRE_WIDTH_MM + 0.35 }),
+    );
+    for (const [edge, next] of [
+      [window[0]!, window[1]!],
+      [window[window.length - 1]!, window[window.length - 2]!],
+    ] as const) {
+      const length = Math.hypot(next.x - edge.x, next.y - edge.y) || 1;
+      const nx = -(next.y - edge.y) / length;
+      const ny = (next.x - edge.x) / length;
+      parts.push(
+        line(
+          edge.x - nx * 1.6,
+          edge.y - ny * 1.6,
+          edge.x + nx * 1.6,
+          edge.y + ny * 1.6,
+          { color: "#000", width: 0.25 },
+        ),
+      );
+    }
+  }
   for (const hole of layout.bendHoles)
     parts.push(
       `<circle cx="${num(hole.x)}" cy="${num(hole.y)}" r="1.1" fill="none" ${strokeAttrs({ color: "#000", width: 0.25, dash: "0.6 0.4" })}/>`,
@@ -580,13 +649,31 @@ export function templateCard(
       LIST_SIZE,
     ),
   );
+  return cardOf(
+    inner,
+    title,
+    info,
+    list,
+    layout,
+    wireColorCss(shape.wires[0]!.color),
+  );
+}
+
+/** Title, information line, drawing and list, framed. */
+function cardOf(
+  inner: number,
+  title: string[],
+  info: string[],
+  list: string[],
+  layout: TemplateLayout,
+  color: string,
+): Card {
   const titleH = title.length * 3.8;
   const infoH = info.length * 3.3;
   const listH = list.length * 3;
   const width = inner + 2 * CARD_PAD;
   const height =
     CARD_PAD + titleH + infoH + 1 + layout.height + 1 + listH + CARD_PAD;
-  const color = wireColorCss(shape.wires[0]!.color);
   return {
     width,
     height,
@@ -624,6 +711,64 @@ export function templateCard(
   };
 }
 
+function describeRailEnds(piece: RailPiece): string {
+  const [start, end] = piece.ends;
+  const one = (item: (typeof piece.ends)[number]) =>
+    item.intoHole
+      ? `strip ${item.leadMm} mm`
+      : `bare ${item.leadMm} mm tip (between holes)`;
+  if (start.intoHole === end.intoHole && start.leadMm === end.leadMm)
+    return `${one(start)} each end`;
+  return `${one(start)} at the start, ${one(end)} at the end`;
+}
+
+/** A template card for one rail: cut, bend, then slice the windows. */
+export function railCard(
+  piece: RailPiece,
+  design: Design,
+  label: string,
+  maxInner: number,
+): Card {
+  const pitch = design.board.pitch_mm;
+  const rail = {
+    connections: piece.connections,
+    windowMm: RAIL_WINDOW_MM,
+    ends: piece.ends,
+  };
+  const lead = LEAD_MM;
+  let layout = layoutTemplate(piece.points, pitch, lead, rail);
+  if (layout.width > maxInner) {
+    const turned = layoutTemplate(
+      piece.points.map((point) => ({ x2: -point.y2, y2: point.x2 })),
+      pitch,
+      lead,
+      rail,
+    );
+    if (turned.width < layout.width) layout = turned;
+  }
+  const inner = Math.max(layout.width, CARD_MIN_INNER);
+  const title = wrapText(`${label} · rail`, inner, TITLE_SIZE);
+  const info = wrapText(
+    `Cut ≈ ${piece.cutMm.toFixed(1)} mm · path ${piece.pathMm.toFixed(1)} mm · ${plural(piece.bends.length, "bend")} · ${plural(piece.connections.length, "window")} of ${RAIL_WINDOW_MM} mm · ${describeRailEnds(piece)}`,
+    inner,
+    INFO_SIZE,
+  );
+  const net = design.nets?.[piece.rail.net_id]?.name ?? piece.rail.net_id;
+  const list = wrapText(
+    `${label}: ${net} · ${wireColorName(piece.rail.color)}${piece.rail.side === "solder" ? " · solder side, drawn as seen from it" : ""}`,
+    inner,
+    LIST_SIZE,
+  );
+  return cardOf(
+    inner,
+    title,
+    info,
+    list,
+    layout,
+    wireColorCss(piece.rail.color),
+  );
+}
+
 function groupHeading(group: ColorGroup, x: number, y: number): string {
   const name = group.name.charAt(0).toUpperCase() + group.name.slice(1);
   return [
@@ -639,14 +784,19 @@ function groupHeading(group: ColorGroup, x: number, y: number): string {
 
 function templatePages(
   groups: ColorGroup[],
+  rails: RailPiece[],
   design: Design,
   labels: Map<string, string>,
   frame: Frame,
 ): PageContent[] {
   const title = "Wire bending templates";
   const width = frame.right - frame.left;
+  const railNote =
+    rails.length > 0
+      ? ` Rails come last: bend the rail on its template, then slice the insulation off at the tan windows, between the two lines across each, and solder there. Rail leads go into the ringed holes like a wire’s, or can be clipped if the rail is soldered only at its windows.`
+      : "";
   const intro = wrapText(
-    `Lay a cut wire on its template and bend it to match. Dots are board holes, ${design.board.pitch_mm} mm apart. Tan ends are bare leads: bend them down 90° at the ringed holes. Each run is dimensioned in millimetres and hole pitches. Lengths assume sharp bends, so cut lengths are estimates.`,
+    `Lay a cut wire on its template and bend it to match. Dots are board holes, ${design.board.pitch_mm} mm apart. Tan ends are bare leads: bend them down 90° at the ringed holes. Each run is dimensioned in millimetres and hole pitches. Lengths assume sharp bends, so cut lengths are estimates.${railNote}`,
     width,
     2.8,
   );
@@ -662,15 +812,36 @@ function templatePages(
     pages.push({ title, body: [] });
     y = frame.top;
   };
-  for (const group of groups) {
-    const cards = group.shapes.map((shape) =>
+  const sections = groups.map((group) => ({
+    heading: (x: number, at: number) => groupHeading(group, x, at),
+    cards: group.shapes.map((shape) =>
       templateCard(shape, design, labels, width - 2 * CARD_PAD),
-    );
+    ),
+  }));
+  if (rails.length > 0)
+    sections.push({
+      heading: (x: number, at: number) =>
+        text(
+          x,
+          at + 4.2,
+          `Rails · ${plural(rails.length, "rail")} · cut ≈ ${Math.round(rails.reduce((total, piece) => total + piece.cutMm, 0))} mm in total`,
+          { size: 3.2, bold: true },
+        ),
+      cards: rails.map((piece) =>
+        railCard(
+          piece,
+          design,
+          labels.get(piece.rail.id) ?? piece.rail.id,
+          width - 2 * CARD_PAD,
+        ),
+      ),
+    });
+  for (const { heading, cards } of sections) {
     if (cards.length === 0) continue;
     // Keep the heading with its first card.
     if (y + HEADING_H + cards[0]!.height > frame.bottom && y > frame.top)
       newPage();
-    pages[pages.length - 1]!.body.push(groupHeading(group, frame.left, y));
+    pages[pages.length - 1]!.body.push(heading(frame.left, y));
     y += HEADING_H;
     let x = frame.left;
     let rowHeight = 0;
@@ -704,15 +875,20 @@ export interface WirePagesInput {
   footer: string;
 }
 
-/** The cut guide, then the bending templates, as complete SVG pages. */
+/**
+ * The cut guide, then the bending templates, as complete SVG pages. Rails
+ * follow the wires in both, labelled as on the board (R1, R2…).
+ */
 export function buildWirePages(input: WirePagesInput): string[] {
-  const { design, labels, paper, footer } = input;
+  const { design, paper, footer } = input;
+  const labels = new Map([...input.labels, ...railLabels(design)]);
   const groups = groupWireTemplates(design, labels);
-  if (groups.length === 0) return [];
+  const rails = railPieces(design, labels);
+  if (groups.length === 0 && rails.length === 0) return [];
   const frame = frameFor(paper);
   const pages = [
-    ...cutGuidePages(groups, labels, frame, design.board.pitch_mm),
-    ...templatePages(groups, design, labels, frame),
+    ...cutGuidePages(groups, rails, labels, frame, design.board.pitch_mm),
+    ...templatePages(groups, rails, design, labels, frame),
   ];
   return pages.map((page, index) =>
     renderPage(page, index, pages.length, paper, footer),

@@ -124,6 +124,38 @@ describe("buildWirePages", () => {
   });
 });
 
+describe("buildWirePages with rails", () => {
+  const railDesign = {
+    ...designWith([]),
+    rails: {
+      r1: {
+        id: "r1",
+        net_id: "n1",
+        side: "solder",
+        color: "black",
+        vertices: [p(19, 25), p(19, 12), p(19, 3), p(19, 1), p(19, 0)],
+      },
+    },
+  } as unknown as Design;
+  const build = () =>
+    buildWirePages({
+      design: railDesign,
+      labels: new Map(),
+      paper: A4,
+      footer: "Test",
+    });
+
+  it("exports a design that has rails but no wires", () => {
+    const pages = build();
+    expect(pages.length).toBe(2);
+    expect(pages[0]).toContain("R1");
+    expect(pages[1]).toContain("R1 · rail");
+    expect(pages[1]).toContain("3 windows");
+    expect(pages[1]).toContain("73.5 mm");
+    expect(pages[1]).toContain("VCC");
+  });
+});
+
 describe("templateCard", () => {
   it("turns a shape that is too wide for the paper a quarter", () => {
     const design = designWith([wire("a", [p(0, 0), p(80, 0), p(80, 2)])]);

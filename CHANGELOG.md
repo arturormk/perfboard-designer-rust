@@ -68,3 +68,13 @@ Development line `v0.1.x`: the first public development builds.
   each with a 50 mm calibration bar and a red reminder to set Page Scaling to
   None in the print dialog, so they print at actual size. See
   [ADR 0011](docs/adr/0011-true-scale-pdf-output.md).
+- Rails in the wire templates: each rail gets a column in the cut guide and
+  a 1:1 bending template, after the wires. Bends are marked as for wires.
+  Rail ends on a hole get a 5 mm lead bent down into it, like a wire's, so
+  a rail used only at its taps can have its ends clipped while installing.
+  An end between holes gets a 1.5 mm bare tip instead. Connection points
+  (every node in a straight run, any corner a wire is attached to, and ends
+  between holes) are drawn as tan bare windows, 3 mm long and centred on
+  the node, with lines where the insulation is sliced. Windows that overlap
+  merge into one. Templates dimension every run between nodes, and
+  consecutive short dimensions are staggered so their labels stay readable.
