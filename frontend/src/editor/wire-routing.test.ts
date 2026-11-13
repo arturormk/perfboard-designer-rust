@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendOrthogonal,
   closestWireSegmentIndex,
+  dragRailNode,
   finishWireNodeDrag,
   insertRailNode,
   insertWireNode,
@@ -176,5 +177,72 @@ describe("rail connection nodes", () => {
       x2: 3,
       y2: 2,
     });
+  });
+});
+
+describe("dragging rail nodes", () => {
+  // An L-shaped rail with a tap at (4, 0) on its first run.
+  const rail = [
+    { x2: 0, y2: 0 },
+    { x2: 4, y2: 0 },
+    { x2: 10, y2: 0 },
+    { x2: 10, y2: 6 },
+  ];
+
+  it("slides a tap along its run, ignoring sideways movement", () => {
+    expect(dragRailNode(rail, 1, { x2: 7, y2: 3 })?.[1]).toEqual({
+      x2: 7,
+      y2: 0,
+    });
+  });
+
+  it("keeps a tap strictly between its neighbours", () => {
+    expect(dragRailNode(rail, 1, { x2: -5, y2: 0 })?.[1]).toEqual({
+      x2: 1,
+      y2: 0,
+    });
+    expect(dragRailNode(rail, 1, { x2: 30, y2: 0 })?.[1]).toEqual({
+      x2: 9,
+      y2: 0,
+    });
+  });
+
+  it("slides a tap on a diagonal run in whole grid steps", () => {
+    const diagonal = [
+      { x2: 0, y2: 0 },
+      { x2: 2, y2: 2 },
+      { x2: 8, y2: 8 },
+    ];
+    expect(dragRailNode(diagonal, 1, { x2: 6, y2: 4 })?.[1]).toEqual({
+      x2: 5,
+      y2: 5,
+    });
+  });
+
+  it("moves ends and corners freely", () => {
+    expect(dragRailNode(rail, 3, { x2: 14, y2: 9 })?.[3]).toEqual({
+      x2: 14,
+      y2: 9,
+    });
+    expect(dragRailNode(rail, 2, { x2: 12, y2: 2 })).toEqual([
+      rail[0],
+      rail[1],
+      { x2: 12, y2: 2 },
+      rail[3],
+    ]);
+  });
+
+  it("refuses to drop a node onto a neighbour", () => {
+    expect(dragRailNode(rail, 3, { x2: 10, y2: 0 })).toBeUndefined();
+    expect(dragRailNode(rail, 0, { x2: 4, y2: 0 })).toBeUndefined();
+  });
+
+  it("leaves a tap in place when it has no room to slide", () => {
+    const tight = [
+      { x2: 0, y2: 0 },
+      { x2: 1, y2: 0 },
+      { x2: 2, y2: 0 },
+    ];
+    expect(dragRailNode(tight, 1, { x2: 2, y2: 0 })).toEqual(tight);
   });
 });

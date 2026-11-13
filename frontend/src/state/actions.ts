@@ -706,7 +706,17 @@ export function railNodeLock(
     (node.x2 - before.x2) * (after.y2 - node.y2) ===
     (node.y2 - before.y2) * (after.x2 - node.x2);
   if (!collinear) return "A rail corner cannot be removed";
-  const used = Object.values(current.wires ?? {}).some((wire) =>
+  if (railNodeHasWire(current, railId, node))
+    return "A wire is connected to this node";
+  return undefined;
+}
+
+function railNodeHasWire(
+  current: Design,
+  railId: string,
+  node: { x2: number; y2: number },
+): boolean {
+  return Object.values(current.wires ?? {}).some((wire) =>
     [wire.start, wire.end].some(
       (terminal) =>
         terminal.kind === "rail_node" &&
@@ -715,7 +725,20 @@ export function railNodeLock(
         terminal.position.y2 === node.y2,
     ),
   );
-  if (used) return "A wire is connected to this node";
+}
+
+/** Why rail node `index` cannot be dragged, or undefined when it can. */
+export function railNodeDragLock(
+  current: Design,
+  railId: string,
+  index: number,
+): string | undefined {
+  const rail = current.rails?.[railId];
+  const node = rail?.vertices[index];
+  if (!rail || !node) return "That node no longer exists";
+  if (rail.locked) return "This rail is locked";
+  if (railNodeHasWire(current, railId, node))
+    return "A wire is connected to this node";
   return undefined;
 }
 

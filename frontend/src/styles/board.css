@@ -77,7 +77,13 @@
   cursor: grabbing;
 }
 
-.board-svg.cursor-move {
+.board-svg.cursor-move,
+.board-svg.cursor-move * {
+  cursor: move;
+}
+
+/* Rail nodes can be dragged with the Select and Rail tools. */
+.board-svg.rail-nodes-movable .rail .rail-node {
   cursor: move;
 }
 
@@ -1037,6 +1043,12 @@
 .pin-label.names {
   font-size: 0.2px;
   font-family: var(--font-ui);
+}
+
+/* Labels sit over the middle of their wire or rail, where nodes often are:
+   let the pointer reach what is underneath. */
+.wire-label {
+  pointer-events: none;
 }
 
 .wire-label rect {

@@ -16,7 +16,12 @@ Development line `v0.1.x`: the first public development builds.
 - Rails: change their colour in the inspector (`set_rail_color`), add
   connection nodes by double-clicking a rail or clicking it with the Wire tool,
   and remove unused ones. A node on a whole hole acts like a pin, so wires on
-  either side of the board can connect to it.
+  either side of the board can connect to it. Drag a node with the Select or
+  Rail tool to move it: a node in a straight run slides along the rail, while
+  ends and corners reshape it. Double-click an unconnected node to remove it,
+  with either tool. Nodes with a wire attached stay put, with a message
+  saying why. Wire and rail labels no longer block the pointer, so a node
+  under a rail's name label can be reached too.
 - Nets: rename them by editing the name in the inspector (`rename_net`; names
   must be unique, ignoring case), and remove unused ones from the Nets panel or
   the inspector. A net cannot be removed while wires or rails use it.

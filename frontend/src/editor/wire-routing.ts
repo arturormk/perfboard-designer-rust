@@ -262,3 +262,51 @@ export function insertRailNode(
     index: segmentIndex + 1,
   };
 }
+
+/**
+ * Where dragging rail node `index` towards `pointer` puts the rail, or
+ * undefined when that spot is not allowed (keep the last good one).
+ *
+ * A node in the middle of a straight run is a connection tap: it slides
+ * along the run and stays strictly between its neighbours, so the rail keeps
+ * its shape. Ends and corners reshape the rail and may go anywhere except
+ * onto a neighbouring node, which would leave a zero-length segment.
+ */
+export function dragRailNode(
+  vertices: RoutePoint[],
+  index: number,
+  pointer: RoutePoint,
+): RoutePoint[] | undefined {
+  const node = vertices[index];
+  if (!node) return undefined;
+  const before = vertices[index - 1];
+  const after = vertices[index + 1];
+  const replace = (position: RoutePoint) =>
+    vertices.map((point, at) => (at === index ? position : point));
+  const isTap =
+    before &&
+    after &&
+    (node.x2 - before.x2) * (after.y2 - node.y2) ===
+      (node.y2 - before.y2) * (after.x2 - node.x2);
+  if (isTap) {
+    const dx = after.x2 - before.x2;
+    const dy = after.y2 - before.y2;
+    const steps = gcd(dx, dy);
+    if (steps < 2) return undefined;
+    const stepX = dx / steps;
+    const stepY = dy / steps;
+    const projected = Math.round(
+      ((pointer.x2 - before.x2) * stepX + (pointer.y2 - before.y2) * stepY) /
+        (stepX * stepX + stepY * stepY),
+    );
+    const step = Math.max(1, Math.min(steps - 1, projected));
+    return replace({
+      x2: before.x2 + stepX * step,
+      y2: before.y2 + stepY * step,
+    });
+  }
+  const same = (point: RoutePoint | undefined) =>
+    point !== undefined && point.x2 === pointer.x2 && point.y2 === pointer.y2;
+  if (same(before) || same(after)) return undefined;
+  return replace({ ...pointer });
+}

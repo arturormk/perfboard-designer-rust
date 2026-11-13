@@ -21,6 +21,7 @@ import {
   mutate,
   placeComponent,
   proposeRoute,
+  railNodeDragLock,
   rejectRoute,
   removeRailNode,
   select,
@@ -78,6 +79,7 @@ import {
 import {
   appendOrthogonal,
   closestWireSegmentIndex,
+  dragRailNode,
   finishWireNodeDrag,
   insertRailNode,
   insertWireNode,
@@ -121,6 +123,19 @@ type Gesture =
       vertices: RoutePoint[];
       current: RoutePoint;
       endpoint?: "start" | "end";
+    }
+  | {
+      kind: "rail-node";
+      pointerId: number;
+      railId: string;
+      index: number;
+      /** The rail as it was when the drag started. */
+      original: RoutePoint[];
+      vertices: RoutePoint[];
+      /** Why the node cannot move; reported once the pointer actually moves. */
+      blocked?: string;
+      /** Rail tool: a press that never moved acts as an ordinary click. */
+      click?: Point;
     }
   | {
       kind: "resize";
@@ -520,6 +535,63 @@ export function BoardCanvas() {
     return snappedRoutePoint(point, { maxX2, maxY2 });
   }
 
+  /** A node of a rail on the face being viewed (not a through-board node). */
+  function ownRailNode(
+    element: Element | null,
+  ): { railId: string; index: number } | undefined {
+    const node = element?.closest<SVGElement>("[data-rail-node]");
+    if (!node || node.closest(".rail-through")) return undefined;
+    const [railId, index] = node.dataset.railNode!.split(":");
+    const rail = target.rails?.[railId!];
+    if (!rail || rail.side !== side.peek()) return undefined;
+    return { railId: rail.id, index: Number(index) };
+  }
+
+  function startRailNodeDrag(
+    event: PointerEvent,
+    node: { railId: string; index: number },
+    click?: Point,
+  ): void {
+    const rail = target.rails?.[node.railId];
+    const svg = svgRef.current;
+    if (!rail || !svg) return;
+    const vertices = rail.vertices.map((vertex) => ({ ...vertex }));
+    gesture.value = {
+      kind: "rail-node",
+      pointerId: event.pointerId,
+      railId: rail.id,
+      index: node.index,
+      original: vertices,
+      vertices,
+      blocked: railNodeDragLock(target, rail.id, node.index),
+      click,
+    };
+    svg.setPointerCapture(event.pointerId);
+  }
+
+  /** `quiet`: a press on an existing rail node, which was more likely meant
+   * to edit that node than to start a rail, so a missing net is no error. */
+  function railToolClick(point: Point, quiet = false): void {
+    const net = activeNetId.peek()
+      ? target.nets?.[activeNetId.peek()!]
+      : undefined;
+    if (!net || net.state !== "accepted") {
+      if (quiet) return;
+      toast("info", "Choose an accepted net for the rail", {
+        detail: "Pick one in the tool bar above the board.",
+      });
+      return;
+    }
+    const snapped = halfGrid(point);
+    const draft = railDraft.peek() ?? [];
+    const last = draft.at(-1);
+    if (last && last.x2 === snapped.x2 && last.y2 === snapped.y2) {
+      if (draft.length >= 2) finishRail();
+      return;
+    }
+    railDraft.value = [...draft, snapped];
+  }
+
   function finishRail(): void {
     const vertices = railDraft.peek();
     const netId = activeNetId.peek();
@@ -811,23 +883,11 @@ export function BoardCanvas() {
     }
 
     if (activeTool === "rail") {
-      const net = activeNetId.peek()
-        ? target.nets?.[activeNetId.peek()!]
-        : undefined;
-      if (!net || net.state !== "accepted") {
-        toast("info", "Choose an accepted net for the rail", {
-          detail: "Pick one in the tool bar above the board.",
-        });
-        return;
-      }
-      const snapped = halfGrid(point);
-      const draft = railDraft.peek() ?? [];
-      const last = draft.at(-1);
-      if (last && last.x2 === snapped.x2 && last.y2 === snapped.y2) {
-        if (draft.length >= 2) finishRail();
-        return;
-      }
-      railDraft.value = [...draft, snapped];
+      // Between rails, an existing node can be dragged; a plain click on it
+      // still starts a new rail there.
+      const node = railDraft.peek() ? undefined : ownRailNode(element);
+      if (node) startRailNodeDrag(event, node, point);
+      else railToolClick(point);
       return;
     }
 
@@ -960,6 +1020,12 @@ export function BoardCanvas() {
       select({ kind: "saddle", id: saddleEl.dataset.saddle! });
       return;
     }
+    const node = ownRailNode(element);
+    if (node) {
+      select({ kind: "rail", id: node.railId });
+      startRailNodeDrag(event, node);
+      return;
+    }
     if (wireEl || railEl) {
       const id = (wireEl ?? railEl)!.dataset[wireEl ? "wire" : "rail"]!;
       select({ kind: wireEl ? "wire" : "rail", id });
@@ -1079,6 +1145,29 @@ export function BoardCanvas() {
         gesture.value = { ...active, current: next };
       return;
     }
+    if (active.kind === "rail-node") {
+      const pointer = halfGrid(point);
+      const start = active.original[active.index]!;
+      if (pointer.x2 === start.x2 && pointer.y2 === start.y2) return;
+      if (active.blocked) {
+        if (pointer.x2 !== start.x2 || pointer.y2 !== start.y2) {
+          gesture.value = null;
+          toast("info", active.blocked, {
+            detail:
+              active.blocked === "This rail is locked"
+                ? "Unlock it in the inspector to move its nodes."
+                : "Remove the wire first, or move its end instead.",
+          });
+        }
+        return;
+      }
+      const next = dragRailNode(active.original, active.index, pointer);
+      const current = active.vertices[active.index]!;
+      const moved = next?.[active.index];
+      if (moved && (moved.x2 !== current.x2 || moved.y2 !== current.y2))
+        gesture.value = { ...active, vertices: next! };
+      return;
+    }
     if (active.kind === "resize") {
       const viewPoint = clientToView(svg, event.clientX, event.clientY);
       if (!viewPoint) return;
@@ -1156,6 +1245,21 @@ export function BoardCanvas() {
       });
       return;
     }
+    if (active.kind === "rail-node") {
+      const from = active.original[active.index]!;
+      const to = active.vertices[active.index]!;
+      if (from.x2 !== to.x2 || from.y2 !== to.y2)
+        void mutate(
+          {
+            type: "modify_rail_path",
+            rail_id: active.railId,
+            vertices: active.vertices,
+          },
+          { failure: "Could not move the rail node" },
+        );
+      else if (active.click) railToolClick(active.click, true);
+      return;
+    }
     if (active.kind === "resize") {
       const { plan } = active;
       if (plan.holesX !== board.holes_x || plan.holesY !== board.holes_y)
@@ -1170,12 +1274,35 @@ export function BoardCanvas() {
   }
 
   function onDoubleClick(event: MouseEvent): void {
-    if (tool.peek() === "rail" && railDraft.peek()) {
-      finishRail();
+    // After a drag gesture captured the pointer, the event targets the SVG
+    // itself; ask what is actually under the pointer instead.
+    const element =
+      document.elementFromPoint(event.clientX, event.clientY) ??
+      (event.target as Element);
+    if (tool.peek() === "rail") {
+      const draft = railDraft.peek();
+      const node = ownRailNode(element);
+      const position = node
+        ? target.rails?.[node.railId]?.vertices[node.index]
+        : undefined;
+      // The first click of a double-click on a node started a rail there:
+      // drop that and remove the node instead, as the Select tool would.
+      if (
+        node &&
+        position &&
+        (!draft ||
+          (draft.length === 1 &&
+            draft[0]!.x2 === position.x2 &&
+            draft[0]!.y2 === position.y2))
+      ) {
+        railDraft.value = null;
+        void removeRailNode(node.railId, node.index);
+        return;
+      }
+      if (draft) finishRail();
       return;
     }
     if (tool.peek() !== "select") return;
-    const element = event.target as Element;
     const handle = element.closest<SVGElement>("[data-handle='vertex']");
     if (handle) {
       const wire = target.wires?.[handle.dataset.wire!];
@@ -1247,6 +1374,16 @@ export function BoardCanvas() {
         components: {
           ...target.components,
           [active.id]: { ...instance, position: active.current },
+        },
+      };
+  } else if (active?.kind === "rail-node") {
+    const rail = target.rails?.[active.railId];
+    if (rail)
+      shown = {
+        ...target,
+        rails: {
+          ...target.rails,
+          [rail.id]: { ...rail, vertices: active.vertices },
         },
       };
   } else if (active?.kind === "vertex") {
@@ -1403,13 +1540,15 @@ export function BoardCanvas() {
   const compareTarget = compareDesign.value;
   const split = splitCompare.value && compareTarget;
   const cursorClass =
-    spaceDown.value || active?.kind === "pan"
-      ? active?.kind === "pan"
-        ? "grabbing"
-        : "grab"
-      : placing.value || tool.value !== "select"
-        ? "crosshair"
-        : undefined;
+    active?.kind === "rail-node"
+      ? "move"
+      : spaceDown.value || active?.kind === "pan"
+        ? active?.kind === "pan"
+          ? "grabbing"
+          : "grab"
+        : placing.value || tool.value !== "select"
+          ? "crosshair"
+          : undefined;
 
   return (
     <div class={`canvas-host${split ? " split" : ""}`}>
@@ -1448,7 +1587,11 @@ export function BoardCanvas() {
         <BoardBase board={board} side={side.value} viewBox={viewBox} />
         <svg
           ref={svgRef}
-          class={`board-svg${cursorClass ? ` cursor-${cursorClass}` : ""}`}
+          class={`board-svg${cursorClass ? ` cursor-${cursorClass}` : ""}${
+            tool.value === "select" || tool.value === "rail"
+              ? " rail-nodes-movable"
+              : ""
+          }`}
           viewBox={viewBoxAttr}
           preserveAspectRatio="xMidYMid meet"
           onPointerDown={onPointerDown}

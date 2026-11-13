@@ -890,10 +890,12 @@ function RailInspector({
         </table>
         <p class="field-note">
           A rail is a net-owned conductor; all its nodes are connected. With the
-          Select tool, double-click the rail to add a node and double-click a
-          node to remove it. With the Wire tool, click anywhere on the rail to
-          add a node and connect to it. Nodes on a hole act like a pin: wires on
-          either side of the board can connect there.
+          Select tool, double-click the rail to add a node. With the Select or
+          Rail tool, drag a node to move it (a node in a straight run slides
+          along the rail; ends and corners reshape it) and double-click an
+          unconnected node to remove it. With the Wire tool, click anywhere on
+          the rail to add a node and connect to it. Nodes on a hole act like a
+          pin: wires on either side of the board can connect there.
         </p>
       </Section>
       <footer class="inspector-foot">
