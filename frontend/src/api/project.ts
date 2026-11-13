@@ -557,6 +557,16 @@ export function evaluateProjectRoute(
 export function getNetConnectivity(): Promise<NetConnectivity[]> {
   return invoke("get_net_connectivity");
 }
+/**
+ * Saves page-sized SVGs as a true-scale PDF via a save dialog and opens it.
+ * Resolves to the saved path, or null when the user cancels.
+ */
+export function exportPdf(
+  pages: string[],
+  suggestedName: string,
+): Promise<string | null> {
+  return invoke("export_pdf", { pages, suggestedName });
+}
 export function pickProjectPath(
   save: boolean,
   suggestedName?: string,

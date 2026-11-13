@@ -4,6 +4,7 @@
  */
 import { batch } from "@preact/signals";
 import {
+  exportPdf,
   applyOperation,
   applyTransaction,
   commitProject,
@@ -78,6 +79,7 @@ import {
   type Selection,
 } from "./store";
 import { toast } from "./toasts";
+import { buildWirePages, paperForLocale } from "../print/pdf-pages";
 import { confirmAction } from "../shell/dialogs";
 
 // ── Refresh ────────────────────────────────────────────────────────────────
@@ -356,6 +358,37 @@ function suggestedFileName(): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
   return `${slug || "untitled"}.perfboard.json`;
+}
+
+/**
+ * Exports the wire cut guide and bending templates as a true-scale PDF. The
+ * web view cannot print at 1:1, so these sheets are never printed from HTML.
+ */
+export async function exportWireTemplates(): Promise<void> {
+  const current = view.peek();
+  if (!current) return;
+  const pages = buildWirePages({
+    design: current.design,
+    labels: wireLabels(current.design),
+    paper: paperForLocale(navigator.language),
+    footer: `${current.name} · revision ${current.revision} · ${new Date().toLocaleDateString()}`,
+  });
+  if (pages.length === 0) {
+    toast("info", "There are no wires to export");
+    return;
+  }
+  try {
+    const name = suggestedFileName().replace(/\.perfboard\.json$/, "");
+    const path = await exportPdf(pages, `${name}-wires.pdf`);
+    if (!path) return;
+    toast("success", "Wire templates exported", {
+      detail: `${path}. Print at Actual size (100 %) and check the 50 mm bar.`,
+    });
+  } catch (error) {
+    toast("error", "Could not export the wire templates", {
+      detail: errorMessage(error),
+    });
+  }
 }
 
 export async function saveAs(): Promise<void> {

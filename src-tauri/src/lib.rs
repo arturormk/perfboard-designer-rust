@@ -26,6 +26,7 @@ use perfboard_session_ipc::{
 use serde::Serialize;
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_opener::OpenerExt;
 
 mod component_viewer;
 
@@ -1002,6 +1003,62 @@ async fn pick_project_path(
         .transpose()
 }
 
+/// System fonts for PDF text, loaded on first export.
+fn pdf_font_options() -> &'static perfboard_print::usvg::Options<'static> {
+    static OPTIONS: std::sync::OnceLock<perfboard_print::usvg::Options<'static>> =
+        std::sync::OnceLock::new();
+    OPTIONS.get_or_init(perfboard_print::font_options)
+}
+
+/// Asks where to save, writes page-sized SVGs as a true-scale PDF, and opens
+/// it in the system viewer. Returns the saved path, or `None` if cancelled.
+#[tauri::command]
+async fn export_pdf(
+    app: tauri::AppHandle,
+    pages: Vec<String>,
+    suggested_name: String,
+) -> Result<Option<String>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("PDF document", &["pdf"])
+        .set_title("Export PDF")
+        .set_file_name(suggested_name)
+        .save_file(move |selection| {
+            let _ = sender.send(selection);
+        });
+    let Some(selection) = receiver
+        .await
+        .map_err(|error| format!("PDF file picker failed: {error}"))?
+    else {
+        return Ok(None);
+    };
+    let mut path = selection
+        .into_path()
+        .map_err(|error| format!("selected PDF path is unavailable: {error}"))?;
+    if !path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("pdf"))
+    {
+        path.as_mut_os_string().push(".pdf");
+    }
+    let target = path.clone();
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let pdf = perfboard_print::svg_pages_to_pdf(&pages, pdf_font_options())
+            .map_err(|error| error.to_string())?;
+        let partial = target.with_extension("pdf.partial");
+        std::fs::write(&partial, pdf)
+            .and_then(|()| std::fs::rename(&partial, &target))
+            .map_err(|error| format!("could not write {}: {error}", target.display()))
+    })
+    .await
+    .map_err(|error| format!("PDF export failed: {error}"))??;
+    if let Err(error) = app.opener().open_path(path.to_string_lossy(), None::<&str>) {
+        eprintln!("Could not open {}: {error}", path.display());
+    }
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
 fn save_project(state: tauri::State<'_, SessionState>, path: PathBuf) -> Result<(), String> {
@@ -1050,6 +1107,7 @@ pub fn run() {
         .manage(SessionState(session))
         .manage(ComponentViewerState::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             let (registration, listener) =
                 SessionRegistration::bind().map_err(Box::<dyn std::error::Error>::from)?;
@@ -1098,6 +1156,7 @@ pub fn run() {
             open_project,
             get_net_connectivity,
             pick_project_path,
+            export_pdf,
             get_project_view,
             get_commit_design,
             get_undo_history_bytes,

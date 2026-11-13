@@ -1,11 +1,22 @@
-/* Build drawing: only the print sheet is shown, on white. */
+/*
+ * Build drawing: only the print sheet is shown, on white. The web view does
+ * not print at a guaranteed scale, so true-scale sheets (wire templates) are
+ * exported as PDF instead (see src/print/pdf-pages.ts).
+ */
 @media print {
   @page {
     size: A4 landscape;
     margin: 12mm;
   }
 
+  /* The app fills one window; printed sheets must be free to span pages. */
+  html,
+  #app {
+    height: auto;
+  }
+
   body {
+    height: auto;
     overflow: visible;
     background: #fff;
     color: #000;

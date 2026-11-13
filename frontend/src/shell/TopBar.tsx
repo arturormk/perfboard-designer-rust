@@ -4,6 +4,7 @@ import {
   openDialog as openFile,
   openPath,
   recentPaths,
+  exportWireTemplates,
   redo,
   save,
   saveAs,
@@ -93,6 +94,13 @@ function FileMenu() {
           <hr />
           <button role="menuitem" onClick={run(() => window.print())}>
             <Icon name="print" size={15} /> Print build drawing…
+          </button>
+          <button
+            role="menuitem"
+            title="Cut guide and bending templates as a true-scale PDF"
+            onClick={run(() => void exportWireTemplates())}
+          >
+            <Icon name="print" size={15} /> Export wire templates…
           </button>
           <button role="menuitem" onClick={run(() => openDialog("shortcuts"))}>
             <Icon name="keyboard" size={15} /> Keyboard shortcuts <kbd>?</kbd>

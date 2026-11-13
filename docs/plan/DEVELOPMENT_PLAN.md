@@ -90,6 +90,9 @@ crates/
       main.rs
       tools.rs
       client.rs
+  print/
+    src/
+      lib.rs        page SVGs -> true-scale PDF (ADR 0011)
 src-tauri/
   src/
     commands.rs
@@ -125,10 +128,11 @@ Crate dependency direction:
 ```text
 core <- project <- Tauri adapter
               <- MCP adapter
+print <- Tauri adapter
 frontend --Tauri commands/events--> project session
 ```
 
-`core` must not depend on Tauri, MCP, filesystem access, or frontend types. `project` may depend on `core` and implements orchestration, history, persistence, and the authoritative session. The adapters translate requests and responses but do not reimplement validation.
+`print` turns page-sized SVGs into PDF and depends on neither `core` nor Tauri. `core` must not depend on Tauri, MCP, filesystem access, or frontend types. `project` may depend on `core` and implements orchestration, history, persistence, and the authoritative session. The adapters translate requests and responses but do not reimplement validation.
 
 ## 5. Domain contracts to establish first
 
@@ -396,6 +400,8 @@ Exit criteria:
 - An MCP client can complete the blueprint demonstration and the UI shows each change in the shared working copy.
 
 ### Milestone 6 — Assembly planning
+
+Status: in progress. Done: 1:1 wire cut guide and bending templates grouped by colour and shape, exported as a true-scale PDF ([ADR 0011](../adr/0011-true-scale-pdf-output.md)).
 
 Goal: turn a validated design into a practical, step-by-step construction aid.
 

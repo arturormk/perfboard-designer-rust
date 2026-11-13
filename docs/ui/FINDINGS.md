@@ -62,7 +62,7 @@ helpers (`editor/*`, `component-designer/*`) and the typed command layer
 | Bridges flooding lists | Parts grouped by type, bridges collapsed last. |
 | Locating problems | Diagnostics list with plain-language advice; click to select and frame the object. |
 | Comparing | Highlight changes against the head commit or any earlier commit; side-by-side split view. |
-| Printing | A build sheet: both faces plus a wire cut list with colour, length, bends and a tick column. |
+| Printing | A build sheet: both faces plus a wire cut list with colour, length, bends and a tick column. Wire cut guides and bending templates are exported as a true-scale PDF, because the web view cannot print at 1:1 (ADR 0011). |
 
 ## Things found along the way (not UI)
 

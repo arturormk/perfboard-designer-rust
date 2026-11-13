@@ -33,6 +33,7 @@ interface Entry {
   after: Design;
 }
 
+let lastPdfPages: string[] = [];
 const clone = <T>(value: T): T => structuredClone(value);
 const fixtures = {
   ...import.meta.glob("../../../examples/*.json", { import: "default" }),
@@ -894,6 +895,11 @@ export async function installMockBackend(): Promise<void> {
       return clone(doc);
     },
     save_project: () => undefined,
+    export_pdf: ({ pages }) => {
+      // Preview only: keep the pages for inspection; nothing is written.
+      lastPdfPages = pages as string[];
+      return null;
+    },
     open_project: async () => {
       doc = await loadFixture();
       undoStack = [];
@@ -957,6 +963,8 @@ export async function installMockBackend(): Promise<void> {
 
   (window as unknown as Record<string, unknown>).__mock = {
     doc: () => doc,
+    /** SVG pages from the last `export_pdf` call. */
+    pdfPages: () => lastPdfPages,
     /** Simulates an MCP client moving the first component one hole right. */
     agentEdit(rationale = "Moved the module to leave room for the USB cable") {
       const instance = Object.values(doc.design.components ?? {}).find(

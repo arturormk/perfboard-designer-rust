@@ -45,3 +45,14 @@ Development line `v0.1.x`: the first public development builds.
 - Component Designer for authoring component definitions.
 - Local MCP server so Codex and Claude Code can read and edit the open design.
 - Printable build drawing with a wire cut list.
+- Wire templates as a true-scale PDF (**File → Export wire templates…**). A
+  cut guide comes first: every wire straightened at 1:1 in its own column over
+  a millimetre grid, with its bare ends, insulation colour, cut lines, strip
+  marks, and a triangle with the angle at every bend, so cuts and bends can be
+  marked while the wire is still straight off the spool. Bending templates follow: every wire shape drawn at 1:1 over
+  the board's hole grid, grouped by insulation colour, with each run
+  dimensioned in millimetres and hole pitches. Wires of the same shape share
+  one template. Pages are A4 (or US Letter where that is the local paper),
+  each with a 50 mm calibration bar and a red reminder to set Page Scaling to
+  None in the print dialog, so they print at actual size. See
+  [ADR 0011](docs/adr/0011-true-scale-pdf-output.md).

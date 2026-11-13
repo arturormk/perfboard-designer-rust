@@ -47,7 +47,10 @@ src/
   panels/             Parts, Nets, Inspector, Problems, History
   shell/              TopBar, ToolRail, StatusBar, Toasts, dialogs, Welcome
   component-designer/ part editor; preview.ts and helpers predate the rebuild
-  print/PrintSheet.tsx  build drawing for @media print
+  print/
+    PrintSheet.tsx    build drawing for @media print (not true to scale)
+    wire-templates.ts pure, tested: wire shapes, dimensions, cut columns, bends
+    pdf-pages.ts      true-scale cut guide and bending templates as page SVGs
   editor/             older pure helpers still used (routing, drag, sizing)
   styles/             tokens, app, board, designer, print
   dev/mock-backend.ts preview backend (dev only, tree-shaken from builds)
@@ -107,9 +110,32 @@ src/
 | `get_commit_design` | One commit's design, for comparison |
 | `get_undo_history_bytes` | Size of stored undo snapshots |
 | `pick_project_path` | Native open/save dialog (`tauri-plugin-dialog`) |
+| `export_pdf` | Save page SVGs as a true-scale PDF and open it (`tauri-plugin-opener`) |
 
 Rust side: `crates/project/src/view.rs` and `net_connectivity()` in
-`connectivity.rs`, each with a unit test.
+`connectivity.rs`, each with a unit test. `export_pdf` uses the
+`perfboard-print` crate (`crates/print`), which converts the page SVGs with
+`svg2pdf`.
+
+## Printing at true scale
+
+WebKitGTK (the Linux web view) rescales whatever `window.print()` prints, and
+ignores `@page` size and margins: 80 mm of CSS printed as 86–91 mm depending on
+the paper. Headless Chromium honours CSS millimetres, so a check there proves
+nothing. Anything that must measure 1:1 is therefore built as page-sized SVGs
+in millimetres (`print/pdf-pages.ts`, presentation attributes only, no CSS)
+and exported as a PDF. See
+[ADR 0011](../adr/0011-true-scale-pdf-output.md).
+
+To check scale, measure the PDF, not a browser render. In the preview
+backend, export from the File menu, then read the pages with
+`window.__mock.pdfPages()`, save them as files, and convert them as the app
+does:
+
+```sh
+cargo run -p perfboard-print --example svg_pages_to_pdf -- out.pdf page*.svg
+pdftoppm -r 254 -png out.pdf page   # 254 dpi = 10 px per mm
+```
 
 ## Checks
 

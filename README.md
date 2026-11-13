@@ -7,7 +7,8 @@ Perfboard Designer is a local-first desktop application for designing small
 circuits on isolated-pad perfboard. The project is under active development.
 Milestone 5 provides the graphical editor, revisioned transactions,
 deterministic automatic routing, and local MCP access to the active desktop
-working copy from Codex or Claude Code.
+working copy from Codex or Claude Code. Milestone 6 (assembly planning) has
+started with printable 1:1 wire cut guides and bending templates.
 
 ![Perfboard Designer showing an Arduino Nano RS-485 board with two RJ45 connectors](docs/screenshots/nano-rs485-board.png)
 
@@ -114,7 +115,23 @@ keyboard shortcuts.
 - **History** shows each step with its origin. Agent steps are marked in violet
   with the agent's rationale. Commit to create a named checkpoint, compare the
   working copy with any commit (highlighted or side by side), or restore one.
-- **File → Print build drawing** prints both faces and a wire cut list.
+- **File → Print build drawing** prints both faces and a wire cut list. It is
+  a reference drawing, not true to scale.
+- **File → Export wire templates…** saves a PDF to build the wiring from, then
+  opens it in your PDF viewer. A cut guide comes first: every wire laid out
+  straight at 1:1 over a millimetre grid, with cut lines, strip marks, and a
+  triangle with the angle at every bend, so a wire can be marked while it is
+  still straight off the spool. Bending templates follow: every wire shape at
+  1:1 over the board's hole grid, dimensioned in millimetres and hole pitches
+  and grouped by insulation colour. Pages are A4, or US Letter where that is
+  the local paper size.
+
+  **Print the PDF at actual size**: in the print dialog, set *Page Scaling* to
+  *None* (in some viewers, *Actual size* or 100 %). "Fit" or "Shrink to
+  printable area" changes every length. Then check that the 50 mm bar at the
+  top of each page measures 50 mm. The templates are a PDF because the app's
+  web view cannot print at an exact scale; see
+  [ADR 0011](docs/adr/0011-true-scale-pdf-output.md).
 
 Electrical changes proposed by an agent appear under **Needs your approval** in
 the Nets panel and stay inactive until accepted.
@@ -188,8 +205,11 @@ threat boundary.
 
 ## Current limitations
 
-Assembly planning begins in Milestone 6, and component-library authoring remains
-read-only through MCP until MCP authoring parity is implemented.
+Assembly planning is in progress: wire cut guides and bending templates exist,
+but there is no assembly order or step-by-step assembly view yet. Template cut
+lengths assume sharp bends and about 5 mm of bare lead at each end, so they are
+estimates. Component-library authoring remains read-only through MCP until MCP
+authoring parity is implemented.
 Passing validation means that project geometry and basic connectivity are
 internally consistent; it is never a guarantee of electrical correctness or
 safety.

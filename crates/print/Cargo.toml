@@ -1,0 +1,15 @@
+[package]
+name = "perfboard-print"
+description = "True-scale PDF output for Perfboard Designer print sheets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+pdf-writer = "0.12"
+svg2pdf = "0.13"
+thiserror.workspace = true
+
+[lints]
+workspace = true

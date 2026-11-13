@@ -21,6 +21,7 @@ tauri-build = { version = "2.5", features = [] }
 [dependencies]
 perfboard-core.workspace = true
 perfboard-project.workspace = true
+perfboard-print.workspace = true
 perfboard-session-ipc = { path = "../crates/session-ipc" }
 notify.workspace = true
 serde.workspace = true
@@ -28,6 +29,7 @@ serde_json.workspace = true
 sha2.workspace = true
 tauri = { version = "2.10", features = [] }
 tauri-plugin-dialog = "2.7"
+tauri-plugin-opener = "2"
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
