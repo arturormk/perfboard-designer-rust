@@ -3,7 +3,9 @@ import type { ElectricalNet } from "../api/project";
 import {
   createNet,
   mutate,
+  netInUse,
   proposeRoute,
+  removeNet,
   select,
   focusOn,
 } from "../state/actions";
@@ -208,6 +210,16 @@ export function NetsPanel() {
                     >
                       <Icon name="wire" size={15} />
                     </button>
+                    {current && !netInUse(current, net.id) && (
+                      <button
+                        class="icon-btn small"
+                        title="Remove this unused net"
+                        aria-label={`Remove ${net.name}`}
+                        onClick={() => void removeNet(net.id)}
+                      >
+                        <Icon name="trash" size={15} />
+                      </button>
+                    )}
                   </div>
                 </div>
               </li>

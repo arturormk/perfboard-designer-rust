@@ -601,7 +601,10 @@ export function removeSelection(): void {
     void mutate({ type: "remove_rail", rail_id: current.id });
   else if (current.kind === "saddle")
     void mutate({ type: "remove_saddle", saddle_id: current.id });
-  else void mutate({ type: "remove_net", net_id: current.id });
+  else {
+    void removeNet(current.id);
+    return;
+  }
   selection.value = null;
 }
 
@@ -678,6 +681,60 @@ export async function createNet(
   if (!ok) return undefined;
   activeNetId.value = id;
   return id;
+}
+
+/** Why a net cannot be removed, or undefined when nothing on the board uses it. */
+export function netInUse(current: Design, netId: string): string | undefined {
+  const wires = Object.values(current.wires ?? {}).filter(
+    (wire) => wire.net_id === netId,
+  ).length;
+  if (wires)
+    return wires === 1
+      ? "A wire still uses this net"
+      : `${wires} wires still use this net`;
+  if (Object.values(current.rails ?? {}).some((rail) => rail.net_id === netId))
+    return "A rail still uses this net";
+  return undefined;
+}
+
+export async function renameNet(
+  netId: string,
+  value: string,
+): Promise<boolean> {
+  const current = design.peek();
+  const net = current?.nets?.[netId];
+  const name = value.trim().toUpperCase();
+  if (!current || !net || !name || name === net.name) return false;
+  const clash = Object.values(current.nets ?? {}).find(
+    (other) => other.id !== netId && other.name.toUpperCase() === name,
+  );
+  if (clash) {
+    toast("info", `Another net is already named ${clash.name}`);
+    return false;
+  }
+  return mutate(
+    { type: "rename_net", net_id: netId, name },
+    { failure: `Could not rename net ${net.name}` },
+  );
+}
+
+export async function removeNet(netId: string): Promise<void> {
+  const current = design.peek();
+  const net = current?.nets?.[netId];
+  if (!current || !net) return;
+  const reason = netInUse(current, netId);
+  if (reason) {
+    toast("info", `${reason}; remove them first`);
+    return;
+  }
+  const ok = await mutate(
+    { type: "remove_net", net_id: netId },
+    { failure: `Could not remove net ${net.name}` },
+  );
+  if (!ok) return;
+  if (activeNetId.peek() === netId) activeNetId.value = undefined;
+  if (selection.peek()?.kind === "net" && selection.peek()?.id === netId)
+    selection.value = null;
 }
 
 export function assignPin(netId: string | null, pin: PinRef): Promise<boolean> {

@@ -230,6 +230,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
       for (const [id, wire] of Object.entries(d.wires ?? {}))
         if (wire.net_id === op.net_id) delete d.wires![id];
       return;
+    case "rename_net":
+      d.nets![op.net_id]!.name = op.name.trim();
+      return;
     case "accept_net_proposal":
       d.nets![op.net_id]!.state = "accepted";
       return;

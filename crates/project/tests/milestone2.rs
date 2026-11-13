@@ -285,3 +285,53 @@ fn permanent_example_contains_four_complete_manual_routes() {
             .any(|item| item.code.0 == "circuit.net_incomplete")
     );
 }
+
+#[test]
+fn nets_can_be_renamed_to_unique_non_empty_names() {
+    let mut document = fixture();
+    let define = |document: &mut ProjectDocument, name: &str| {
+        let id = NetId::new();
+        apply(
+            document,
+            OperationPayload::DefineNet {
+                net: ElectricalNet {
+                    id,
+                    name: name.into(),
+                    state: ConnectionState::Accepted,
+                    pins: BTreeSet::new(),
+                    notes: String::new(),
+                },
+            },
+        )
+        .unwrap();
+        id
+    };
+    let vcc = define(&mut document, "VCC");
+    define(&mut document, "GND");
+    let rename = |document: &mut ProjectDocument, name: &str| {
+        apply(
+            document,
+            OperationPayload::RenameNet {
+                net_id: vcc,
+                name: name.into(),
+            },
+        )
+    };
+    rename(&mut document, "  5V ").unwrap();
+    assert_eq!(document.design.nets[&vcc].name, "5V");
+    // Changing only the case of its own name is fine.
+    rename(&mut document, "5v").unwrap();
+    assert!(rename(&mut document, "   ").is_err());
+    assert!(rename(&mut document, "gnd").is_err());
+    assert_eq!(document.design.nets[&vcc].name, "5v");
+    assert!(
+        apply(
+            &mut document,
+            OperationPayload::RenameNet {
+                net_id: NetId::new(),
+                name: "X".into(),
+            },
+        )
+        .is_err()
+    );
+}

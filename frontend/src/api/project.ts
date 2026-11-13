@@ -370,6 +370,7 @@ export type OperationPayload =
     }
   | { type: "define_net"; net: ElectricalNet }
   | { type: "remove_net"; net_id: string }
+  | { type: "rename_net"; net_id: string; name: string }
   | { type: "assign_pin"; net_id: string; pin: PinRef }
   | { type: "unassign_pin"; net_id: string; pin: PinRef }
   | { type: "accept_net_proposal"; net_id: string }

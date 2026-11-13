@@ -83,6 +83,12 @@ pub enum OperationPayload {
     RemoveNet {
         net_id: NetId,
     },
+    /// Changes a net's name. The name must be non-empty and not used by
+    /// another net (compared case-insensitively).
+    RenameNet {
+        net_id: NetId,
+        name: String,
+    },
     AssignPin {
         net_id: NetId,
         pin: PinRef,
@@ -226,6 +232,10 @@ pub enum OperationError {
     DuplicateNet,
     #[error("net was not found")]
     NetNotFound,
+    #[error("net name must not be empty")]
+    EmptyNetName,
+    #[error("another net is already named {0}")]
+    NetNameTaken(String),
     #[error("wire already exists")]
     DuplicateWire,
     #[error("wire was not found")]
@@ -648,6 +658,28 @@ pub(crate) fn apply_operation_untracked(
                 .ok_or(OperationError::NetNotFound)?;
             affected_nets.insert(*net_id);
             format!("Removed net {}", net.name)
+        }
+        OperationPayload::RenameNet { net_id, name } => {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err(OperationError::EmptyNetName);
+            }
+            if next
+                .design
+                .nets
+                .values()
+                .any(|net| net.id != *net_id && net.name.eq_ignore_ascii_case(name))
+            {
+                return Err(OperationError::NetNameTaken(name.to_owned()));
+            }
+            let net = next
+                .design
+                .nets
+                .get_mut(net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            let old = std::mem::replace(&mut net.name, name.to_owned());
+            affected_nets.insert(*net_id);
+            format!("Renamed net {old} to {name}")
         }
         OperationPayload::AssignPin { net_id, pin } => {
             let net = next

@@ -16,7 +16,10 @@ import {
   proposeRoute,
   railNodeLock,
   removeRailNode,
+  netInUse,
+  removeNet,
   removeSelection,
+  renameNet,
   select,
 } from "../state/actions";
 import {
@@ -935,11 +938,39 @@ function NetInspector({
     (airwire) => airwire.netId === net.id,
   );
   const proposed = net.state === "proposed";
+  const inUse = netInUse(current, net.id);
   return (
     <div class="inspector">
       <InspectorHead
         icon={<Icon name="net" />}
-        title={net.name}
+        title={
+          <input
+            key={`${net.id}:${net.name}`}
+            class="title-input"
+            defaultValue={net.name}
+            aria-label="Net name"
+            onInput={(event) => {
+              const input = event.target as HTMLInputElement;
+              const caret = input.selectionStart;
+              input.value = input.value.toUpperCase();
+              input.setSelectionRange(caret, caret);
+            }}
+            onBlur={(event) => {
+              const input = event.target as HTMLInputElement;
+              void renameNet(net.id, input.value).then((ok) => {
+                if (!ok) input.value = net.name;
+              });
+            }}
+            onKeyDown={(event) => {
+              const input = event.target as HTMLInputElement;
+              if (event.key === "Enter") input.blur();
+              else if (event.key === "Escape") {
+                input.value = net.name;
+                input.blur();
+              }
+            }}
+          />
+        }
         subtitle={
           proposed
             ? "Proposed · not part of the circuit yet"
@@ -1080,7 +1111,12 @@ function NetInspector({
         </Section>
       )}
       <footer class="inspector-foot">
-        <button class="btn danger" onClick={removeSelection}>
+        <button
+          class="btn danger"
+          disabled={!!inUse}
+          title={inUse ? `${inUse}; remove them first` : undefined}
+          onClick={() => void removeNet(net.id)}
+        >
           <Icon name="trash" size={15} /> Remove net
         </button>
       </footer>

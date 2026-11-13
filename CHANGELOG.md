@@ -17,6 +17,9 @@ Development line `v0.1.x`: the first public development builds.
   connection nodes by double-clicking a rail or clicking it with the Wire tool,
   and remove unused ones. A node on a whole hole acts like a pin, so wires on
   either side of the board can connect to it.
+- Nets: rename them by editing the name in the inspector (`rename_net`; names
+  must be unique, ignoring case), and remove unused ones from the Nets panel or
+  the inspector. A net cannot be removed while wires or rails use it.
 - A wire started on a bridge end takes the net the bridge is soldered to
   (across chained bridges too) instead of the tool bar's active net. A wire
   from an unconnected terminal adopts the net of the rail or pin it ends on.
