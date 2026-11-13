@@ -10,7 +10,7 @@ deterministic automatic routing, and local MCP access to the active desktop
 working copy from Codex or Claude Code. Milestone 6 (assembly planning) has
 started with printable 1:1 wire cut guides and bending templates.
 
-![Perfboard Designer showing an Arduino Nano RS-485 board with two RJ45 connectors](docs/screenshots/nano-rs485-board.png)
+![Perfboard Designer showing the solder side of an Arduino Nano RS-485 board with two RJ45 connectors](docs/screenshots/nano-rs485-board.png)
 
 ## Prerequisites
 
