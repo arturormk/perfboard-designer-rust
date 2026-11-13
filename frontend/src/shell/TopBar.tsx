@@ -1,9 +1,8 @@
 import { useSignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import {
+  forgetRecent,
   openDialog as openFile,
-  openPath,
-  recentPaths,
   exportWireTemplates,
   redo,
   save,
@@ -26,6 +25,7 @@ import {
 import { formatVersion } from "../api/bootstrap";
 import { Icon } from "../ui/Icon";
 import { openDialog } from "./dialogs";
+import { otherRecentProjects, RecentProjectList } from "./RecentProjects";
 
 function fileName(path: string | null): string {
   if (!path) return "Not saved yet";
@@ -47,9 +47,7 @@ function FileMenu() {
     open.value = false;
     action();
   };
-  const recent = open.value
-    ? recentPaths().filter((path) => path !== filePath.value)
-    : [];
+  const recent = open.value ? otherRecentProjects() : [];
   return (
     <div class="menu" ref={ref}>
       <button
@@ -70,18 +68,21 @@ function FileMenu() {
           </button>
           {recent.length > 0 && (
             <>
-              <div class="menu-label">Recent</div>
-              {recent.slice(0, 5).map((path) => (
+              <div class="menu-label">
+                Recent
                 <button
-                  key={path}
-                  role="menuitem"
-                  class="recent"
-                  title={path}
-                  onClick={run(() => void openPath(path))}
+                  class="menu-label-action"
+                  title="Remove every project from this list"
+                  onClick={() => void forgetRecent()}
                 >
-                  <Icon name="file" size={15} /> {fileName(path)}
+                  Clear
                 </button>
-              ))}
+              </div>
+              <RecentProjectList
+                projects={recent}
+                menu
+                onOpen={() => (open.value = false)}
+              />
             </>
           )}
           <hr />

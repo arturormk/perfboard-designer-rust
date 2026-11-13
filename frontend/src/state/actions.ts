@@ -6,6 +6,9 @@ import { batch } from "@preact/signals";
 import {
   exportPdf,
   applyOperation,
+  forgetRecentProject,
+  getRecentProjects,
+  importRecentProjects,
   applyTransaction,
   commitProject,
   compareProjectRevisions,
@@ -30,6 +33,7 @@ import {
   type OperationPayload,
   type PinRef,
   type ProjectView,
+  type RecentProject,
   type Rotation,
   type RouteProposal,
   type Side,
@@ -66,6 +70,7 @@ import {
   engine,
   filePath,
   flashIds,
+  recentProjects,
   focusRequest,
   library,
   pendingRoute,
@@ -93,23 +98,59 @@ function rememberPath(project: ProjectView, path: string | null): void {
   if (path) {
     localStorage.setItem(`perfboard.path.${project.project_id}`, path);
     localStorage.setItem("perfboard.lastPath", path);
-    const recent = recentPaths().filter((item) => item !== path);
-    localStorage.setItem(
-      "perfboard.recent",
-      JSON.stringify([path, ...recent].slice(0, 6)),
-    );
   }
+  // The backend records opens and saves in its recent list; fetch the result.
+  void loadRecentProjects();
 }
 
-export function recentPaths(): string[] {
+/** Builds before the config file kept the recent list in local storage. */
+const LEGACY_RECENT_KEY = "perfboard.recent";
+
+function legacyRecentPaths(): string[] {
   try {
-    const value = JSON.parse(localStorage.getItem("perfboard.recent") ?? "[]");
+    const value = JSON.parse(localStorage.getItem(LEGACY_RECENT_KEY) ?? "[]");
     return Array.isArray(value)
       ? value.filter((item) => typeof item === "string")
       : [];
   } catch {
     return [];
   }
+}
+
+/** Loads the recent projects list, adopting a legacy list once. */
+export async function loadRecentProjects(): Promise<void> {
+  try {
+    const legacy = legacyRecentPaths();
+    recentProjects.value =
+      legacy.length > 0
+        ? await importRecentProjects(legacy)
+        : await getRecentProjects();
+    if (legacy.length > 0) localStorage.removeItem(LEGACY_RECENT_KEY);
+  } catch {
+    // A convenience list: an unreadable one must never get in the way.
+  }
+}
+
+export async function forgetRecent(path?: string): Promise<void> {
+  try {
+    recentProjects.value = await forgetRecentProject(path);
+  } catch (error) {
+    toast("error", "Could not update the recent projects list", {
+      detail: errorMessage(error),
+    });
+  }
+}
+
+/** Opens a recent project, offering to drop it when the file is gone. */
+export async function openRecent(project: RecentProject): Promise<void> {
+  if (!project.exists) {
+    toast("error", `${project.name} is no longer there`, {
+      detail: `${project.path} was moved or deleted. It has been removed from the recent projects.`,
+    });
+    await forgetRecent(project.path);
+    return;
+  }
+  await openPath(project.path);
 }
 
 async function loadComparison(next: ProjectView): Promise<void> {

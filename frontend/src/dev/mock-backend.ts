@@ -20,6 +20,7 @@ import type {
   PinRef,
   ProjectDocument,
   ProjectView,
+  RecentProject,
   RouteProposal,
   SemanticDiff,
   TerminalRef,
@@ -34,6 +35,24 @@ interface Entry {
 }
 
 let lastPdfPages: string[] = [];
+
+// Preview recent list; the last entry shows how a moved file looks.
+const describeRecent = (path: string, exists = true): RecentProject => ({
+  path,
+  name: path.split("/").pop() ?? path,
+  exists,
+});
+let recent: RecentProject[] = [
+  describeRecent("/home/maker/boards/nano-rs485.perfboard.json"),
+  describeRecent("/home/maker/boards/led-driver.perfboard.json"),
+  describeRecent("/media/usb/old/amp.perfboard.json", false),
+];
+function recordRecent(path: string): void {
+  recent = [
+    describeRecent(path),
+    ...recent.filter((item) => item.path !== path),
+  ].slice(0, 10);
+}
 const clone = <T>(value: T): T => structuredClone(value);
 const fixtures = {
   ...import.meta.glob("../../../examples/*.json", { import: "default" }),
@@ -894,13 +913,28 @@ export async function installMockBackend(): Promise<void> {
       emit();
       return clone(doc);
     },
-    save_project: () => undefined,
+    save_project: ({ path }) => {
+      recordRecent(path as string);
+      return undefined;
+    },
+    get_recent_projects: () => clone(recent),
+    forget_recent_project: ({ path }) => {
+      recent = path ? recent.filter((item) => item.path !== path) : [];
+      return clone(recent);
+    },
+    import_recent_projects: ({ paths }) => {
+      for (const path of paths as string[])
+        if (!recent.some((item) => item.path === path))
+          recent.push(describeRecent(path));
+      return clone(recent);
+    },
     export_pdf: ({ pages }) => {
       // Preview only: keep the pages for inspection; nothing is written.
       lastPdfPages = pages as string[];
       return null;
     },
-    open_project: async () => {
+    open_project: async ({ path }) => {
+      recordRecent(path as string);
       doc = await loadFixture();
       undoStack = [];
       redoStack = [];

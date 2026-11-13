@@ -2,7 +2,12 @@
 import { listen } from "@tauri-apps/api/event";
 import { getProjectRevision, type SessionChangeEvent } from "../api/project";
 import { errorMessage } from "../error-message";
-import { focusBoard, refresh, refreshLibrary } from "./actions";
+import {
+  focusBoard,
+  loadRecentProjects,
+  refresh,
+  refreshLibrary,
+} from "./actions";
 import { engine, view } from "./store";
 
 const POLL_INTERVAL_MS = 1200;
@@ -15,6 +20,7 @@ export async function startSync(preview: boolean): Promise<void> {
         void refresh();
     });
     await Promise.all([refresh(), refreshLibrary()]);
+    void loadRecentProjects();
     engine.value = { kind: "ready", preview };
     focusBoard();
   } catch (error) {

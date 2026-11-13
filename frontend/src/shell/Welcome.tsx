@@ -2,9 +2,11 @@ import { leftTab } from "../state/store";
 import { openDialog as openFile } from "../state/actions";
 import { Icon } from "../ui/Icon";
 import { openDialog } from "./dialogs";
+import { otherRecentProjects, RecentProjectList } from "./RecentProjects";
 
 /** Shown over an empty board: the three ways a design usually starts. */
 export function Welcome() {
+  const recent = otherRecentProjects().slice(0, 5);
   return (
     <div class="welcome" role="note">
       <h2>An empty board</h2>
@@ -48,6 +50,12 @@ export function Welcome() {
           </span>
         </li>
       </ol>
+      {recent.length > 0 && (
+        <section class="welcome-recent" aria-label="Recent projects">
+          <h3>Recent projects</h3>
+          <RecentProjectList projects={recent} />
+        </section>
+      )}
     </div>
   );
 }

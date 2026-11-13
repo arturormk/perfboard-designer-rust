@@ -29,6 +29,9 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 mod component_viewer;
+mod recent_projects;
+
+use recent_projects::{RecentProject, RecentProjects};
 
 use component_viewer::{
     AuthorizedComponent, COMPONENT_VIEWER_EVENT, ComponentViewerSnapshot, ComponentWatch,
@@ -1061,19 +1064,65 @@ async fn export_pdf(
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
-fn save_project(state: tauri::State<'_, SessionState>, path: PathBuf) -> Result<(), String> {
+fn save_project(
+    state: tauri::State<'_, SessionState>,
+    recent: tauri::State<'_, RecentProjects>,
+    path: PathBuf,
+) -> Result<(), String> {
     let session = state.0.lock().map_err(|error| error.to_string())?;
-    save_project_atomic(session.document(), path).map_err(|error| error.to_string())
+    save_project_atomic(session.document(), &path).map_err(|error| error.to_string())?;
+    remember_recent(&recent, &path);
+    Ok(())
+}
+
+/// The recent list is a convenience: failing to update it never fails the
+/// open or save that triggered it.
+fn remember_recent(recent: &RecentProjects, path: &Path) {
+    if let Err(error) = recent.record(path) {
+        eprintln!("Could not update the recent projects list: {error}");
+    }
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_recent_projects(recent: tauri::State<'_, RecentProjects>) -> Vec<RecentProject> {
+    recent.list()
+}
+
+/// Removes one entry, or all of them when `path` is omitted.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn forget_recent_project(
+    recent: tauri::State<'_, RecentProjects>,
+    path: Option<PathBuf>,
+) -> Result<Vec<RecentProject>, String> {
+    recent
+        .forget(path.as_deref())
+        .map_err(|error| format!("could not update the recent projects list: {error}"))
+}
+
+/// Adopts paths remembered by older builds, which kept them in the webview.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn import_recent_projects(
+    recent: tauri::State<'_, RecentProjects>,
+    paths: Vec<PathBuf>,
+) -> Result<Vec<RecentProject>, String> {
+    recent
+        .import(&paths)
+        .map_err(|error| format!("could not update the recent projects list: {error}"))
 }
 
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
 fn open_project(
     state: tauri::State<'_, SessionState>,
+    recent: tauri::State<'_, RecentProjects>,
     app: tauri::AppHandle,
     path: PathBuf,
 ) -> Result<ProjectDocument, String> {
-    let document = load_project(path).map_err(|error| error.to_string())?;
+    let document = load_project(&path).map_err(|error| error.to_string())?;
+    remember_recent(&recent, &path);
     let event = state
         .0
         .lock()
@@ -1124,6 +1173,7 @@ pub fn run() {
                 }
             });
             app.manage(IpcRegistrationState(registration));
+            app.manage(RecentProjects::new(app.path().app_config_dir().ok()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1154,6 +1204,9 @@ pub fn run() {
             save_component_draft,
             save_project,
             open_project,
+            get_recent_projects,
+            forget_recent_project,
+            import_recent_projects,
             get_net_connectivity,
             pick_project_path,
             export_pdf,

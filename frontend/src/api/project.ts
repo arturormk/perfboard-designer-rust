@@ -508,6 +508,25 @@ export function saveProject(path: string): Promise<void> {
 export function openProject(path: string): Promise<ProjectDocument> {
   return invoke("open_project", { path });
 }
+/** A recently opened or saved project, kept in the app's configuration. */
+export interface RecentProject {
+  path: string;
+  name: string;
+  /** False when the file has been moved or deleted since. */
+  exists: boolean;
+}
+export function getRecentProjects(): Promise<RecentProject[]> {
+  return invoke("get_recent_projects");
+}
+/** Removes one entry, or every entry when `path` is omitted. */
+export function forgetRecentProject(path?: string): Promise<RecentProject[]> {
+  return invoke("forget_recent_project", { path: path ?? null });
+}
+export function importRecentProjects(
+  paths: string[],
+): Promise<RecentProject[]> {
+  return invoke("import_recent_projects", { paths });
+}
 export function undoProject(expectedRevision: number): Promise<void> {
   return invoke("undo_project", { expectedRevision });
 }

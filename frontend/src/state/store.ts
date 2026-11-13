@@ -10,6 +10,7 @@ import type {
   ComponentDefinition,
   Diagnostic,
   NetConnectivity,
+  RecentProject,
   PinRef,
   ProjectView,
   RouteProposal,
@@ -80,6 +81,8 @@ export const filePath = signal<string | null>(
   localStorage.getItem("perfboard.lastPath"),
 );
 export const savedRevision = signal<number | null>(null);
+/** Most recent first; persisted by the backend in the app's config folder. */
+export const recentProjects = signal<RecentProject[]>([]);
 
 // ── UI state ───────────────────────────────────────────────────────────────
 export const appMode = signal<AppMode>("board");

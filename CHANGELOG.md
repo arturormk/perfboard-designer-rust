@@ -39,6 +39,13 @@ Development line `v0.1.x`: the first public development builds.
   validation report notes the join as an advisory, and the net inspector
   lists the nets it is currently joined with.
   Parts placed before this change pick it up with **Update metadata**.
+- Recent projects: the last 10 projects opened or saved are listed in the
+  File menu and on the empty-board welcome card, each with its folder. Files
+  that have been moved or deleted are marked and can be removed from the list
+  one by one, or all at once with **Clear**. The list is kept in
+  `recent-projects.json` in the app's configuration folder (on Linux,
+  `~/.config/dev.perfboarddesigner.desktop/`), so it no longer lives in the
+  webview's storage; an existing list is adopted on first start.
 - Revisioned working copy with undo, commits, comparison, and restore.
 - Deterministic automatic routing with route proposals.
 - Validation with problems that frame the affected objects.
