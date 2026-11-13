@@ -2,10 +2,11 @@ use std::sync::{Arc, Mutex};
 
 use perfboard_core::{BoardSize, ComponentDefinition, ProjectId};
 use perfboard_project::{
-    Board, OperationError, ProjectDocument, ProjectSession, RevisionError, SessionError,
+    Board, OperationError, ProjectDocument, ProjectSession, ProjectView, RevisionError,
+    SessionError,
 };
 use perfboard_session_ipc::{
-    RUNTIME_DIRECTORY_ENV, SessionApiError, SessionRegistration, SessionRequest,
+    ProjectRenamed, RUNTIME_DIRECTORY_ENV, SessionApiError, SessionRegistration, SessionRequest,
     SessionRequestHandler, SessionResponse,
 };
 use rmcp::{
@@ -33,6 +34,22 @@ impl SessionRequestHandler for TestHandler {
             SessionRequest::GetProject => Ok(SessionResponse::Project(Box::new(
                 session.document().clone(),
             ))),
+            SessionRequest::GetProjectView => Ok(SessionResponse::ProjectView(Box::new(
+                ProjectView::from_document(session.document()),
+            ))),
+            SessionRequest::RenameProject {
+                expected_revision,
+                name,
+            } => session
+                .rename(expected_revision, &name)
+                .map(|event| {
+                    SessionResponse::Renamed(ProjectRenamed {
+                        revision: event.revision,
+                        name: session.document().name.clone(),
+                        summary: event.summary,
+                    })
+                })
+                .map_err(|error| session_error(&error)),
             SessionRequest::GetComponentLibrary => {
                 Ok(SessionResponse::Components(self.component_library.clone()))
             }
@@ -175,6 +192,42 @@ async fn real_stdio_server_reads_and_mutates_the_shared_session() {
         stale.structured_content.as_ref().unwrap()["error"]["actual_revision"],
         1
     );
+
+    let renamed = client
+        .call_tool(
+            CallToolRequestParams::new("rename_project").with_arguments(
+                serde_json::from_value(json!({ "expected_revision": 1, "name": " Fuzz pedal " }))
+                    .unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(renamed.is_error, Some(false), "{renamed:?}");
+    let renamed = &renamed.structured_content.as_ref().unwrap()["data"]["value"];
+    assert_eq!(renamed["name"], "Fuzz pedal");
+    assert_eq!(renamed["revision"], 2);
+
+    let history = client
+        .call_tool(CallToolRequestParams::new("get_revision_history"))
+        .await
+        .unwrap();
+    let history = history.structured_content.unwrap();
+    assert_eq!(history["revision"], 2);
+    assert_eq!(history["dirty"], true);
+    let working = history["working_changes"].as_array().unwrap();
+    assert_eq!(working.len(), 1);
+    assert!(
+        working[0].get("before").is_none(),
+        "history must not carry design snapshots"
+    );
+
+    let blank = client
+        .call_tool(CallToolRequestParams::new("rename_project").with_arguments(
+            serde_json::from_value(json!({ "expected_revision": 2, "name": "   " })).unwrap(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(blank.is_error, Some(true));
 
     client.cancel().await.unwrap();
     host.abort();

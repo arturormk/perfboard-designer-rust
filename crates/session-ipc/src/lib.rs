@@ -11,8 +11,8 @@ use std::{
 use directories::{BaseDirs, ProjectDirs};
 use perfboard_core::{CommitId, ComponentDefinition, RoutePos, RouteProposal, Side};
 use perfboard_project::{
-    Commit, DocumentRevision, HistoryActionResult, ProjectDocument, RouteRequest, SemanticDiff,
-    TransactionRequest, TransactionResult,
+    Commit, DocumentRevision, HistoryActionResult, ProjectDocument, ProjectView, RouteRequest,
+    SemanticDiff, TransactionRequest, TransactionResult,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -34,7 +34,11 @@ pub const RUNTIME_DIRECTORY_ENV: &str = "PERFBOARD_DESIGNER_RUNTIME_DIR";
 #[serde(tag = "method", content = "params", rename_all = "snake_case")]
 pub enum SessionRequest {
     Ping,
+    /// The whole document, including every undo/redo and commit snapshot.
+    /// It can outgrow the frame limit; prefer `GetProjectView`.
     GetProject,
+    /// The current design, validation and compact history summaries.
+    GetProjectView,
     ApplyTransaction(TransactionRequest),
     Undo {
         expected_revision: DocumentRevision,
@@ -49,6 +53,11 @@ pub enum SessionRequest {
         expected_revision: DocumentRevision,
         name: String,
         description: String,
+    },
+    /// Renames the project. Not an undo step; advances the revision.
+    RenameProject {
+        expected_revision: DocumentRevision,
+        name: String,
     },
     Restore {
         expected_revision: DocumentRevision,
@@ -84,14 +93,23 @@ pub enum SessionResponse {
         project_name: String,
     },
     Project(Box<ProjectDocument>),
+    ProjectView(Box<ProjectView>),
     Transaction(TransactionResult),
     History(HistoryActionResult),
     Commit(Box<Commit>),
+    Renamed(ProjectRenamed),
     Diff(SemanticDiff),
     Routes(RouteResults),
     Components(Vec<ComponentDefinition>),
     Documentation(ComponentDocumentation),
     Rendered(RenderedDesign),
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProjectRenamed {
+    pub revision: DocumentRevision,
+    pub name: String,
+    pub summary: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -273,14 +291,16 @@ pub async fn serve(
                 } else {
                     handler.handle(envelope.request)
                 };
-                write_frame(
-                    &mut stream,
-                    &ResponseEnvelope {
-                        protocol_version: SESSION_PROTOCOL_VERSION,
-                        result,
-                    },
-                )
-                .await
+                let response = ResponseEnvelope {
+                    protocol_version: SESSION_PROTOCOL_VERSION,
+                    result,
+                };
+                match write_frame(&mut stream, &response).await {
+                    Err(IpcError::FrameTooLarge(size)) => {
+                        write_frame(&mut stream, &too_large_response(size)).await
+                    }
+                    other => other,
+                }
             }
             .await;
             if let Err(error) = result
@@ -511,6 +531,21 @@ fn restrict_file(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Tells the client its response did not fit in a frame, rather than closing
+/// the connection with no explanation.
+fn too_large_response(size: usize) -> ResponseEnvelope {
+    ResponseEnvelope {
+        protocol_version: SESSION_PROTOCOL_VERSION,
+        result: Err(SessionApiError::new(
+            "session.response_too_large",
+            format!(
+                "the response is {size} bytes, over the {MAX_FRAME_BYTES}-byte session frame \
+                 limit; request less data"
+            ),
+        )),
+    }
+}
+
 async fn read_frame<T: for<'de> Deserialize<'de>>(stream: &mut TcpStream) -> Result<T, IpcError> {
     let size = stream.read_u32().await? as usize;
     if size > MAX_FRAME_BYTES {
@@ -590,6 +625,77 @@ mod tests {
                 )),
             }
         }
+    }
+
+    #[test]
+    fn rename_project_uses_a_stable_wire_shape() {
+        let request = SessionRequest::RenameProject {
+            expected_revision: DocumentRevision(3),
+            name: "Fuzz pedal".into(),
+        };
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "method": "rename_project",
+                "params": { "expected_revision": 3, "name": "Fuzz pedal" }
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<SessionRequest>(json).unwrap(),
+            request
+        );
+
+        let response = SessionResponse::Renamed(ProjectRenamed {
+            revision: DocumentRevision(4),
+            name: "Fuzz pedal".into(),
+            summary: "Renamed project Untitled project to Fuzz pedal".into(),
+        });
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["type"], "renamed");
+        assert_eq!(json["value"]["revision"], 4);
+        assert_eq!(
+            serde_json::from_value::<SessionResponse>(json).unwrap(),
+            response
+        );
+    }
+
+    struct OversizedHandler;
+
+    impl SessionRequestHandler for OversizedHandler {
+        fn handle(&self, request: SessionRequest) -> Result<SessionResponse, SessionApiError> {
+            if request == SessionRequest::Ping {
+                return PingHandler.handle(request);
+            }
+            Ok(SessionResponse::Rendered(RenderedDesign {
+                revision: DocumentRevision(1),
+                side: Side::Component,
+                mime_type: "image/svg+xml".into(),
+                svg: "x".repeat(MAX_FRAME_BYTES + 1),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn oversized_response_is_reported_instead_of_dropped() {
+        let directory = temporary_directory();
+        let (registration, listener) = SessionRegistration::bind_in(&directory).unwrap();
+        let task = tokio::spawn(serve(
+            listener,
+            Arc::clone(&registration),
+            Arc::new(OversizedHandler),
+        ));
+        let error = SessionClient::with_runtime_directory(directory.clone())
+            .call(SessionRequest::GetProject)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, IpcError::Remote(remote) if remote.code == "session.response_too_large"),
+            "{error:?}"
+        );
+        task.abort();
+        drop(registration);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     fn temporary_directory() -> PathBuf {

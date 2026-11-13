@@ -6,7 +6,7 @@
 //! this view instead: the current design plus compact summaries of history.
 
 use perfboard_core::{CommitId, Diagnostic, ProjectId};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     Design, DocumentRevision, OperationOrigin, ProjectDocument, SchemaVersion, SemanticDiff,
@@ -14,7 +14,7 @@ use crate::{
 };
 
 /// One undo or redo entry without its design snapshots.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChangeSummary {
     pub operation_id: String,
     pub origin: OperationOrigin,
@@ -26,7 +26,7 @@ pub struct ChangeSummary {
 }
 
 /// A commit without its design snapshot and recorded changes.
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CommitSummary {
     pub id: CommitId,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -42,7 +42,7 @@ pub struct CommitSummary {
     pub rationales: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProjectView {
     pub schema_version: SchemaVersion,
     pub project_id: ProjectId,
@@ -61,6 +61,9 @@ pub struct ProjectView {
     pub undo: Vec<ChangeSummary>,
     /// Redo entries, oldest first (the last entry is redone next).
     pub redo: Vec<ChangeSummary>,
+    /// Whether the working copy differs from the head commit.
+    #[serde(default)]
+    pub dirty: bool,
 }
 
 fn summarize(change: &WorkingChange) -> ChangeSummary {
@@ -119,6 +122,7 @@ impl ProjectView {
                 .map(|commit| commit.design.clone()),
             undo: document.undo_stack.iter().map(summarize).collect(),
             redo: document.redo_stack.iter().map(summarize).collect(),
+            dirty: document.is_dirty(),
         }
     }
 }

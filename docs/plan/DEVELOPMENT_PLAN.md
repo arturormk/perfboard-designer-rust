@@ -381,8 +381,11 @@ Initial MCP tools:
 - Component creation should write only to explicitly selected library locations and should validate before replacement.
 
 Implementation note: `get_assembly_plan` arrived with Milestone 6, once the
-authoritative derived plan was defined. Component-library access is read-only in
-this milestone; safe creation and replacement remain Milestone 7 work.
+authoritative derived plan was defined. `rename_project` was added later; like
+the inspector rename, it is revision-checked but not an undo step, because the
+project name is document metadata outside the design snapshots.
+Component-library access is read-only in this milestone; safe creation and
+replacement remain Milestone 7 work.
 
 Behavior:
 

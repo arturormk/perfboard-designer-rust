@@ -103,6 +103,14 @@ struct CommitInput {
     description: String,
 }
 
+#[derive(Debug, Deserialize, JsonSchema)]
+struct RenameProjectInput {
+    /// Revision returned by the latest read.
+    expected_revision: u64,
+    /// New project name; surrounding whitespace is trimmed and it must not be blank.
+    name: String,
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 enum HistoryAction {
@@ -131,7 +139,8 @@ impl PerfboardMcp {
         }
     }
 
-    /// Return the complete active project, including working history and commits.
+    /// Return the active project: name, revision, current design, validation,
+    /// and compact commit and working-history summaries (without snapshots).
     #[tool(annotations(
         title = "Get project",
         read_only_hint = true,
@@ -140,7 +149,7 @@ impl PerfboardMcp {
         open_world_hint = false
     ))]
     async fn get_project(&self) -> CallToolResult {
-        self.request(SessionRequest::GetProject).await
+        self.request(SessionRequest::GetProjectView).await
     }
 
     /// Return the current design and revision without revision-history snapshots.
@@ -152,8 +161,8 @@ impl PerfboardMcp {
         open_world_hint = false
     ))]
     async fn get_design(&self) -> CallToolResult {
-        match self.client.call(SessionRequest::GetProject).await {
-            Ok(SessionResponse::Project(project)) => CallToolResult::structured(json!({
+        match self.client.call(SessionRequest::GetProjectView).await {
+            Ok(SessionResponse::ProjectView(project)) => CallToolResult::structured(json!({
                 "ok": true, "revision": project.revision, "design": project.design
             })),
             Ok(other) => unexpected(&other),
@@ -170,8 +179,8 @@ impl PerfboardMcp {
         open_world_hint = false
     ))]
     async fn get_validation_report(&self) -> CallToolResult {
-        match self.client.call(SessionRequest::GetProject).await {
-            Ok(SessionResponse::Project(project)) => CallToolResult::structured(json!({
+        match self.client.call(SessionRequest::GetProjectView).await {
+            Ok(SessionResponse::ProjectView(project)) => CallToolResult::structured(json!({
                 "ok": true, "revision": project.revision, "diagnostics": project.validation
             })),
             Ok(other) => unexpected(&other),
@@ -188,12 +197,11 @@ impl PerfboardMcp {
         open_world_hint = false
     ))]
     async fn get_revision_history(&self) -> CallToolResult {
-        match self.client.call(SessionRequest::GetProject).await {
-            Ok(SessionResponse::Project(project)) => {
+        match self.client.call(SessionRequest::GetProjectView).await {
+            Ok(SessionResponse::ProjectView(project)) => {
                 let commits = project
-                    .commit_order
+                    .commits
                     .iter()
-                    .filter_map(|id| project.commits.get(id))
                     .map(|commit| {
                         json!({
                             "id": commit.id, "parent": commit.parent, "name": commit.name,
@@ -204,9 +212,9 @@ impl PerfboardMcp {
                     .collect::<Vec<_>>();
                 CallToolResult::structured(json!({
                     "ok": true, "revision": project.revision, "head_commit": project.head_commit,
-                    "dirty": project.is_dirty(), "can_undo": !project.undo_stack.is_empty(),
-                    "can_redo": !project.redo_stack.is_empty(), "commits": commits,
-                    "working_changes": project.undo_stack,
+                    "dirty": project.dirty, "can_undo": !project.undo.is_empty(),
+                    "can_redo": !project.redo.is_empty(), "commits": commits,
+                    "working_changes": project.undo,
                 }))
             }
             Ok(other) => unexpected(&other),
@@ -313,8 +321,8 @@ impl PerfboardMcp {
         open_world_hint = false
     ))]
     async fn list_constraints(&self) -> CallToolResult {
-        match self.client.call(SessionRequest::GetProject).await {
-            Ok(SessionResponse::Project(project)) => CallToolResult::structured(
+        match self.client.call(SessionRequest::GetProjectView).await {
+            Ok(SessionResponse::ProjectView(project)) => CallToolResult::structured(
                 json!({ "ok": true, "revision": project.revision, "constraints": project.design.constraints }),
             ),
             Ok(other) => unexpected(&other),
@@ -331,8 +339,8 @@ impl PerfboardMcp {
         open_world_hint = false
     ))]
     async fn get_jumper_inventory(&self) -> CallToolResult {
-        match self.client.call(SessionRequest::GetProject).await {
-            Ok(SessionResponse::Project(project)) => CallToolResult::structured(
+        match self.client.call(SessionRequest::GetProjectView).await {
+            Ok(SessionResponse::ProjectView(project)) => CallToolResult::structured(
                 json!({ "ok": true, "revision": project.revision, "jumper_inventory": project.design.jumper_inventory }),
             ),
             Ok(other) => unexpected(&other),
@@ -353,8 +361,8 @@ impl PerfboardMcp {
         open_world_hint = false
     ))]
     async fn get_assembly_plan(&self) -> CallToolResult {
-        match self.client.call(SessionRequest::GetProject).await {
-            Ok(SessionResponse::Project(project)) => {
+        match self.client.call(SessionRequest::GetProjectView).await {
+            Ok(SessionResponse::ProjectView(project)) => {
                 let plan = perfboard_project::assembly_plan(&project.design, project.revision);
                 CallToolResult::structured(
                     json!({ "ok": true, "revision": project.revision, "plan": plan }),
@@ -508,6 +516,25 @@ impl PerfboardMcp {
         .await
     }
 
+    /// Rename the active project. The name is saved with the file; it is not an undo step.
+    #[tool(annotations(
+        title = "Rename project",
+        read_only_hint = false,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    async fn rename_project(
+        &self,
+        Parameters(input): Parameters<RenameProjectInput>,
+    ) -> CallToolResult {
+        self.request(SessionRequest::RenameProject {
+            expected_revision: DocumentRevision(input.expected_revision),
+            name: input.name,
+        })
+        .await
+    }
+
     /// Undo, redo, discard working changes, or restore a named commit non-destructively.
     #[tool(annotations(
         title = "Manage history",
@@ -618,7 +645,7 @@ mod tests {
     #[test]
     fn tool_catalog_is_codex_and_claude_friendly() {
         let tools = PerfboardMcp::tool_router().list_all();
-        assert_eq!(tools.len(), 18);
+        assert_eq!(tools.len(), 19);
         assert!(tools.iter().all(|tool| {
             tool.annotations
                 .as_ref()
@@ -655,6 +682,18 @@ mod tests {
         assert!(schema.contains("move_component"));
         assert!(schema.contains("accept_route_proposal"));
         assert!(schema.contains("expected_revision"));
+    }
+
+    #[test]
+    fn rename_project_is_a_revision_checked_write() {
+        let tool = PerfboardMcp::rename_project_tool_attr();
+        let annotations = tool.annotations.unwrap();
+        assert_eq!(annotations.read_only_hint, Some(false));
+        assert_eq!(annotations.destructive_hint, Some(false));
+        let schema = serde_json::to_value(&*tool.input_schema).unwrap();
+        let required = schema["required"].as_array().unwrap();
+        assert!(required.iter().any(|field| field == "expected_revision"));
+        assert!(required.iter().any(|field| field == "name"));
     }
 
     #[test]

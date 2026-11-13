@@ -20,8 +20,8 @@ use perfboard_project::{
     render_design_svg, save_project_atomic, suggest_route,
 };
 use perfboard_session_ipc::{
-    ComponentDocumentation, DocumentationTrust, RenderedDesign, RouteResults, SessionApiError,
-    SessionRegistration, SessionRequest, SessionRequestHandler, SessionResponse,
+    ComponentDocumentation, DocumentationTrust, ProjectRenamed, RenderedDesign, RouteResults,
+    SessionApiError, SessionRegistration, SessionRequest, SessionRequestHandler, SessionResponse,
 };
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -208,6 +208,9 @@ impl SessionRequestHandler for DesktopSessionHandler {
             SessionRequest::GetProject => Ok(SessionResponse::Project(Box::new(
                 self.lock()?.document().clone(),
             ))),
+            SessionRequest::GetProjectView => Ok(SessionResponse::ProjectView(Box::new(
+                perfboard_project::ProjectView::from_document(self.lock()?.document()),
+            ))),
             SessionRequest::ApplyTransaction(request) => {
                 let (result, event) = self
                     .lock()?
@@ -251,6 +254,23 @@ impl SessionRequestHandler for DesktopSessionHandler {
                     .map_err(|error| session_api_error(&error))?;
                 self.publish(&event);
                 Ok(SessionResponse::Commit(Box::new(result)))
+            }
+            SessionRequest::RenameProject {
+                expected_revision,
+                name,
+            } => {
+                let mut session = self.lock()?;
+                let event = session
+                    .rename(expected_revision, &name)
+                    .map_err(|error| session_api_error(&error))?;
+                let renamed = ProjectRenamed {
+                    revision: event.revision,
+                    name: session.document().name.clone(),
+                    summary: event.summary.clone(),
+                };
+                drop(session);
+                self.publish(&event);
+                Ok(SessionResponse::Renamed(renamed))
             }
             SessionRequest::Restore {
                 expected_revision,

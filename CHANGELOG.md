@@ -28,7 +28,8 @@ Development line `v0.1.x`: the first public development builds.
 - Projects can be renamed: with nothing selected, edit the project name at the
   top of the inspector. Enter or leaving the field saves it, Escape cancels,
   and blank names are refused. The name is saved with the file; a rename is
-  not an undo step. The header now shows only the file name.
+  not an undo step. The header now shows only the file name. Agents can
+  rename it too, with the `rename_project` MCP tool.
 - Merge nets: pick **Merge into…** in a net's inspector, or rename a net to
   the name of an existing one (`merge_nets`). Pins, wires, rails, junctions and
   net constraints move to the target net, which keeps its name, and the source
@@ -60,6 +61,12 @@ Development line `v0.1.x`: the first public development builds.
 - Validation with problems that frame the affected objects.
 - Component Designer for authoring component definitions.
 - Local MCP server so Codex and Claude Code can read and edit the open design.
+  Its reads (`get_project`, `get_design`, `get_revision_history` and the
+  others) no longer send every undo and commit snapshot, so they keep working
+  on projects with a long history; before, a project past 16 MiB made them
+  fail with "unexpected end of file". `get_project` and `get_revision_history`
+  now list working changes as summaries with the objects they touched. A
+  response that is still too large is reported as `session.response_too_large`.
 - Printable build drawing (**File → Print build drawing…**): both board
   faces, the wire list, the parts, and the build order. The wire list now
   comes from the assembly plan: wires and rails in the order they are
