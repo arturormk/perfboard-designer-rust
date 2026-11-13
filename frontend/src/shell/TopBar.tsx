@@ -24,6 +24,7 @@ import {
 } from "../state/store";
 import { formatVersion } from "../api/bootstrap";
 import { Icon } from "../ui/Icon";
+import { printBuildDrawing } from "../print/checklist";
 import { openDialog } from "./dialogs";
 import { otherRecentProjects, RecentProjectList } from "./RecentProjects";
 
@@ -93,7 +94,7 @@ function FileMenu() {
             <Icon name="save" size={15} /> Save as…
           </button>
           <hr />
-          <button role="menuitem" onClick={run(() => window.print())}>
+          <button role="menuitem" onClick={run(() => void printBuildDrawing())}>
             <Icon name="print" size={15} /> Print build drawing…
           </button>
           <button

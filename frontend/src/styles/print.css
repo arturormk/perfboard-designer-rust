@@ -45,9 +45,11 @@
     font-size: 16pt;
   }
 
-  .print-sheet h2 {
+  .print-sheet h2,
+  .print-sheet h3 {
     margin: 6mm 0 2mm;
     font-size: 12pt;
+    break-after: avoid;
   }
 
   .print-faces {
@@ -64,6 +66,8 @@
   .print-faces svg {
     width: 100%;
     height: auto;
+    /* Header and both faces fit on the first landscape page. */
+    max-height: 150mm;
   }
 
   .print-faces figcaption {
@@ -99,6 +103,110 @@
     height: 3mm;
     vertical-align: middle;
     box-shadow: inset 0 0 0 0.2mm #000;
+    /* Background colours are dropped in print unless asked for. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-sheet .tick-head {
+    width: 8mm;
+    text-align: center;
+  }
+
+  .print-sheet .tick.ticked {
+    text-align: center;
+    font-weight: 700;
+  }
+
+  .print-sheet .num {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .print-sheet .print-note {
+    color: #555;
+    font-size: 8.5pt;
+  }
+
+  .print-sheet section > .print-note {
+    margin: 1.5mm 0 0;
+  }
+
+  .print-checklist {
+    break-before: page;
+  }
+
+  .print-steps {
+    table-layout: fixed;
+  }
+
+  .print-steps td {
+    vertical-align: top;
+  }
+
+  .print-steps .col-tick {
+    width: 8mm;
+  }
+
+  .print-steps .col-number {
+    width: 10mm;
+  }
+
+  .print-steps .col-side {
+    width: 24mm;
+  }
+
+  .print-steps .col-length {
+    width: 18mm;
+  }
+
+  .print-steps .col-bends {
+    width: 14mm;
+  }
+
+  .print-checklist .col-after {
+    width: 22mm;
+  }
+
+  .print-checklist h3 {
+    margin: 5mm 0 1.5mm;
+    font-size: 10.5pt;
+  }
+
+  .print-step-text {
+    margin-top: 0.5mm;
+    font-size: 8.5pt;
+  }
+
+  .print-checklist tr.check-step strong {
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .print-probes {
+    margin: 1mm 0 0;
+    padding: 0;
+    list-style: none;
+    font-size: 8.5pt;
+  }
+
+  .print-probes li {
+    margin-bottom: 0.8mm;
+    break-inside: avoid;
+  }
+
+  .print-sheet .tick-box {
+    display: inline-block;
+    width: 2.6mm;
+    height: 2.6mm;
+    border: 0.25mm solid #666;
+    vertical-align: -0.4mm;
+  }
+
+  .print-warnings {
+    margin: 0;
+    padding-left: 5mm;
+    font-size: 8.5pt;
   }
 
   .print-parts li {

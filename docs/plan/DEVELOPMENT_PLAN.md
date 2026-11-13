@@ -401,7 +401,7 @@ Exit criteria:
 
 ### Milestone 6 — Assembly planning
 
-Status: in progress. Done: 1:1 wire cut guide and bending templates grouped by colour and shape, exported as a true-scale PDF ([ADR 0011](../adr/0011-true-scale-pdf-output.md)); the assembly planning engine with dependency ordering, cycle warnings, wire list and staleness, exposed through Tauri and MCP `get_assembly_plan`, and checkmark storage outside the project file ([ADR 0012](../adr/0012-assembly-planning.md)). Assembly mode in the editor: one step at a time over the board as built so far, with checkmarks reconciled by step fingerprint and a banner when the plan changes. Next: the printable checklist and wire list.
+Status: in progress. Done: 1:1 wire cut guide and bending templates grouped by colour and shape, exported as a true-scale PDF ([ADR 0011](../adr/0011-true-scale-pdf-output.md)); the assembly planning engine with dependency ordering, cycle warnings, wire list and staleness, exposed through Tauri and MCP `get_assembly_plan`, and checkmark storage outside the project file ([ADR 0012](../adr/0012-assembly-planning.md)). Assembly mode in the editor: one step at a time over the board as built so far, with checkmarks reconciled by step fingerprint and a banner when the plan changes. The printed build drawing carries the plan's wire list in build order and a build-order checklist. All planned work is in; to close the milestone, build the sample project from the plan in the desktop app.
 
 Goal: turn a validated design into a practical, step-by-step construction aid.
 

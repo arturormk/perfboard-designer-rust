@@ -56,7 +56,16 @@ Development line `v0.1.x`: the first public development builds.
 - Validation with problems that frame the affected objects.
 - Component Designer for authoring component definitions.
 - Local MCP server so Codex and Claude Code can read and edit the open design.
-- Printable build drawing with a wire cut list.
+- Printable build drawing (**File → Print build drawing…**): both board
+  faces, the wire list, the parts, and the build order. The wire list now
+  comes from the assembly plan: wires and rails in the order they are
+  installed, with the step number, an estimated cut length (path plus 5 mm
+  leads, labelled ≈) next to the routed path length, and a suggested
+  inventory jumper where one fits. The build order starts on a new page:
+  every step with a box to tick, its instructions and notes, the board side
+  and the steps it comes after. Check steps list each measurement with its
+  own box. Steps already ticked in the app print ticked. If the plan cannot
+  be derived, the sheet prints the previous wire table by label.
 - Wire templates as a true-scale PDF (**File → Export wire templates…**). A
   cut guide comes first: every wire straightened at 1:1 in its own column over
   a millimetre grid, with its bare ends, insulation colour, cut lines, strip
