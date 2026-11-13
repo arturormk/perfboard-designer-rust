@@ -44,6 +44,8 @@ export interface SceneProps {
   removedFrom?: Design;
   flashIds?: ReadonlySet<string>;
   dimIds?: ReadonlySet<string>;
+  /** Objects of the assembly step on screen: drawn with a steady highlight. */
+  focusIds?: ReadonlySet<string>;
   fade?: boolean;
   pinLabels?: PinLabelMode;
   showKeepouts?: boolean;
@@ -446,6 +448,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
     removedFrom,
     flashIds,
     dimIds,
+    focusIds,
     pinLabels = "numbers",
     showKeepouts,
     airwires,
@@ -472,6 +475,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
       props.hoveredId === id && "hovered",
       flashIds?.has(id) && "flash",
       dimIds?.has(id) && "dim",
+      focusIds?.has(id) && "focus",
       emphasisNetId &&
         netId &&
         (netId === emphasisNetId ? "emphasis" : "deemphasis"),

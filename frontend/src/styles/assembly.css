@@ -1,0 +1,515 @@
+/* ── Assembly mode (ADR 0012) ───────────────────────────────────────────── */
+.assembly {
+  display: grid;
+  grid-template-columns: var(--panel-left-w) minmax(0, 1fr) 360px;
+  min-height: 0;
+}
+
+.assembly-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.assembly-empty h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+/* Step list */
+.assembly-progress {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-1);
+  flex: none;
+}
+
+.assembly-progress .field-note {
+  margin: 0;
+}
+
+.progress-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.progress-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bg-3);
+  overflow: hidden;
+}
+
+.progress-bar span {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+  transition: width 0.2s;
+}
+
+.assembly-warnings {
+  border-bottom: 1px solid var(--line-1);
+  flex: none;
+}
+
+.warnings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 14px;
+  border: 0;
+  background: none;
+  color: var(--warn);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.warnings-toggle .icon:last-child {
+  margin-left: auto;
+}
+
+.assembly-warnings ul {
+  max-height: 180px;
+  margin: 0;
+  padding: 0 8px 8px;
+  overflow: auto;
+  list-style: none;
+}
+
+.assembly-warnings li button {
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assembly-warnings li button:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.step-rows {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 6px;
+  overflow: auto;
+  list-style: none;
+}
+
+.step-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+
+.step-row:hover {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.step-row.on {
+  background: var(--copper-soft);
+  color: var(--text-1);
+  box-shadow: inset 2px 0 0 var(--copper);
+}
+
+.step-row.done {
+  color: var(--text-3);
+}
+
+.step-row .icon {
+  flex: none;
+  color: var(--text-3);
+}
+
+.step-number {
+  flex: none;
+  min-width: 22px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+}
+
+.step-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side-tag {
+  flex: none;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--copper-soft);
+  color: var(--copper);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.step-mark {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--line-3);
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.step-row .step-mark .icon {
+  color: inherit;
+}
+
+.step-mark.done {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: var(--bg-0);
+}
+
+.step-mark.changed {
+  border-color: var(--warn);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+/* Step detail */
+.assembly-detail {
+  display: flex;
+  flex-direction: column;
+}
+
+.step-detail-body {
+  flex: 1;
+  min-height: 0;
+  padding: 16px 18px;
+  overflow: auto;
+}
+
+.step-kicker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 6px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.side-badge {
+  padding: 1px 8px;
+  border-radius: 9px;
+  background: var(--bg-3);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.side-badge.solder {
+  background: var(--copper-soft);
+  color: var(--copper-strong);
+}
+
+.assembly-detail h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.assembly-detail h3 {
+  margin: 0 0 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.step-changed {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-s);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.step-instructions {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding-left: 20px;
+  line-height: 1.5;
+}
+
+.step-instructions li::marker {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.step-probes {
+  display: grid;
+  gap: 2px;
+  margin: -6px 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.step-probes button {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.step-probes button .icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--text-3);
+}
+
+.step-probes button:hover {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.step-probes button.on {
+  border-color: var(--copper-line);
+  background: var(--copper-soft);
+  color: var(--text-1);
+}
+
+.step-probes button.on .icon {
+  color: var(--copper-strong);
+}
+
+.wire-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line-1);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+  font-size: 12px;
+}
+
+.wire-facts dt {
+  color: var(--text-3);
+}
+
+.wire-facts dd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text-1);
+}
+
+.color-swatch {
+  width: 12px;
+  height: 12px;
+  border: 1px solid rgb(255 255 255 / 25%);
+  border-radius: 3px;
+}
+
+.step-notes {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.step-notes li {
+  display: flex;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.step-notes .icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--info);
+}
+
+.step-after ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step-after button {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.step-after button:hover:not(:disabled) {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.step-after button .icon {
+  margin-left: auto;
+  color: var(--ok);
+}
+
+.step-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line-1);
+  flex: none;
+}
+
+.icon.flip-x {
+  transform: scaleX(-1);
+}
+
+.plan-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 14px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+  flex: none;
+}
+
+.plan-banner > .icon {
+  flex: none;
+  margin-top: 2px;
+  color: var(--info);
+}
+
+.plan-banner strong {
+  color: var(--text-1);
+}
+
+.plan-banner p {
+  margin: 2px 0 0;
+}
+
+.plan-banner button {
+  margin-left: auto;
+}
+
+/* Board: the step in focus over faded earlier work. */
+.assembly-canvas .board-svg {
+  cursor: grab;
+}
+
+.assembly-canvas .board-svg.cursor-grabbing {
+  cursor: grabbing;
+}
+
+.part.focus .part-body {
+  stroke: var(--copper-strong);
+  stroke-width: 0.16;
+}
+
+.wire.focus .wire-halo,
+.rail.focus .wire-halo,
+.saddle.focus .saddle-halo {
+  stroke: rgb(240 168 108 / 70%);
+}
+
+.bridge.focus .bridge-wire {
+  stroke: var(--copper-strong);
+}
+
+.bridge.dim {
+  opacity: 0.35;
+}
+
+.step-hole {
+  pointer-events: none;
+  animation: step-hole-pulse 1.6s ease-in-out infinite;
+}
+
+.step-hole circle {
+  fill: none;
+}
+
+.step-hole .casing {
+  stroke: rgb(16 17 19 / 70%);
+  stroke-width: 0.22;
+}
+
+.step-hole .ring {
+  stroke: #fff;
+  stroke-width: 0.09;
+}
+
+@keyframes step-hole-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .step-hole {
+    animation: none;
+  }
+}

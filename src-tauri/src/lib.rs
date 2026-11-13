@@ -13,11 +13,11 @@ use perfboard_core::{
     parse_component_library,
 };
 use perfboard_project::{
-    Board, Commit, DocumentRevision, HistoryActionResult, OperationError, OperationOrigin,
-    OperationRequest, OperationResult, ProjectDocument, ProjectSession, RevisionError,
-    RouteRequest, RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError,
-    TransactionRequest, TransactionResult, evaluate_route, load_project, render_design_svg,
-    save_project_atomic, suggest_route,
+    AssemblyPlan, Board, Commit, DocumentRevision, HistoryActionResult, OperationError,
+    OperationOrigin, OperationRequest, OperationResult, ProjectDocument, ProjectSession,
+    RevisionError, RouteRequest, RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError,
+    TransactionRequest, TransactionResult, assembly_plan, evaluate_route, load_project,
+    render_design_svg, save_project_atomic, suggest_route,
 };
 use perfboard_session_ipc::{
     ComponentDocumentation, DocumentationTrust, RenderedDesign, RouteResults, SessionApiError,
@@ -28,9 +28,11 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
+mod assembly_progress;
 mod component_viewer;
 mod recent_projects;
 
+use assembly_progress::{AssemblyProgress, Checkmarks};
 use recent_projects::{RecentProject, RecentProjects};
 
 use component_viewer::{
@@ -369,6 +371,59 @@ fn get_project(state: tauri::State<'_, SessionState>) -> Result<ProjectDocument,
         .lock()
         .map_err(|error| error.to_string())
         .map(|value| value.document().clone())
+}
+
+/// The build order for the open design (ADR 0012).
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_assembly_plan(state: tauri::State<'_, SessionState>) -> Result<AssemblyPlan, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    let document = session.document();
+    Ok(assembly_plan(&document.design, document.revision))
+}
+
+fn open_project_id(state: &SessionState) -> Result<String, String> {
+    state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())
+        .map(|session| session.document().project_id.to_string())
+}
+
+/// Checkmarks of the open project: step ID → fingerprint when it was ticked.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_assembly_progress(
+    state: tauri::State<'_, SessionState>,
+    progress: tauri::State<'_, AssemblyProgress>,
+) -> Result<Checkmarks, String> {
+    Ok(progress.get(&open_project_id(&state)?))
+}
+
+/// Ticks a step with the fingerprint it had when done, or unticks it.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn set_assembly_step_done(
+    state: tauri::State<'_, SessionState>,
+    progress: tauri::State<'_, AssemblyProgress>,
+    step_id: String,
+    fingerprint: Option<String>,
+) -> Result<Checkmarks, String> {
+    progress
+        .set(&open_project_id(&state)?, &step_id, fingerprint.as_deref())
+        .map_err(|error| format!("could not save assembly progress: {error}"))
+}
+
+/// Forgets every checkmark of the open project.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn reset_assembly_progress(
+    state: tauri::State<'_, SessionState>,
+    progress: tauri::State<'_, AssemblyProgress>,
+) -> Result<Checkmarks, String> {
+    progress
+        .clear(&open_project_id(&state)?)
+        .map_err(|error| format!("could not save assembly progress: {error}"))
 }
 
 #[tauri::command]
@@ -1174,12 +1229,17 @@ pub fn run() {
             });
             app.manage(IpcRegistrationState(registration));
             app.manage(RecentProjects::new(app.path().app_config_dir().ok()));
+            app.manage(AssemblyProgress::new(app.path().app_config_dir().ok()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_bootstrap_info,
             get_project,
             get_project_revision,
+            get_assembly_plan,
+            get_assembly_progress,
+            set_assembly_step_done,
+            reset_assembly_progress,
             create_project,
             apply_project_operation,
             apply_project_transaction,

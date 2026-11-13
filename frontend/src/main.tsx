@@ -8,6 +8,7 @@ import "./styles/app.css";
 import "./styles/board.css";
 import "./styles/designer.css";
 import "./styles/print.css";
+import "./styles/assembly.css";
 
 async function boot(): Promise<void> {
   const native = "__TAURI_INTERNALS__" in window;

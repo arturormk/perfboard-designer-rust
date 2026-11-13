@@ -681,7 +681,7 @@ fn is_parallel(
     .any(|value| existing.contains_key(value))
 }
 
-fn jumper_match(design: &Design, vertices: &[RoutePos]) -> Option<JumperMatch> {
+pub(crate) fn jumper_match(design: &Design, vertices: &[RoutePos]) -> Option<JumperMatch> {
     let first = *vertices.first()?;
     let last = *vertices.last()?;
     if !first.is_hole() || !last.is_hole() {

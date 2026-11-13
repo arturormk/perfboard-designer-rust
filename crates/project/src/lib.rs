@@ -1,5 +1,6 @@
 //! Schema-versioned project documents and deterministic serialization.
 
+pub mod assembly;
 pub mod diff;
 pub mod document;
 pub mod operations;
@@ -10,6 +11,10 @@ pub mod routing;
 pub mod session;
 pub mod view;
 
+pub use assembly::{
+    AssemblyPlan, AssemblyStep, AssemblyWarning, Probe, StepDependency, StepKind, WireListEntry,
+    WireListKind, assembly_plan,
+};
 pub use diff::{ChangeKind, DiffEntry, SemanticDiff};
 pub use document::{
     Board, Design, DocumentError, DocumentRevision, PROJECT_SCHEMA_VERSION, ProjectDocument,

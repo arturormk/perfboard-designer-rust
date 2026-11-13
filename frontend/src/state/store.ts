@@ -54,7 +54,7 @@ export type HoverTarget =
   | { kind: "airwire"; netId: string };
 
 export type Tool = "select" | "wire" | "rail" | "saddle" | "bridge" | "resize";
-export type AppMode = "board" | "components";
+export type AppMode = "board" | "assembly" | "components";
 export type PinLabelMode = "off" | "numbers" | "names";
 
 export interface PendingRoute {

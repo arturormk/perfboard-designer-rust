@@ -340,6 +340,31 @@ impl PerfboardMcp {
         }
     }
 
+    /// Derive the step-by-step assembly plan and wire list for the current
+    /// working copy: physical dependencies first, then heuristics (flat wires,
+    /// small parts, large parts, then the solder side). Derived data only; it
+    /// changes nothing. Suggest improvements to the human rather than editing
+    /// the design to reorder steps.
+    #[tool(annotations(
+        title = "Get assembly plan",
+        read_only_hint = true,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    async fn get_assembly_plan(&self) -> CallToolResult {
+        match self.client.call(SessionRequest::GetProject).await {
+            Ok(SessionResponse::Project(project)) => {
+                let plan = perfboard_project::assembly_plan(&project.design, project.revision);
+                CallToolResult::structured(
+                    json!({ "ok": true, "revision": project.revision, "plan": plan }),
+                )
+            }
+            Ok(other) => unexpected(&other),
+            Err(error) => ipc_error(error),
+        }
+    }
+
     /// Render a deterministic, self-contained SVG overview of the active design.
     #[tool(annotations(
         title = "Get rendered design",
@@ -593,7 +618,7 @@ mod tests {
     #[test]
     fn tool_catalog_is_codex_and_claude_friendly() {
         let tools = PerfboardMcp::tool_router().list_all();
-        assert_eq!(tools.len(), 17);
+        assert_eq!(tools.len(), 18);
         assert!(tools.iter().all(|tool| {
             tool.annotations
                 .as_ref()
@@ -610,6 +635,7 @@ mod tests {
             "get_component_documentation",
             "list_constraints",
             "get_jumper_inventory",
+            "get_assembly_plan",
             "get_rendered_design",
             "suggest_routes",
             "evaluate_route",

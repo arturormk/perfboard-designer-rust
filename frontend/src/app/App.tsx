@@ -1,4 +1,5 @@
 import { useEffect } from "preact/hooks";
+import { AssemblyMode } from "../assembly/AssemblyMode";
 import { BoardCanvas } from "../board/BoardCanvas";
 import { ComponentDesigner } from "../component-designer/ComponentDesigner";
 import { HistoryPanel } from "../panels/HistoryPanel";
@@ -318,6 +319,8 @@ export function App() {
             </button>
           )}
         </main>
+      ) : appMode.value === "assembly" ? (
+        <AssemblyMode />
       ) : (
         <ComponentDesigner />
       )}

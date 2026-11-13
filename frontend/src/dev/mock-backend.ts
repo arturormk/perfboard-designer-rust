@@ -26,6 +26,7 @@ import type {
   TerminalRef,
 } from "../api/project";
 import { pinPosition, type Design } from "../model/geometry";
+import { mockAssemblyPlan } from "./mock-assembly";
 
 type Doc = ProjectDocument;
 interface Entry {
@@ -35,6 +36,8 @@ interface Entry {
 }
 
 let lastPdfPages: string[] = [];
+/** Preview assembly checkmarks: project → step → fingerprint. */
+const progress: Record<string, Record<string, string>> = {};
 
 // Preview recent list; the last entry shows how a moved file looks.
 const describeRecent = (path: string, exists = true): RecentProject => ({
@@ -916,6 +919,18 @@ export async function installMockBackend(): Promise<void> {
     save_project: ({ path }) => {
       recordRecent(path as string);
       return undefined;
+    },
+    get_assembly_plan: () => mockAssemblyPlan(doc.design, doc.revision),
+    get_assembly_progress: () => clone(progress[doc.project_id] ?? {}),
+    set_assembly_step_done: ({ stepId, fingerprint }) => {
+      const marks = (progress[doc.project_id] ??= {});
+      if (fingerprint) marks[stepId as string] = fingerprint as string;
+      else delete marks[stepId as string];
+      return clone(marks);
+    },
+    reset_assembly_progress: () => {
+      progress[doc.project_id] = {};
+      return {};
     },
     get_recent_projects: () => clone(recent),
     forget_recent_project: ({ path }) => {

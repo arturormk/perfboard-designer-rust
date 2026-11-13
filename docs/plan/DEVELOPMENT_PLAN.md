@@ -380,8 +380,8 @@ Initial MCP tools:
 - Write: one coherent `apply_operations` transaction tool plus focused helpers only where they improve discoverability, such as `suggest_routes`, `evaluate_route`, `accept_proposed_connections`, and `commit_design`.
 - Component creation should write only to explicitly selected library locations and should validate before replacement.
 
-Implementation note: `get_assembly_plan` remains unavailable until Milestone 6
-defines the authoritative derived plan. Component-library access is read-only in
+Implementation note: `get_assembly_plan` arrived with Milestone 6, once the
+authoritative derived plan was defined. Component-library access is read-only in
 this milestone; safe creation and replacement remain Milestone 7 work.
 
 Behavior:
@@ -401,7 +401,7 @@ Exit criteria:
 
 ### Milestone 6 — Assembly planning
 
-Status: in progress. Done: 1:1 wire cut guide and bending templates grouped by colour and shape, exported as a true-scale PDF ([ADR 0011](../adr/0011-true-scale-pdf-output.md)).
+Status: in progress. Done: 1:1 wire cut guide and bending templates grouped by colour and shape, exported as a true-scale PDF ([ADR 0011](../adr/0011-true-scale-pdf-output.md)); the assembly planning engine with dependency ordering, cycle warnings, wire list and staleness, exposed through Tauri and MCP `get_assembly_plan`, and checkmark storage outside the project file ([ADR 0012](../adr/0012-assembly-planning.md)). Assembly mode in the editor: one step at a time over the board as built so far, with checkmarks reconciled by step fingerprint and a banner when the plan changes. Next: the printable checklist and wire list.
 
 Goal: turn a validated design into a practical, step-by-step construction aid.
 

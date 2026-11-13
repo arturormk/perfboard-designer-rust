@@ -527,6 +527,89 @@ export function importRecentProjects(
 ): Promise<RecentProject[]> {
   return invoke("import_recent_projects", { paths });
 }
+// ── Assembly planning (ADR 0012) ───────────────────────────────────────────
+export type StepKind =
+  "component" | "wire" | "rail" | "bridge" | "saddle" | "check";
+export interface StepDependency {
+  step_id: string;
+  reason: string;
+}
+/** One measurement in a check step. */
+export interface Probe {
+  text: string;
+  /** IDs of the nets being measured. */
+  nets: string[];
+  /** Test points: pin holes to touch with the meter's probes. */
+  holes: Array<{ x2: number; y2: number }>;
+}
+export interface AssemblyStep {
+  /** Stable across plans: `component:<id>`, `wire:<id>`, `check:<name>`… */
+  id: string;
+  /** 1-based position in the plan. */
+  number: number;
+  kind: StepKind;
+  label: string;
+  title: string;
+  /** The face to look at while doing the step. */
+  side: Side;
+  objects: ObjectReference[];
+  /** Holes and points to mark: pins, wire ends, rail nodes, saddle legs. */
+  holes: Array<{ x2: number; y2: number }>;
+  instructions: string[];
+  notes?: string[];
+  after?: StepDependency[];
+  /** Check steps: the individual measurements, each with where to probe. */
+  probes?: Probe[];
+  /** What the step asks for; a checkmark applies while it is unchanged. */
+  fingerprint: string;
+}
+export interface WireListEntry {
+  kind: "wire" | "rail";
+  id: string;
+  label: string;
+  from: string;
+  to: string;
+  net: string;
+  color: WireColor;
+  side: Side;
+  path_mm: number;
+  /** Estimated: path plus bare leads. */
+  cut_mm: number;
+  bend_count: number;
+  jumper?: string;
+  step: number;
+}
+export interface AssemblyWarning {
+  code: string;
+  message: string;
+  objects: ObjectReference[];
+}
+export interface AssemblyPlan {
+  source_revision: number;
+  fingerprint: string;
+  steps: AssemblyStep[];
+  wire_list: WireListEntry[];
+  warnings: AssemblyWarning[];
+}
+/** Step ID → fingerprint of the step when it was marked done. */
+export type Checkmarks = Record<string, string>;
+
+export function getAssemblyPlan(): Promise<AssemblyPlan> {
+  return invoke("get_assembly_plan");
+}
+export function getAssemblyProgress(): Promise<Checkmarks> {
+  return invoke("get_assembly_progress");
+}
+/** Ticks a step with its current fingerprint, or unticks it with `null`. */
+export function setAssemblyStepDone(
+  stepId: string,
+  fingerprint: string | null,
+): Promise<Checkmarks> {
+  return invoke("set_assembly_step_done", { stepId, fingerprint });
+}
+export function resetAssemblyProgress(): Promise<Checkmarks> {
+  return invoke("reset_assembly_progress");
+}
 export function undoProject(expectedRevision: number): Promise<void> {
   return invoke("undo_project", { expectedRevision });
 }

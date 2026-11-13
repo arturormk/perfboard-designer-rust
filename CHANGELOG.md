@@ -78,3 +78,32 @@ Development line `v0.1.x`: the first public development builds.
   the node, with lines where the insulation is sliced. Windows that overlap
   merge into one. Templates dimension every run between nodes, and
   consecutive short dimensions are staggered so their labels stay readable.
+- Assembly plans: a step-by-step build order derived from the design, with
+  one step per part, wire, rail, bridge and saddle, then inspection,
+  continuity and power checks. Wires under a part's body come before the part,
+  bridges after the leads they join, the lower wire of a recorded crossing
+  first, and otherwise low parts before tall ones. Each step says why it comes
+  after others. Cycles and unordered crossings are reported as warnings
+  instead of blocking the plan. A wire list gives endpoints, net, colour,
+  side, approximate cut length and bends. The plan records the revision it
+  came from and goes stale when an edit changes what a step asks for.
+  Available to MCP clients as `get_assembly_plan`. See
+  [ADR 0012](docs/adr/0012-assembly-planning.md).
+- Assembly mode (**Assembly** tab): build the board one step at a time. The
+  board shows what is installed so far, with earlier steps faded, the
+  current step highlighted, its holes ringed, and the face it is done on
+  (switchable). Beside it: the step's instructions, notes, the steps it
+  comes after (click one to go there) and, for wires and rails, colour, net,
+  approximate cut length and bends. **Done, next** (Enter) ticks the step
+  and moves on; ← and → move between steps; Space ticks or unticks. The step
+  list shows progress, and notes about the order can be expanded. Checkmarks
+  are kept in `assembly-progress.json` in the app's configuration folder,
+  not in the project, so ticking a step never changes the design. When the
+  design changes, the plan is updated and a banner says how many steps were
+  added, changed or removed; a step ticked before it changed is marked with
+  **!** until it is checked and ticked again.
+- Check steps list their measurements one by one: each net to test for
+  continuity, and each supply-to-ground pair to test for shorts, with an
+  example pair of pins. Click a measurement to ring its test points on the
+  board and light up that net's wires and rails; click it again to clear.
+  MCP clients get the same data as `probes` on the step.

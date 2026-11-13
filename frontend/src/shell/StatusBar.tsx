@@ -1,4 +1,5 @@
 import {
+  appMode,
   busy,
   cursorHole,
   design,
@@ -24,6 +25,9 @@ const HINTS: Record<string, string> = {
   resize: "Drag the board edges",
 };
 
+const ASSEMBLY_HINT =
+  "← → move between steps · Enter marks done and moves on · Space ticks or unticks · drag to pan, wheel to zoom";
+
 export function StatusBar() {
   const hole = cursorHole.value;
   const current = design.value;
@@ -36,31 +40,41 @@ export function StatusBar() {
   }
   const counts = problemCounts.value;
   const state = engine.value;
+  const assembling = appMode.value === "assembly";
   return (
     <footer class="statusbar">
       <span class="status-hint">
         {busy.value ??
           (placing.value
             ? `Placing ${placing.value.name}`
-            : hoverText || HINTS[tool.value])}
+            : assembling
+              ? ASSEMBLY_HINT
+              : hoverText || HINTS[tool.value])}
       </span>
-      <span class="status-coords" aria-live="off">
-        {hole ? (
-          <>
-            x <b>{hole.x}</b> y <b>{hole.y}</b>
-          </>
-        ) : (
-          "—"
-        )}
-      </span>
-      <span class="status-side">
-        {side.value === "component"
-          ? "Component side"
-          : "Solder side · mirrored"}
-      </span>
+      {!assembling && (
+        <>
+          <span class="status-coords" aria-live="off">
+            {hole ? (
+              <>
+                x <b>{hole.x}</b> y <b>{hole.y}</b>
+              </>
+            ) : (
+              "—"
+            )}
+          </span>
+          <span class="status-side">
+            {side.value === "component"
+              ? "Component side"
+              : "Solder side · mirrored"}
+          </span>
+        </>
+      )}
       <button
         class="status-problems"
-        onClick={() => (rightTab.value = "problems")}
+        onClick={() => {
+          appMode.value = "board";
+          rightTab.value = "problems";
+        }}
         title="Show problems"
       >
         <span class={counts.error ? "sev error" : "sev"}>

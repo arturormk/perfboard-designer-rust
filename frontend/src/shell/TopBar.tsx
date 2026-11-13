@@ -173,6 +173,15 @@ export function TopBar() {
         </button>
         <button
           role="tab"
+          aria-selected={appMode.value === "assembly"}
+          class={appMode.value === "assembly" ? "on" : ""}
+          onClick={() => (appMode.value = "assembly")}
+          title="Build the board step by step"
+        >
+          <Icon name="check" size={16} /> Assembly
+        </button>
+        <button
+          role="tab"
           aria-selected={appMode.value === "components"}
           class={appMode.value === "components" ? "on" : ""}
           onClick={() => (appMode.value = "components")}
