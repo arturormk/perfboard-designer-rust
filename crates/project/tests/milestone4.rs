@@ -66,6 +66,7 @@ fn fixture(
                     rotation: Rotation::Deg0,
                     properties: BTreeMap::new(),
                     notes: String::new(),
+                    shunted: false,
                 },
             },
         );
@@ -388,6 +389,7 @@ fn solder_side_routes_may_pass_beneath_a_component_body_but_not_its_pins() {
                 rotation: Rotation::Deg0,
                 properties: BTreeMap::new(),
                 notes: String::new(),
+                shunted: false,
             },
         },
     );
@@ -451,6 +453,7 @@ fn component_side_routes_may_pass_beneath_an_elevated_body() {
                 rotation: Rotation::Deg0,
                 properties: BTreeMap::new(),
                 notes: String::new(),
+                shunted: false,
             },
         },
     );

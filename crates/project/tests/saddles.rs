@@ -72,6 +72,7 @@ fn fixture() -> (ProjectDocument, [ComponentInstanceId; 2], NetId) {
                     rotation: Rotation::Deg0,
                     properties: BTreeMap::new(),
                     notes: String::new(),
+                    shunted: false,
                 },
             },
         )

@@ -14,6 +14,10 @@ pub enum ComponentKind {
     #[default]
     Standard,
     Bridge,
+    /// A two-pin header that a removable shunt can close. Each placed jumper
+    /// records whether its shunt is fitted (`ComponentInstance::shunted`); a
+    /// shunted jumper joins its two pins electrically.
+    Jumper,
 }
 
 #[derive(
@@ -146,6 +150,8 @@ pub enum ComponentDefinitionError {
     InvalidBridgePins,
     #[error("a bridge cannot define occupied holes, keepouts, wire keepouts, or access regions")]
     InvalidBridgeExclusions,
+    #[error("a jumper must have exactly two pins")]
+    InvalidJumperPins,
 }
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // Serde's skip predicate receives a reference.
@@ -261,6 +267,9 @@ impl ComponentDefinition {
             if dx + dy != 1 {
                 return Err(ComponentDefinitionError::InvalidBridgePins);
             }
+        }
+        if self.kind == ComponentKind::Jumper && self.pins.len() != 2 {
+            return Err(ComponentDefinitionError::InvalidJumperPins);
         }
         Ok(())
     }
@@ -388,6 +397,22 @@ mod tests {
         );
 
         value.pins[1].x = 1;
+        assert_eq!(value.validate(), Ok(()));
+    }
+
+    #[test]
+    fn jumper_requires_exactly_two_pins() {
+        let mut value = definition();
+        value.kind = ComponentKind::Jumper;
+        assert_eq!(
+            value.validate(),
+            Err(ComponentDefinitionError::InvalidJumperPins)
+        );
+        let mut second = value.pins[0].clone();
+        second.id = "2".into();
+        second.number = "2".into();
+        second.x = 1;
+        value.pins.push(second);
         assert_eq!(value.validate(), Ok(()));
     }
 

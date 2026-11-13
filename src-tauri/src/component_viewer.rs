@@ -575,6 +575,9 @@ fn validation_diagnostic(error: &ComponentDefinitionError) -> ComponentLoadDiagn
         ComponentDefinitionError::InvalidBridgeExclusions => {
             ("component.invalid_bridge_exclusions", Some("kind".into()))
         }
+        ComponentDefinitionError::InvalidJumperPins => {
+            ("component.invalid_jumper_pins", Some("pins".into()))
+        }
         ComponentDefinitionError::InvalidToml(_) => ("component.invalid_toml", None),
         ComponentDefinitionError::DuplicateDefinitionId(_) => {
             ("component.duplicate_definition_id", Some("id".into()))

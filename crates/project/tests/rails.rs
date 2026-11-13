@@ -52,6 +52,7 @@ fn wires_connect_through_explicit_nodes_on_a_net_owned_rail() {
                     rotation: Rotation::Deg0,
                     properties: BTreeMap::new(),
                     notes: String::new(),
+                    shunted: false,
                 },
             },
         )

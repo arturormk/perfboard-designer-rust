@@ -41,7 +41,19 @@ Milestone 1 adds optional board `margins_mm`, `mounting_holes`,
 definition ID; and a `components` map keyed by instance UUID. Every used
 definition is embedded in full so external library edits cannot change the
 project. Instance data includes canonical anchor position, rotation, user name,
-properties, and notes. A cached `validation` array is stored when non-empty and
+properties, notes, and `shunted` (written only when `true`). `shunted` means a
+shunt is fitted on a `jumper` part: its two pins count as connected. When both
+are on the same net they need no wire between them (an extra, parallel path is
+also fine). When they are on two different nets the shunt joins those nets
+while it is fitted, which is what a selector jumper is for: each net stays its
+own net in the file, is still routed and checked for completeness on its own
+copper, and the join is reported as a `circuit.shunt_joins_nets` advisory.
+`get_net_connectivity` lists, per net, the other nets it currently reaches
+through shunts (`joined_nets`, transitively) and the jumpers doing it
+(`shunts`). It is set with `set_jumper_shunt`, which refuses parts of other kinds.
+`update_component_metadata` also adopts a library change between `standard`
+and `jumper` when the pins are identical; going back to `standard` clears
+`shunted`. A cached `validation` array is stored when non-empty and
 must match deterministic validation on load. Placement diagnostics may be
 stored in an otherwise structurally valid project: the graphical editor uses
 this to allow temporary out-of-bounds or overlapping states while a component

@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
-    BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState,
-    Constraint, ConstraintId, ConstraintKind, Diagnostic, DiagnosticSeverity, ElectricalNet,
-    HolePos, JumperInventoryEntry, Junction, JunctionId, NetId, OperationId, PinRef, Rail, RailId,
-    Rotation, RoutePos, RouteProposal, Saddle, SaddleId, Side, Wire, WireColor, WireId,
+    BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, ComponentKind,
+    ConnectionState, Constraint, ConstraintId, ConstraintKind, Diagnostic, DiagnosticSeverity,
+    ElectricalNet, HolePos, JumperInventoryEntry, Junction, JunctionId, NetId, OperationId, PinRef,
+    Rail, RailId, Rotation, RoutePos, RouteProposal, Saddle, SaddleId, Side, Wire, WireColor,
+    WireId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -77,6 +78,13 @@ pub enum OperationPayload {
         properties: BTreeMap<String, String>,
         notes: String,
     },
+    /// Fits (`shunted: true`) or removes the shunt on a two-pin jumper. A
+    /// shunted jumper joins its two pins; when they are on two different nets
+    /// it joins those nets while fitted (reported as an advisory).
+    SetJumperShunt {
+        instance_id: ComponentInstanceId,
+        shunted: bool,
+    },
     DefineNet {
         net: ElectricalNet,
     },
@@ -88,6 +96,13 @@ pub enum OperationPayload {
     RenameNet {
         net_id: NetId,
         name: String,
+    },
+    /// Moves everything on `source_net_id` (pins, wires, rails, junctions
+    /// and net constraints) onto `target_net_id`, then removes the source.
+    /// The target keeps its name. Both nets must be accepted.
+    MergeNets {
+        source_net_id: NetId,
+        target_net_id: NetId,
     },
     AssignPin {
         net_id: NetId,
@@ -264,6 +279,12 @@ pub enum OperationError {
     DuplicateConstraint,
     #[error("constraint was not found")]
     ConstraintNotFound,
+    #[error("a net cannot be merged into itself")]
+    MergeIntoSelf,
+    #[error("only accepted nets can be merged; accept or reject the proposal first")]
+    MergeProposedNet,
+    #[error("component is not a two-pin jumper")]
+    NotAJumper,
     #[error("jumper inventory entry was not found")]
     JumperInventoryNotFound,
     #[error("locked wire requires an explicit route replacement operation")]
@@ -528,6 +549,18 @@ pub(crate) fn apply_operation_untracked(
             stored.name.clone_from(&definition.name);
             stored.description.clone_from(&definition.description);
             stored.documentation.clone_from(&definition.documentation);
+            // A plain two-pin part can become a shuntable jumper, or back, when
+            // the library says so. Pins must match exactly, so nets and wires
+            // stay valid; any other kind change still needs a new definition.
+            let switches_jumper = matches!(
+                (stored.kind, definition.kind),
+                (ComponentKind::Standard, ComponentKind::Jumper)
+                    | (ComponentKind::Jumper, ComponentKind::Standard)
+            );
+            if switches_jumper && stored.pins == definition.pins {
+                stored.kind = definition.kind;
+            }
+            let is_jumper = stored.kind == ComponentKind::Jumper;
             stored
                 .validate()
                 .map_err(|error| DocumentError::InvalidComponentDefinition {
@@ -536,6 +569,13 @@ pub(crate) fn apply_operation_untracked(
                 })?;
             let definition_id = instance.definition_id.clone();
             let definition_name = stored.name.clone();
+            if !is_jumper {
+                for component in next.design.components.values_mut() {
+                    if component.definition_id == definition_id {
+                        component.shunted = false;
+                    }
+                }
+            }
             affected.extend(
                 next.design
                     .components
@@ -613,6 +653,31 @@ pub(crate) fn apply_operation_untracked(
             affected.insert(*instance_id);
             format!("Updated {} properties", instance.name)
         }
+        OperationPayload::SetJumperShunt {
+            instance_id,
+            shunted,
+        } => {
+            let instance = next
+                .design
+                .components
+                .get_mut(instance_id)
+                .ok_or(OperationError::InstanceNotFound)?;
+            let is_jumper = next
+                .design
+                .component_definitions
+                .get(&instance.definition_id)
+                .is_some_and(|definition| definition.kind == ComponentKind::Jumper);
+            if !is_jumper {
+                return Err(OperationError::NotAJumper);
+            }
+            instance.shunted = *shunted;
+            affected.insert(*instance_id);
+            format!(
+                "{} shunt on {}",
+                if *shunted { "Fitted" } else { "Removed" },
+                instance.name
+            )
+        }
         OperationPayload::DefineNet { net } => {
             if next.design.nets.contains_key(&net.id) {
                 return Err(OperationError::DuplicateNet);
@@ -658,6 +723,67 @@ pub(crate) fn apply_operation_untracked(
                 .ok_or(OperationError::NetNotFound)?;
             affected_nets.insert(*net_id);
             format!("Removed net {}", net.name)
+        }
+        OperationPayload::MergeNets {
+            source_net_id,
+            target_net_id,
+        } => {
+            if source_net_id == target_net_id {
+                return Err(OperationError::MergeIntoSelf);
+            }
+            let design = &mut next.design;
+            let target = design
+                .nets
+                .get(target_net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            let source = design
+                .nets
+                .get(source_net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            if source.state != ConnectionState::Accepted
+                || target.state != ConnectionState::Accepted
+            {
+                return Err(OperationError::MergeProposedNet);
+            }
+            let source = design.nets.remove(source_net_id).expect("checked above");
+            let target = design.nets.get_mut(target_net_id).expect("checked above");
+            target.pins.extend(source.pins);
+            let source_notes = source.notes.trim();
+            if !source_notes.is_empty() && !target.notes.contains(source_notes) {
+                if !target.notes.trim().is_empty() {
+                    target.notes.push_str("\n\n");
+                }
+                target.notes.push_str(source_notes);
+            }
+            let target_name = target.name.clone();
+            for wire in design.wires.values_mut() {
+                if wire.net_id == *source_net_id {
+                    wire.net_id = *target_net_id;
+                    affected_wires.insert(wire.id);
+                }
+            }
+            for rail in design.rails.values_mut() {
+                if rail.net_id == *source_net_id {
+                    rail.net_id = *target_net_id;
+                }
+            }
+            for junction in design.junctions.values_mut() {
+                if junction.net_id == *source_net_id {
+                    junction.net_id = *target_net_id;
+                }
+            }
+            for constraint in design.constraints.values_mut() {
+                if let ConstraintKind::PreferredMaximumLength { net_id, .. }
+                | ConstraintKind::WireSide { net_id, .. } = &mut constraint.kind
+                    && *net_id == *source_net_id
+                {
+                    *net_id = *target_net_id;
+                    affected_constraints.insert(constraint.id);
+                }
+            }
+            affected_nets.insert(*source_net_id);
+            affected_nets.insert(*target_net_id);
+            format!("Merged net {} into {target_name}", source.name)
         }
         OperationPayload::RenameNet { net_id, name } => {
             let name = name.trim();
@@ -1285,6 +1411,7 @@ mod tests {
             rotation: Rotation::Deg0,
             properties: BTreeMap::new(),
             notes: String::new(),
+            shunted: false,
         }
     }
 

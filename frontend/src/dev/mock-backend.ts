@@ -142,14 +142,87 @@ function islands(design: Design): NetConnectivity[] {
       for (const a of at(0))
         for (const b of at(1)) union(key(a.pin), key(b.pin));
     }
+    // A fitted shunt joins a jumper's two pins.
+    for (const instance of Object.values(design.components ?? {})) {
+      const definition = design.component_definitions?.[instance.definition_id];
+      if (definition?.kind !== "jumper" || !instance.shunted) continue;
+      const ends = definition.pins.map((pin) => ({
+        component_id: instance.id,
+        pin_id: pin.id,
+      }));
+      if (
+        ends.length === 2 &&
+        ends.every((end) => pins.some((pin) => key(pin) === key(end)))
+      )
+        union(key(ends[0]!), key(ends[1]!));
+    }
     const groups = new Map<string, PinRef[]>();
     for (const pin of pins) {
       const root = find(key(pin));
       groups.set(root, [...(groups.get(root) ?? []), pin]);
     }
-    result.push({ net_id: net.id, islands: [...groups.values()] });
+    result.push({
+      net_id: net.id,
+      islands: [...groups.values()],
+      joined_nets: [],
+      shunts: [],
+    });
+  }
+  // A shunt across two different nets joins them (the computed view).
+  const joins = shuntJoins(design);
+  for (const item of result) {
+    const joined = new Set<string>();
+    const pending = [item.net_id];
+    while (pending.length) {
+      const current = pending.pop()!;
+      for (const join of joins) {
+        const other =
+          join.a === current ? join.b : join.b === current ? join.a : undefined;
+        if (other && other !== item.net_id && !joined.has(other)) {
+          joined.add(other);
+          pending.push(other);
+        }
+      }
+    }
+    item.joined_nets = [...joined].sort();
+    item.shunts = [
+      ...new Set(
+        joins
+          .filter(
+            (join) =>
+              join.a === item.net_id ||
+              join.b === item.net_id ||
+              (joined.has(join.a) && joined.has(join.b)),
+          )
+          .map((join) => join.via),
+      ),
+    ].sort();
   }
   return result;
+}
+
+/** Fitted shunts whose two pins sit on two different accepted nets. */
+function shuntJoins(design: Design): { a: string; b: string; via: string }[] {
+  const netOf = (ref: PinRef) =>
+    Object.values(design.nets ?? {}).find(
+      (net) =>
+        net.state === "accepted" &&
+        (net.pins ?? []).some(
+          (pin) =>
+            pin.component_id === ref.component_id && pin.pin_id === ref.pin_id,
+        ),
+    );
+  const joins: { a: string; b: string; via: string }[] = [];
+  for (const instance of Object.values(design.components ?? {})) {
+    const definition = design.component_definitions?.[instance.definition_id];
+    if (definition?.kind !== "jumper" || !instance.shunted) continue;
+    const [first, second] = definition.pins.map((pin) =>
+      netOf({ component_id: instance.id, pin_id: pin.id }),
+    );
+    if (first && second && first.id !== second.id)
+      joins.push({ a: first.id, b: second.id, via: instance.id });
+  }
+  return joins;
 }
 
 function validation(design: Design): Diagnostic[] {
@@ -170,6 +243,19 @@ function validation(design: Design): Diagnostic[] {
         message: `Net \`${net?.name}\` is not completely routed`,
         objects: [{ kind: "net", id: item.net_id }],
       });
+  }
+  for (const join of shuntJoins(design)) {
+    const name = (id: string) => design.nets?.[id]?.name;
+    result.push({
+      code: "circuit.shunt_joins_nets",
+      severity: "advisory",
+      message: `Shunt on ${design.components?.[join.via]?.name} joins nets \`${name(join.a)}\` and \`${name(join.b)}\``,
+      objects: [
+        { kind: "component", id: join.via },
+        { kind: "net", id: join.a },
+        { kind: "net", id: join.b },
+      ],
+    });
   }
   for (const net of Object.values(design.nets ?? {}))
     if (net.state === "proposed")
@@ -221,6 +307,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
       });
       return;
     }
+    case "set_jumper_shunt":
+      d.components![op.instance_id]!.shunted = op.shunted;
+      return;
     case "define_net":
       d.nets = { ...d.nets, [op.net.id]: op.net };
       return;
@@ -233,6 +322,18 @@ function applyPayload(design: Design, op: OperationPayload): void {
     case "rename_net":
       d.nets![op.net_id]!.name = op.name.trim();
       return;
+    case "merge_nets": {
+      const source = d.nets![op.source_net_id]!;
+      const target = d.nets![op.target_net_id]!;
+      target.pins = [...(target.pins ?? []), ...(source.pins ?? [])];
+      delete d.nets![op.source_net_id];
+      for (const item of [
+        ...Object.values(d.wires ?? {}),
+        ...Object.values(d.rails ?? {}),
+      ])
+        if (item.net_id === op.source_net_id) item.net_id = op.target_net_id;
+      return;
+    }
     case "accept_net_proposal":
       d.nets![op.net_id]!.state = "accepted";
       return;

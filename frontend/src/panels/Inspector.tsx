@@ -1,5 +1,6 @@
 import { useSignal } from "@preact/signals";
 import type {
+  ComponentDefinition,
   ComponentInstance,
   Constraint,
   ElectricalNet,
@@ -17,6 +18,7 @@ import {
   railNodeLock,
   removeRailNode,
   netInUse,
+  mergeNets,
   removeNet,
   removeSelection,
   renameNet,
@@ -25,6 +27,7 @@ import {
 import {
   activeNetId,
   airwires,
+  connectivity,
   design,
   hover,
   library,
@@ -41,6 +44,7 @@ import {
   bendCount,
   definitionOf,
   isBridge,
+  isJumper,
   nextRotation,
   polylineLengthMm,
   rotationDegrees,
@@ -175,6 +179,12 @@ function ComponentInspector({
   );
   const showDocs = useSignal(false);
   const bridge = isBridge(definition);
+  const jumper = isJumper(definition);
+  const canBecomeJumper =
+    !jumper &&
+    isJumper(libraryDefinition) &&
+    JSON.stringify(libraryDefinition?.pins) ===
+      JSON.stringify(definition?.pins);
   const rotations = definition?.allowed_rotations.length
     ? definition.allowed_rotations
     : (["deg0", "deg90", "deg180", "deg270"] as const);
@@ -293,6 +303,38 @@ function ComponentInspector({
         </p>
       </Section>
 
+      {jumper && definition && (
+        <Section title="Shunt">
+          <div class="segmented">
+            {([false, true] as const).map((value) => (
+              <button
+                key={String(value)}
+                class={Boolean(instance.shunted) === value ? "on" : ""}
+                onClick={() => {
+                  if (Boolean(instance.shunted) === value) return;
+                  void mutate({
+                    type: "set_jumper_shunt",
+                    instance_id: instance.id,
+                    shunted: value,
+                  });
+                }}
+              >
+                {value ? "Shunted (closed)" : "Open"}
+              </button>
+            ))}
+          </div>
+          <p class="field-note">{shuntNote(current, instance, definition)}</p>
+        </Section>
+      )}
+      {canBecomeJumper && (
+        <Section title="Shunt">
+          <p class="field-note">
+            The library now marks this part as a jumper that can take a shunt.
+            Use <strong>Update metadata</strong> below to enable it.
+          </p>
+        </Section>
+      )}
+
       {definition && !bridge && (
         <Section
           title="Pins"
@@ -349,7 +391,7 @@ function ComponentInspector({
             {libraryDefinition && (
               <button
                 class="btn small"
-                title="Refresh name, description and documentation from the library. Pins and geometry stay as they are."
+                title="Refresh name, description and documentation from the library, and whether a two-pin part takes a shunt. Pins and geometry stay as they are."
                 onClick={() =>
                   void mutate({
                     type: "update_component_metadata",
@@ -921,6 +963,23 @@ function SaddleInspector({ saddle }: { saddle: Saddle }) {
   );
 }
 
+/** What the shunt on a jumper does with its current setting and nets. */
+function shuntNote(
+  current: Design,
+  instance: ComponentInstance,
+  definition: ComponentDefinition,
+): string {
+  const [first, second] = definition.pins;
+  if (!instance.shunted)
+    return "Without a shunt the two pins are not connected.";
+  const nets = [first, second].map((pin) =>
+    netOfPin(current, { component_id: instance.id, pin_id: pin!.id }),
+  );
+  if (nets[0] && nets[1] && nets[0].id !== nets[1].id)
+    return `The shunt joins net ${nets[0].name} to net ${nets[1].name}. Each stays its own net, routed on its own copper.`;
+  return `The shunt joins pins ${first!.number} and ${second!.number}, so they need no wire between them.`;
+}
+
 // ── Net ──────────────────────────────────────────────────────────────────────
 
 function NetInspector({
@@ -1105,11 +1164,13 @@ function NetInspector({
           ))}
         </ul>
       </Section>
+      {!proposed && <JoinedNetsSection net={net} design={current} />}
       {net.notes && !proposed && (
         <Section title="Notes">
           <p class="notes-text">{net.notes}</p>
         </Section>
       )}
+      {!proposed && <MergeNetSection net={net} design={current} />}
       <footer class="inspector-foot">
         <button
           class="btn danger"
@@ -1121,6 +1182,104 @@ function NetInspector({
         </button>
       </footer>
     </div>
+  );
+}
+
+/**
+ * Nets this one is currently joined with through fitted shunts: the computed
+ * net it belongs to with the present jumper settings. Each net is still routed
+ * and checked on its own copper.
+ */
+function JoinedNetsSection({
+  net,
+  design: current,
+}: {
+  net: ElectricalNet;
+  design: Design;
+}) {
+  const entry = connectivity.value.find((item) => item.net_id === net.id);
+  const joined = (entry?.joined_nets ?? [])
+    .map((id) => current.nets?.[id])
+    .filter((other): other is ElectricalNet => !!other)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (!joined.length) return null;
+  const shunts = (entry?.shunts ?? [])
+    .map((id) => current.components?.[id]?.name)
+    .filter(Boolean)
+    .sort();
+  return (
+    <Section
+      title="Joined by shunt"
+      aside={<span class="count">{joined.length}</span>}
+    >
+      <ul class="member-list">
+        {joined.map((other) => (
+          <li key={other.id}>
+            <button
+              class="member"
+              onClick={() =>
+                select({ kind: "net", id: other.id }, { focus: true })
+              }
+            >
+              <strong>{other.name}</strong>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p class="field-note">
+        With the shunt{shunts.length === 1 ? "" : "s"} on {shunts.join(", ")}{" "}
+        fitted, these nets are one connection. Each is still routed and checked
+        on its own copper.
+      </p>
+    </Section>
+  );
+}
+
+function MergeNetSection({
+  net,
+  design: current,
+}: {
+  net: ElectricalNet;
+  design: Design;
+}) {
+  const targetId = useSignal("");
+  const others = Object.values(current.nets ?? {})
+    .filter((other) => other.id !== net.id && other.state === "accepted")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (!others.length) return null;
+  const target = others.find((other) => other.id === targetId.value);
+  return (
+    <Section title="Merge">
+      <div class="row">
+        <select
+          aria-label="Net to merge into"
+          value={targetId.value}
+          onChange={(event) =>
+            (targetId.value = (event.target as HTMLSelectElement).value)
+          }
+        >
+          <option value="">Merge into…</option>
+          {others.map((other) => (
+            <option key={other.id} value={other.id}>
+              {other.name}
+            </option>
+          ))}
+        </select>
+        <button
+          class="btn small"
+          disabled={!target}
+          onClick={() => {
+            if (target) void mergeNets(net.id, target.id);
+          }}
+        >
+          <Icon name="net" size={14} /> Merge
+        </button>
+      </div>
+      <p class="field-note">
+        Moves this net's pins, wires and rails onto the chosen net and removes{" "}
+        {net.name}. Renaming a net to an existing name does the same.
+      </p>
+    </Section>
   );
 }
 

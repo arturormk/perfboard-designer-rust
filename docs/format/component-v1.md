@@ -69,6 +69,11 @@ allow_board_overhang = true
   `keepouts`, `wire_keepouts`, or `access` regions. Bridge endpoints must remain
   on the board, but they may share component pin holes and ignore component
   keepouts.
+- The `jumper` kind is a two-pin header that takes a removable shunt. It must
+  have exactly two pins and is otherwise placed like a standard part. Each
+  placed jumper records whether its shunt is fitted (`shunted` on the
+  instance); a fitted shunt joins the two pins electrically, including when
+  they sit on two different nets.
 - `id` is a stable library identifier; `definition_version` or a canonical
   content hash identifies the exact definition revision.
 - Body measurements use millimetres. Pin and mounting positions use signed

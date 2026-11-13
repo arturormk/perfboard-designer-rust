@@ -19,6 +19,7 @@ import type {
 import {
   bodyBounds,
   componentSide,
+  isJumper,
   pinBoardPosition,
   polylineMidpoint,
   rotationDegrees,
@@ -155,6 +156,9 @@ function ComponentBody({
           d={`M ${body.x / pitch} ${body.y / pitch + 0.9} L ${body.x / pitch} ${body.y / pitch + 0.3} Q ${body.x / pitch} ${body.y / pitch} ${body.x / pitch + 0.3} ${body.y / pitch} L ${body.x / pitch + 0.9} ${body.y / pitch} Z`}
         />
       )}
+      {!opposite && instance.shunted && isJumper(definition) && (
+        <ShuntCap pins={definition.pins} />
+      )}
       {showKeepouts &&
         !opposite &&
         (definition.access ?? []).map((area, index) => {
@@ -179,6 +183,35 @@ function ComponentBody({
             </g>
           );
         })}
+    </g>
+  );
+}
+
+/** The shunt cap fitted over a jumper's two pins, in part-local holes. */
+function ShuntCap({ pins }: { pins: ComponentDefinition["pins"] }) {
+  const [a, b] = pins;
+  if (!a || !b) return null;
+  const x = Math.min(a.x, b.x) - 0.42;
+  const y = Math.min(a.y, b.y) - 0.42;
+  const width = Math.abs(a.x - b.x) + 0.84;
+  const height = Math.abs(a.y - b.y) + 0.84;
+  return (
+    <g class="shunt">
+      <rect
+        class="shunt-cap"
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        rx={0.14}
+      />
+      <line
+        class="shunt-gleam"
+        x1={x + 0.18}
+        y1={y + 0.14}
+        x2={x + width - 0.18}
+        y2={y + 0.14}
+      />
     </g>
   );
 }

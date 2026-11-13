@@ -27,7 +27,7 @@ function distance(a: Point, b: Point): number {
 
 export function computeAirwires(
   design: Design,
-  connectivity: NetConnectivity[],
+  connectivity: Pick<NetConnectivity, "net_id" | "islands">[],
 ): Airwire[] {
   const result: Airwire[] = [];
   for (const net of connectivity) {

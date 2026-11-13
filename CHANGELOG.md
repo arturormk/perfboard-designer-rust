@@ -20,6 +20,10 @@ Development line `v0.1.x`: the first public development builds.
 - Nets: rename them by editing the name in the inspector (`rename_net`; names
   must be unique, ignoring case), and remove unused ones from the Nets panel or
   the inspector. A net cannot be removed while wires or rails use it.
+- Merge nets: pick **Merge into…** in a net's inspector, or rename a net to
+  the name of an existing one (`merge_nets`). Pins, wires, rails, junctions and
+  net constraints move to the target net, which keeps its name, and the source
+  net is removed. Both nets must be accepted. Undo reverses it.
 - A wire started on a bridge end takes the net the bridge is soldered to
   (across chained bridges too) instead of the tool bar's active net. A wire
   from an unconnected terminal adopts the net of the rail or pin it ends on.
@@ -27,6 +31,14 @@ Development line `v0.1.x`: the first public development builds.
   the net of a pin next to it works, and the bridge follows. It is only refused
   when the bridge would join two different nets, for example when its other
   end still carries a wire or pin on another net.
+- Jumpers: the Dupont Jumper is now a `jumper` part that takes a shunt. Set
+  it to Open or Shunted in the inspector (`set_jumper_shunt`). A shunted
+  jumper joins its two pins, so a net through it no longer reports "not
+  completely routed". A shunt may also join two different nets, as a
+  selector jumper does: each net is still routed and checked on its own, the
+  validation report notes the join as an advisory, and the net inspector
+  lists the nets it is currently joined with.
+  Parts placed before this change pick it up with **Update metadata**.
 - Revisioned working copy with undo, commits, comparison, and restore.
 - Deterministic automatic routing with route proposals.
 - Validation with problems that frame the affected objects.

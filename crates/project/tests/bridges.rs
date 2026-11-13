@@ -43,6 +43,7 @@ fn place(document: &mut ProjectDocument, toml: &str, x: u32) -> ComponentInstanc
                 rotation: Rotation::Deg0,
                 properties: BTreeMap::new(),
                 notes: String::new(),
+                shunted: false,
             },
         },
     )

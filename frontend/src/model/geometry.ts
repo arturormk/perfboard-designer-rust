@@ -69,6 +69,11 @@ export function isBridge(definition: ComponentDefinition | undefined): boolean {
   return definition?.kind === "bridge";
 }
 
+/** A two-pin header that takes a removable shunt. */
+export function isJumper(definition: ComponentDefinition | undefined): boolean {
+  return definition?.kind === "jumper" && definition.pins.length === 2;
+}
+
 /** The board face a component is installed on. Bridges are solder-side links. */
 export function componentSide(
   definition: ComponentDefinition | undefined,

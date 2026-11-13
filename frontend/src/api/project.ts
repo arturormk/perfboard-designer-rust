@@ -19,6 +19,10 @@ export interface Diagnostic {
 export interface NetConnectivity {
   net_id: string;
   islands: PinRef[][];
+  /** Other nets currently joined to this one through fitted shunts. */
+  joined_nets: string[];
+  /** The shunted jumpers doing that joining. */
+  shunts: string[];
 }
 export interface SessionChangeEvent {
   revision: number;
@@ -46,7 +50,7 @@ export interface AccessRegion extends LocalRect {
 }
 export interface ComponentDefinition {
   schema_version: number;
-  kind?: "standard" | "bridge";
+  kind?: "standard" | "bridge" | "jumper";
   id: string;
   definition_version: string;
   name: string;
@@ -133,6 +137,8 @@ export interface ComponentInstance {
   rotation: Rotation;
   properties?: Record<string, string>;
   notes?: string;
+  /** A fitted shunt on a `jumper` part joins its two pins. */
+  shunted?: boolean;
 }
 export type Side = "component" | "solder";
 export type ConnectionState = "proposed" | "accepted";
@@ -368,9 +374,11 @@ export type OperationPayload =
       properties: Record<string, string>;
       notes: string;
     }
+  | { type: "set_jumper_shunt"; instance_id: string; shunted: boolean }
   | { type: "define_net"; net: ElectricalNet }
   | { type: "remove_net"; net_id: string }
   | { type: "rename_net"; net_id: string; name: string }
+  | { type: "merge_nets"; source_net_id: string; target_net_id: string }
   | { type: "assign_pin"; net_id: string; pin: PinRef }
   | { type: "unassign_pin"; net_id: string; pin: PinRef }
   | { type: "accept_net_proposal"; net_id: string }

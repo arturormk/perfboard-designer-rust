@@ -1,6 +1,7 @@
 schema_version = 1
+kind = "jumper"
 id = "dev.perfboard.dupont-jumper"
-definition_version = "1.0.0"
+definition_version = "1.1.0"
 name = "Dupont Jumper"
 description = "Two-pin male Dupont-style jumper on the standard 2.54 mm pitch"
 origin_x = 0

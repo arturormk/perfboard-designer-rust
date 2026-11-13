@@ -16,7 +16,7 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
     let height = f64::from(board.size.intervals_y()) + padding * 2.0;
     let _ = write!(
         svg,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.shunt{{fill:#1b1b1b;stroke:#e0c060;stroke-width:.08}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
         escape(&board.name),
         side
     );
@@ -141,6 +141,20 @@ fn render_component(
             definition.body.y / pitch,
             definition.body.width / pitch,
             definition.body.height / pitch,
+        );
+    }
+    let shunt_pins = (definition.kind == ComponentKind::Jumper && instance.shunted)
+        .then_some(definition.pins.as_slice());
+    if let Some([first, second]) = shunt_pins {
+        let (x, y) = (first.x.min(second.x), first.y.min(second.y));
+        let (width, height) = (first.x.abs_diff(second.x), first.y.abs_diff(second.y));
+        let _ = write!(
+            svg,
+            r#"<rect class="shunt" x="{}" y="{}" width="{}" height="{}" rx=".15"/>"#,
+            f64::from(x) - 0.4,
+            f64::from(y) - 0.4,
+            f64::from(width) + 0.8,
+            f64::from(height) + 0.8,
         );
     }
     for pin in &definition.pins {

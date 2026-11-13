@@ -48,6 +48,7 @@ fn fixture() -> ProjectDocument {
                     rotation: Rotation::Deg0,
                     properties: BTreeMap::new(),
                     notes: String::new(),
+                    shunted: false,
                 },
             },
         )

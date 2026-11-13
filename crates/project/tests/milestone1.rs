@@ -77,6 +77,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
                 rotation: Rotation::Deg0,
                 properties: BTreeMap::from([("socketed".into(), "true".into())]),
                 notes: "USB faces the board edge".into(),
+                shunted: false,
             },
         },
     );
@@ -112,6 +113,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
                 rotation: Rotation::Deg0,
                 properties: BTreeMap::new(),
                 notes: "Keep terminal reachable".into(),
+                shunted: false,
             },
         },
     );

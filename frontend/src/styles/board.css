@@ -494,6 +494,24 @@
   opacity: 1;
 }
 
+/* A fitted shunt: a dark plastic cap over a jumper's two pins. */
+.shunt-cap {
+  fill: #23262b;
+  stroke: #0d0f12;
+  stroke-width: 0.05;
+  opacity: 0.92;
+}
+
+.shunt-gleam {
+  stroke: rgb(255 255 255 / 28%);
+  stroke-width: 0.05;
+  stroke-linecap: round;
+}
+
+.faded .shunt {
+  opacity: 0.3;
+}
+
 .part.dim .part-body,
 .wire.dim,
 .rail.dim {

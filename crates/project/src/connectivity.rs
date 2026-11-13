@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
-    BoardSize, ComponentKind, ConnectionState, Diagnostic, DiagnosticCode, DiagnosticSeverity,
-    NetId, ObjectReference, PinRef, RoutePos, TerminalRef,
+    BoardSize, ComponentInstanceId, ComponentKind, ConnectionState, Diagnostic, DiagnosticCode,
+    DiagnosticSeverity, NetId, ObjectReference, PinRef, RoutePos, TerminalRef,
 };
 
 use crate::Design;
@@ -143,6 +143,29 @@ fn validate_bridge_net_conflicts(design: &Design) -> Result<(), String> {
     Ok(())
 }
 
+/// Every jumper whose shunt is fitted, with its two pins.
+pub(crate) fn shunted_jumpers(
+    design: &Design,
+) -> impl Iterator<Item = (&perfboard_core::ComponentInstance, [PinRef; 2])> {
+    design.components.values().filter_map(|instance| {
+        if !instance.shunted {
+            return None;
+        }
+        let definition = design.component_definitions.get(&instance.definition_id)?;
+        if definition.kind != ComponentKind::Jumper {
+            return None;
+        }
+        let [first, second] = definition.pins.as_slice() else {
+            return None;
+        };
+        let pin = |id: &str| PinRef {
+            component_id: instance.id,
+            pin_id: id.to_owned(),
+        };
+        Some((instance, [pin(&first.id), pin(&second.id)]))
+    })
+}
+
 pub(crate) fn diagnostics(design: &Design) -> Vec<Diagnostic> {
     let mut result = Vec::new();
     for net in design.nets.values() {
@@ -192,6 +215,7 @@ pub(crate) fn diagnostics(design: &Design) -> Vec<Diagnostic> {
             ));
         }
     }
+    result.extend(shunt_join_advisories(design));
     for wire in design.wires.values() {
         let endpoints_match = terminal_position(design, wire.net_id, &wire.start)
             .ok()
@@ -239,15 +263,25 @@ pub(crate) fn diagnostics(design: &Design) -> Vec<Diagnostic> {
 /// wires, rails, bridges, or coincident pin positions. A fully routed net has
 /// exactly one island. The UI uses this to draw unrouted connections without
 /// re-implementing the connectivity rules.
+///
+/// A shunted jumper whose pins sit on two different nets joins them while the
+/// shunt is fitted. Each net stays its own native net, routed and checked on
+/// its own copper; `joined_nets` is the computed view: every other net this
+/// one currently reaches through shunts (transitively), and `shunts` the
+/// jumpers doing the joining.
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, schemars::JsonSchema)]
 pub struct NetConnectivity {
     pub net_id: NetId,
     pub islands: Vec<Vec<PinRef>>,
+    pub joined_nets: Vec<NetId>,
+    pub shunts: Vec<ComponentInstanceId>,
 }
 
-/// Computes pin islands for every accepted net.
+/// Computes pin islands, and nets joined through shunts, for every accepted
+/// net.
 #[must_use]
 pub fn net_connectivity(design: &Design) -> Vec<NetConnectivity> {
+    let joins = shunt_joins(design);
     design
         .nets
         .values()
@@ -280,12 +314,96 @@ pub fn net_connectivity(design: &Design) -> Vec<NetConnectivity> {
                 assigned.extend(reached);
                 islands.push(island);
             }
+            let mut joined_nets = BTreeSet::new();
+            let mut pending = vec![net.id];
+            while let Some(current) = pending.pop() {
+                for (first, second, _) in &joins {
+                    let other = if *first == current {
+                        *second
+                    } else if *second == current {
+                        *first
+                    } else {
+                        continue;
+                    };
+                    if other != net.id && joined_nets.insert(other) {
+                        pending.push(other);
+                    }
+                }
+            }
+            let shunts = joins
+                .iter()
+                .filter(|(first, second, _)| {
+                    *first == net.id
+                        || *second == net.id
+                        || (joined_nets.contains(first) && joined_nets.contains(second))
+                })
+                .map(|(_, _, via)| *via)
+                .collect::<BTreeSet<_>>();
             NetConnectivity {
                 net_id: net.id,
                 islands,
+                joined_nets: joined_nets.into_iter().collect(),
+                shunts: shunts.into_iter().collect(),
             }
         })
         .collect()
+}
+
+/// An advisory for each fitted shunt that joins two different nets. Joining
+/// nets is what a selector jumper is for, so this is never an error; it keeps
+/// the join visible in the validation report.
+fn shunt_join_advisories(design: &Design) -> Vec<Diagnostic> {
+    let mut result = Vec::new();
+    for (instance, pins) in shunted_jumpers(design) {
+        let [Some(first), Some(second)] = pins.map(|pin| net_of_pin(design, &pin)) else {
+            continue;
+        };
+        if first.id == second.id {
+            continue;
+        }
+        result.push(Diagnostic {
+            code: DiagnosticCode("circuit.shunt_joins_nets".into()),
+            severity: DiagnosticSeverity::Advisory,
+            message: format!(
+                "Shunt on {} joins nets `{}` and `{}`",
+                instance.name, first.name, second.name
+            ),
+            objects: vec![
+                ObjectReference {
+                    kind: "component".into(),
+                    id: instance.id.to_string(),
+                },
+                ObjectReference {
+                    kind: "net".into(),
+                    id: first.id.to_string(),
+                },
+                ObjectReference {
+                    kind: "net".into(),
+                    id: second.id.to_string(),
+                },
+            ],
+        });
+    }
+    result
+}
+
+/// Shunted jumpers that join two different accepted nets: `(net, net, jumper)`.
+fn shunt_joins(design: &Design) -> Vec<(NetId, NetId, ComponentInstanceId)> {
+    shunted_jumpers(design)
+        .filter_map(|(instance, pins)| {
+            let [Some(first), Some(second)] = pins.map(|pin| net_of_pin(design, &pin)) else {
+                return None;
+            };
+            (first.id != second.id
+                && first.state == ConnectionState::Accepted
+                && second.state == ConnectionState::Accepted)
+                .then_some((first.id, second.id, instance.id))
+        })
+        .collect()
+}
+
+fn net_of_pin<'a>(design: &'a Design, pin: &PinRef) -> Option<&'a perfboard_core::ElectricalNet> {
+    design.nets.values().find(|net| net.pins.contains(pin))
 }
 
 fn has_short_interior_segment(vertices: &[RoutePos]) -> bool {
@@ -415,6 +533,13 @@ fn adjacency(design: &Design, net_id: NetId) -> BTreeMap<TerminalRef, BTreeSet<T
         for (first, _) in first {
             for (second, _) in &second {
                 add_connection(&mut map, first, second);
+            }
+        }
+    }
+    if let Some(net) = design.nets.get(&net_id) {
+        for (_, [first, second]) in shunted_jumpers(design) {
+            if net.pins.contains(&first) && net.pins.contains(&second) {
+                add_connection(&mut map, &first.into(), &second.into());
             }
         }
     }
@@ -734,6 +859,7 @@ mod tests {
                     rotation: Rotation::Deg0,
                     properties: BTreeMap::new(),
                     notes: String::new(),
+                    shunted: false,
                 },
             );
         }
@@ -804,6 +930,7 @@ mod tests {
                 rotation: Rotation::Deg0,
                 properties: BTreeMap::new(),
                 notes: String::new(),
+                shunted: false,
             },
         );
         let mut wire = Wire {

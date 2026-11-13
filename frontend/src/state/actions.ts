@@ -78,6 +78,7 @@ import {
   type Selection,
 } from "./store";
 import { toast } from "./toasts";
+import { confirmAction } from "../shell/dialogs";
 
 // ── Refresh ────────────────────────────────────────────────────────────────
 
@@ -709,13 +710,53 @@ export async function renameNet(
     (other) => other.id !== netId && other.name.toUpperCase() === name,
   );
   if (clash) {
-    toast("info", `Another net is already named ${clash.name}`);
-    return false;
+    if (clash.state !== "accepted" || net.state !== "accepted") {
+      toast("info", `Another net is already named ${clash.name}`);
+      return false;
+    }
+    return mergeNets(netId, clash.id);
   }
   return mutate(
     { type: "rename_net", net_id: netId, name },
     { failure: `Could not rename net ${net.name}` },
   );
+}
+
+/**
+ * Moves everything on `sourceId` (pins, wires, rails, junctions) onto
+ * `targetId` and removes the source net, after asking the user.
+ */
+export async function mergeNets(
+  sourceId: string,
+  targetId: string,
+): Promise<boolean> {
+  const current = design.peek();
+  const source = current?.nets?.[sourceId];
+  const target = current?.nets?.[targetId];
+  if (!current || !source || !target || sourceId === targetId) return false;
+  const wires = Object.values(current.wires ?? {}).filter(
+    (wire) => wire.net_id === sourceId,
+  ).length;
+  const pins = source.pins?.length ?? 0;
+  const parts = [
+    `${pins} pin${pins === 1 ? "" : "s"}`,
+    ...(wires ? [`${wires} wire${wires === 1 ? "" : "s"}`] : []),
+  ].join(" and ");
+  const confirmed = await confirmAction(
+    `Merge ${source.name} into ${target.name}?`,
+    `${parts} on ${source.name} move to ${target.name}, and ${source.name} is removed. Undo reverses it.`,
+    "Merge nets",
+  );
+  if (!confirmed) return false;
+  const ok = await mutate(
+    { type: "merge_nets", source_net_id: sourceId, target_net_id: targetId },
+    { failure: `Could not merge ${source.name} into ${target.name}` },
+  );
+  if (!ok) return false;
+  if (activeNetId.peek() === sourceId) activeNetId.value = targetId;
+  if (selection.peek()?.kind === "net" && selection.peek()?.id === sourceId)
+    selection.value = { kind: "net", id: targetId };
+  return true;
 }
 
 export async function removeNet(netId: string): Promise<void> {

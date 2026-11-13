@@ -36,6 +36,7 @@ fn add_payload(id: ComponentInstanceId, name: &str, x: u32) -> OperationPayload 
             rotation: Rotation::Deg0,
             properties: BTreeMap::new(),
             notes: String::new(),
+            shunted: false,
         },
         definition,
     }
