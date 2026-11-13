@@ -58,14 +58,20 @@ pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
         }
         terminal_position(design, wire.net_id, &wire.start)?;
         terminal_position(design, wire.net_id, &wire.end)?;
+        // A rail node on a whole hole is soldered through that hole, so a
+        // wire on the other face can attach to it like a component pin. A
+        // node between holes is reachable only from the rail's own face.
         for terminal in [&wire.start, &wire.end] {
-            if let TerminalRef::RailNode { rail_id, .. } = terminal
+            if let TerminalRef::RailNode { rail_id, position } = terminal
                 && design
                     .rails
                     .get(rail_id)
                     .is_some_and(|rail| rail.side != wire.side)
+                && !position.is_hole()
             {
-                return Err("wire and connected rail must be on the same side".into());
+                return Err(
+                    "a wire on the other side can only reach a rail node on a whole hole".into(),
+                );
             }
         }
         for vertex in &wire.vertices {
@@ -422,6 +428,93 @@ fn add_connection(
 ) {
     map.entry(first.clone()).or_default().insert(second.clone());
     map.entry(second.clone()).or_default().insert(first.clone());
+}
+
+/// Lets the bridges joined to `pin` follow its new net `net_id`.
+///
+/// A bridge end is added to a net when a wire is drawn to it, and keeps that
+/// membership after the wire is removed. Such a stale membership would block
+/// giving the bridge's neighbour a new net, so every bridge pin reachable from
+/// `pin` (through chained bridges) that belongs to another net and has no wire
+/// attached is released from it. A bridge pin that still carries a wire keeps
+/// its net, and the bridge conflict check then rejects the change: that is a
+/// real short between two nets.
+pub(crate) fn release_stale_bridge_pins(design: &mut Design, net_id: NetId, pin: &PinRef) {
+    let Some(start) = pin_position(design, pin) else {
+        return;
+    };
+    let bridges: Vec<(perfboard_core::ComponentInstanceId, Vec<(String, RoutePos)>)> = design
+        .components
+        .values()
+        .filter_map(|instance| {
+            let definition = design.component_definitions.get(&instance.definition_id)?;
+            (definition.kind == ComponentKind::Bridge).then(|| {
+                let ends = definition
+                    .pins
+                    .iter()
+                    .map(|bridge_pin| {
+                        let (x, y) = instance.rotation.rotate_local((bridge_pin.x, bridge_pin.y));
+                        (
+                            bridge_pin.id.clone(),
+                            RoutePos::new(
+                                (i64::from(instance.position.x) + i64::from(x)) * 2,
+                                (i64::from(instance.position.y) + i64::from(y)) * 2,
+                            ),
+                        )
+                    })
+                    .collect();
+                (instance.id, ends)
+            })
+        })
+        .collect();
+
+    let mut reached = BTreeSet::from([start]);
+    let mut joined = BTreeSet::new();
+    loop {
+        let before = reached.len();
+        for (index, (_, ends)) in bridges.iter().enumerate() {
+            if ends.iter().any(|(_, position)| reached.contains(position)) {
+                joined.insert(index);
+                reached.extend(ends.iter().map(|(_, position)| *position));
+            }
+        }
+        if reached.len() == before {
+            break;
+        }
+    }
+
+    let wired: BTreeSet<PinRef> = design
+        .wires
+        .values()
+        .flat_map(|wire| [&wire.start, &wire.end])
+        .filter_map(|terminal| match terminal {
+            TerminalRef::Pin {
+                component_id,
+                pin_id,
+            } => Some(PinRef {
+                component_id: *component_id,
+                pin_id: pin_id.clone(),
+            }),
+            _ => None,
+        })
+        .collect();
+    for index in joined {
+        let (component_id, ends) = &bridges[index];
+        for (pin_id, _) in ends {
+            let bridge_pin = PinRef {
+                component_id: *component_id,
+                pin_id: pin_id.clone(),
+            };
+            if bridge_pin == *pin || wired.contains(&bridge_pin) {
+                continue;
+            }
+            for (other_id, net) in &mut design.nets {
+                if *other_id != net_id {
+                    net.pins.remove(&bridge_pin);
+                }
+            }
+        }
+    }
 }
 
 pub(crate) fn pin_position(design: &Design, pin: &PinRef) -> Option<RoutePos> {

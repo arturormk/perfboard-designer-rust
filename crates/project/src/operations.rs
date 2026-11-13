@@ -116,6 +116,11 @@ pub enum OperationPayload {
         rail_id: RailId,
         vertices: Vec<RoutePos>,
     },
+    /// Changes a rail's insulation color. Allowed on locked rails, like wires.
+    SetRailColor {
+        rail_id: RailId,
+        color: WireColor,
+    },
     /// Adds a net-free wire tie between two free holes.
     AddSaddle {
         saddle: Saddle,
@@ -603,7 +608,18 @@ pub(crate) fn apply_operation_untracked(
                 return Err(OperationError::DuplicateNet);
             }
             next.design.nets.insert(net.id, net.clone());
+            let before = next.design.nets.clone();
+            for pin in &net.pins {
+                crate::connectivity::release_stale_bridge_pins(&mut next.design, net.id, pin);
+            }
             affected_nets.insert(net.id);
+            affected_nets.extend(
+                next.design
+                    .nets
+                    .iter()
+                    .filter(|(id, other)| before.get(id) != Some(*other))
+                    .map(|(id, _)| *id),
+            );
             format!("Defined net {}", net.name)
         }
         OperationPayload::RemoveNet { net_id } => {
@@ -640,8 +656,18 @@ pub(crate) fn apply_operation_untracked(
                 .get_mut(net_id)
                 .ok_or(OperationError::NetNotFound)?;
             net.pins.insert(pin.clone());
+            let message = format!("Assigned pin to net {}", net.name);
+            let before = next.design.nets.clone();
+            crate::connectivity::release_stale_bridge_pins(&mut next.design, *net_id, pin);
             affected_nets.insert(*net_id);
-            format!("Assigned pin to net {}", net.name)
+            affected_nets.extend(
+                next.design
+                    .nets
+                    .iter()
+                    .filter(|(id, net)| before.get(id) != Some(*net))
+                    .map(|(id, _)| *id),
+            );
+            message
         }
         OperationPayload::UnassignPin { net_id, pin } => {
             if next.design.wires.values().any(|wire| {
@@ -862,6 +888,16 @@ pub(crate) fn apply_operation_untracked(
             next.design.rails.insert(*rail_id, rail.clone());
             affected_nets.insert(rail.net_id);
             format!("Edited rail {rail_id} path")
+        }
+        OperationPayload::SetRailColor { rail_id, color } => {
+            let rail = next
+                .design
+                .rails
+                .get_mut(rail_id)
+                .ok_or(OperationError::RailNotFound)?;
+            rail.color.clone_from(color);
+            affected_nets.insert(rail.net_id);
+            format!("Changed rail {rail_id} color")
         }
         OperationPayload::ModifyWirePath { wire_id, vertices } => {
             let mut candidate = next

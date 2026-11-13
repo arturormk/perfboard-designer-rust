@@ -382,6 +382,7 @@ export type OperationPayload =
       rail_id: string;
       vertices: Array<{ x2: number; y2: number }>;
     }
+  | { type: "set_rail_color"; rail_id: string; color: WireColor }
   | { type: "add_saddle"; saddle: Saddle }
   | { type: "update_saddle"; saddle: Saddle }
   | { type: "remove_saddle"; saddle_id: string }

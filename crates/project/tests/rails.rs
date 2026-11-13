@@ -217,3 +217,134 @@ fn rail_connections_require_a_stored_half_grid_vertex_and_matching_net() {
         .is_err()
     );
 }
+
+fn net_with_rail(side: Side, vertices: Vec<RoutePos>) -> (ProjectDocument, NetId, RailId) {
+    let mut document = ProjectDocument::new(
+        ProjectId::new(),
+        "rails",
+        Board::new("board", BoardSize::new(6, 6).unwrap(), 2.54),
+    );
+    let net_id = NetId::new();
+    apply(
+        &mut document,
+        OperationPayload::DefineNet {
+            net: ElectricalNet {
+                id: net_id,
+                name: "power".into(),
+                state: ConnectionState::Accepted,
+                pins: BTreeSet::new(),
+                notes: String::new(),
+            },
+        },
+    )
+    .unwrap();
+    let rail_id = RailId::new();
+    apply(
+        &mut document,
+        OperationPayload::AddRail {
+            rail: Rail {
+                id: rail_id,
+                net_id,
+                side,
+                color: WireColor::Red,
+                vertices,
+                locked: false,
+                notes: String::new(),
+            },
+        },
+    )
+    .unwrap();
+    (document, net_id, rail_id)
+}
+
+#[test]
+fn rail_color_can_change_even_when_locked() {
+    let (mut document, _, rail_id) =
+        net_with_rail(Side::Solder, vec![RoutePos::new(0, 0), RoutePos::new(8, 0)]);
+    document.design.rails.get_mut(&rail_id).unwrap().locked = true;
+    apply(
+        &mut document,
+        OperationPayload::SetRailColor {
+            rail_id,
+            color: WireColor::Blue,
+        },
+    )
+    .unwrap();
+    assert_eq!(document.design.rails[&rail_id].color, WireColor::Blue);
+    assert!(
+        apply(
+            &mut document,
+            OperationPayload::SetRailColor {
+                rail_id: RailId::new(),
+                color: WireColor::Blue,
+            },
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn inserted_nodes_take_wires_from_either_side_on_whole_holes() {
+    let (mut document, net_id, rail_id) =
+        net_with_rail(Side::Solder, vec![RoutePos::new(0, 0), RoutePos::new(8, 0)]);
+    // Add a collinear node on hole (2, 0) and one between holes at x2 = 5.
+    apply(
+        &mut document,
+        OperationPayload::ModifyRailPath {
+            rail_id,
+            vertices: vec![
+                RoutePos::new(0, 0),
+                RoutePos::new(4, 0),
+                RoutePos::new(5, 0),
+                RoutePos::new(8, 0),
+            ],
+        },
+    )
+    .unwrap();
+    // A component-side wire between two nodes of a solder-side rail.
+    let wire_between = |from: RoutePos, to: RoutePos, vertices: Vec<RoutePos>| Wire {
+        id: WireId::new(),
+        net_id,
+        start: TerminalRef::RailNode {
+            rail_id,
+            position: from,
+        },
+        end: TerminalRef::RailNode {
+            rail_id,
+            position: to,
+        },
+        side: Side::Component,
+        color: WireColor::Green,
+        vertices,
+        locked: false,
+        notes: String::new(),
+    };
+    // Both ends on whole holes: soldered through the board.
+    let through = wire_between(
+        RoutePos::new(4, 0),
+        RoutePos::new(0, 0),
+        vec![
+            RoutePos::new(4, 0),
+            RoutePos::new(4, 4),
+            RoutePos::new(0, 4),
+            RoutePos::new(0, 0),
+        ],
+    );
+    apply(&mut document, OperationPayload::AddWire { wire: through }).unwrap();
+    // One end between holes cannot reach the other face.
+    let between = wire_between(
+        RoutePos::new(5, 0),
+        RoutePos::new(8, 0),
+        vec![
+            RoutePos::new(5, 0),
+            RoutePos::new(5, 6),
+            RoutePos::new(8, 6),
+            RoutePos::new(8, 0),
+        ],
+    );
+    assert!(
+        apply(&mut document, OperationPayload::AddWire { wire: between })
+            .unwrap_err()
+            .contains("whole hole")
+    );
+}

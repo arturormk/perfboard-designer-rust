@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   netForWireStart,
+  netsAtPin,
   parsePinKey,
   pinsAt,
   pinUsableOnSide,
@@ -65,9 +66,60 @@ describe("wire start net", () => {
     ).toMatch(/proposal/);
     expect(
       netForWireStart(design, { component_id: "r10", pin_id: "a" }, "gnd"),
-    ).toEqual({ netId: "gnd" });
+    ).toEqual({ netId: "gnd", fromActive: true });
     expect(
       netForWireStart(design, { component_id: "r10", pin_id: "a" }, undefined),
     ).toEqual({});
+  });
+});
+
+describe("bridge ends take the net they are soldered to", () => {
+  const withBridge = (id: string, x: number, y: number) => {
+    const design = testDesign();
+    design.components![id] = {
+      ...design.components!.b1!,
+      id,
+      name: id,
+      position: { x, y },
+    };
+    return design;
+  };
+
+  it("reaches across a bridge, and along a chain of bridges", () => {
+    // b1 runs from r1.b (I2C_SDA) at 3,1 to 4,1; b2 continues to 5,1.
+    const design = withBridge("b2", 4, 1);
+    const names = (pin: { component_id: string; pin_id: string }) =>
+      netsAtPin(design, pin).map((net) => net.id);
+    expect(names({ component_id: "b1", pin_id: "b" })).toEqual(["sda"]);
+    expect(names({ component_id: "b2", pin_id: "b" })).toEqual(["sda"]);
+  });
+
+  it("starts a wire on the bridge's net rather than the active one", () => {
+    const design = testDesign();
+    const bridgeEnd = { component_id: "b1", pin_id: "b" };
+    expect(netForWireStart(design, bridgeEnd, "gnd").reason).toMatch(
+      /proposal/,
+    );
+    design.nets!.sda!.state = "accepted";
+    expect(netForWireStart(design, bridgeEnd, "gnd")).toEqual({
+      netId: "sda",
+    });
+  });
+
+  it("borrows the active net only for an unconnected bridge", () => {
+    const design = withBridge("b2", 6, 5);
+    expect(
+      netForWireStart(design, { component_id: "b2", pin_id: "a" }, "gnd"),
+    ).toEqual({ netId: "gnd", fromActive: true });
+  });
+
+  it("refuses a hole where a bridge shorts two nets", () => {
+    const design = testDesign();
+    design.nets!.sda!.state = "accepted";
+    design.nets!.gnd!.pins!.push({ component_id: "b1", pin_id: "b" });
+    expect(
+      netForWireStart(design, { component_id: "b1", pin_id: "b" }, undefined)
+        .reason,
+    ).toMatch(/joins/);
   });
 });

@@ -220,3 +220,45 @@ export function appendOrthogonal(
   if (end.x2 !== target.x2 || end.y2 !== target.y2) result.push(target);
   return result;
 }
+
+/**
+ * Inserts a connection node into a rail at the half-grid point on its nearest
+ * segment closest to the pointer. Unlike wire bend points, rail nodes must lie
+ * exactly on the existing path so the rail's shape never changes. When the
+ * pointer is already on a stored node, that node is returned unchanged.
+ * Returns `undefined` when the segment has no interior grid point.
+ */
+export function insertRailNode(
+  vertices: RoutePoint[],
+  pointer: { x: number; y: number },
+): { vertices: RoutePoint[]; node: RoutePoint; index: number } | undefined {
+  const segmentIndex = closestWireSegmentIndex(vertices, pointer);
+  if (segmentIndex === undefined) return undefined;
+  const start = vertices[segmentIndex]!;
+  const end = vertices[segmentIndex + 1]!;
+  const dx = end.x2 - start.x2;
+  const dy = end.y2 - start.y2;
+  const steps = gcd(dx, dy);
+  if (steps === 0) return undefined;
+  const stepX = dx / steps;
+  const stepY = dy / steps;
+  const projected = Math.round(
+    ((pointer.x * 2 - start.x2) * stepX + (pointer.y * 2 - start.y2) * stepY) /
+      (stepX * stepX + stepY * stepY),
+  );
+  const step = Math.max(0, Math.min(steps, projected));
+  if (step === 0 || step === steps) {
+    const index = segmentIndex + (step === 0 ? 0 : 1);
+    return { vertices, node: vertices[index]!, index };
+  }
+  const node = { x2: start.x2 + stepX * step, y2: start.y2 + stepY * step };
+  return {
+    vertices: [
+      ...vertices.slice(0, segmentIndex + 1),
+      node,
+      ...vertices.slice(segmentIndex + 1),
+    ],
+    node,
+    index: segmentIndex + 1,
+  };
+}

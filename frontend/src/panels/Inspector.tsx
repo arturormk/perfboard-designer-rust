@@ -14,6 +14,8 @@ import {
   focusOn,
   mutate,
   proposeRoute,
+  railNodeLock,
+  removeRailNode,
   removeSelection,
   select,
 } from "../state/actions";
@@ -774,10 +776,79 @@ function RailInspector({
         subtitle={`${rail.vertices.length} connection nodes · ${rail.side} side`}
         onFocus={() => focusOn({ kind: "rail", id: rail.id })}
       />
-      <Section title="About rails">
+      <Section title="Appearance">
+        <div class="field">
+          <span>Insulation colour</span>
+          <div class="swatches">
+            {WIRE_COLORS.map((color) => (
+              <button
+                key={color}
+                class={`swatch${wireColorName(rail.color) === color ? " on" : ""}`}
+                style={{ "--swatch": wireColorCss(color) }}
+                title={color}
+                aria-label={color}
+                onClick={() =>
+                  void mutate(
+                    { type: "set_rail_color", rail_id: rail.id, color },
+                    { failure: "Could not change the rail colour" },
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </Section>
+      <Section title="Connection nodes">
+        <table class="path-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>x</th>
+              <th>y</th>
+              <th>reach</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {rail.vertices.map((vertex, index) => {
+              const lock = railNodeLock(current, rail.id, index);
+              const throughHole = vertex.x2 % 2 === 0 && vertex.y2 % 2 === 0;
+              return (
+                <tr key={`${index}:${vertex.x2}:${vertex.y2}`}>
+                  <td class="mono">{index + 1}</td>
+                  <td class="mono">{vertex.x2 / 2}</td>
+                  <td class="mono">{vertex.y2 / 2}</td>
+                  <td
+                    title={
+                      throughHole
+                        ? "On a hole: wires on either side can connect"
+                        : "Between holes: only wires on the rail's side"
+                    }
+                  >
+                    {throughHole ? "both sides" : `${rail.side} only`}
+                  </td>
+                  <td>
+                    {!lock && (
+                      <button
+                        class="icon-btn small"
+                        aria-label={`Remove node ${index + 1}`}
+                        onClick={() => void removeRailNode(rail.id, index)}
+                      >
+                        <Icon name="close" size={13} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
         <p class="field-note">
-          A rail is a net-owned conductor. Wires on the same net can start or
-          end at any of its nodes.
+          A rail is a net-owned conductor; all its nodes are connected. With the
+          Select tool, double-click the rail to add a node and double-click a
+          node to remove it. With the Wire tool, click anywhere on the rail to
+          add a node and connect to it. Nodes on a hole act like a pin: wires on
+          either side of the board can connect there.
         </p>
       </Section>
       <footer class="inspector-foot">

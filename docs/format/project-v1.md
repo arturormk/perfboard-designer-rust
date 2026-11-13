@@ -71,8 +71,11 @@ Rails extend that circuit model as net-owned polylines with no terminal
 requirement at either end. Like wires, their ordered vertices use canonical
 half-grid (`x2`, `y2`) coordinates and belong to one board side. A wire can use
 a `rail_node` terminal containing a rail ID and position; the position must be
-an explicit stored rail vertex, must belong to the wire's net, and must be on
-the wire's side. All explicit nodes on one rail are electrically connected.
+an explicit stored rail vertex and must belong to the wire's net. A node on a
+whole hole is soldered through that hole, so a wire on either side may connect
+to it; a node between holes can only be reached by wires on the rail's side.
+All explicit nodes on one rail are electrically connected; adding a connection
+point is a `modify_rail_path` that inserts a vertex on an existing segment.
 This deliberately makes connection points stable and editable rather than
 inferring connectivity from geometric crossings.
 

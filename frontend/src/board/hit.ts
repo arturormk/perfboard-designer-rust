@@ -1,5 +1,5 @@
 /** Pure helpers used by the canvas to interpret pointer positions. */
-import type { PinRef, Side, TerminalRef } from "../api/project";
+import type { ElectricalNet, PinRef, Side, TerminalRef } from "../api/project";
 import {
   definitionOf,
   isBridge,
@@ -57,12 +57,64 @@ export function terminalForWireEnd(
 }
 
 /** Which net a new wire should use, given the pin it starts at. */
+/**
+ * The nets electrically present at a pin, as the backend sees them: the pin's
+ * own net, the nets of other pins sharing its hole, and, across bridges
+ * (whose two ends are joined), everything at the far end, chained through
+ * further bridges. A bridge end is usually not in a net itself; it takes the
+ * net of whatever it is soldered to.
+ */
+export function netsAtPin(design: Design, pin: PinRef): ElectricalNet[] {
+  const own = netOfPin(design, pin);
+  const instance = design.components?.[pin.component_id];
+  const definition = definitionOf(design, instance);
+  const start = definition?.pins.find((item) => item.id === pin.pin_id);
+  if (!instance || !start) return own ? [own] : [];
+
+  const bridges = Object.values(design.components ?? {}).flatMap((part) => {
+    const bridge = definitionOf(design, part);
+    if (!isBridge(bridge) || bridge!.pins.length < 2) return [];
+    return [bridge!.pins.map((item) => pinBoardPosition(part, item))];
+  });
+  const key = (point: Point) => `${point.x},${point.y}`;
+  const first = pinBoardPosition(instance, start);
+  const seen = new Set([key(first)]);
+  const queue = [first];
+  while (queue.length) {
+    const point = queue.shift()!;
+    for (const ends of bridges) {
+      if (!ends.some((end) => key(end) === key(point))) continue;
+      for (const end of ends) {
+        if (seen.has(key(end))) continue;
+        seen.add(key(end));
+        queue.push(end);
+      }
+    }
+  }
+
+  const found = new Map<string, ElectricalNet>();
+  if (own) found.set(own.id, own);
+  for (const position of seen) {
+    const [x, y] = position.split(",").map(Number);
+    for (const ref of pinsAt(design, { x: x!, y: y! })) {
+      const net = netOfPin(design, ref);
+      if (net) found.set(net.id, net);
+    }
+  }
+  return [...found.values()];
+}
+
 export function netForWireStart(
   design: Design,
   pin: PinRef,
   activeNetId: string | undefined,
-): { netId?: string; reason?: string } {
-  const owner = netOfPin(design, pin);
+): { netId?: string; reason?: string; fromActive?: boolean } {
+  const nets = netsAtPin(design, pin);
+  if (nets.length > 1)
+    return {
+      reason: `This hole joins ${nets.map((net) => net.name).join(" and ")}; fix that short first`,
+    };
+  const owner = nets[0];
   if (owner) {
     if (owner.state !== "accepted")
       return {
@@ -71,7 +123,8 @@ export function netForWireStart(
     return { netId: owner.id };
   }
   const active = activeNetId ? design.nets?.[activeNetId] : undefined;
-  if (active?.state === "accepted") return { netId: active.id };
+  if (active?.state === "accepted")
+    return { netId: active.id, fromActive: true };
   return {};
 }
 

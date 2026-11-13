@@ -8,6 +8,7 @@ import { useComputed, useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type {
   ComponentDefinition,
+  ElectricalNet,
   Rotation,
   TerminalRef,
 } from "../api/project";
@@ -21,6 +22,7 @@ import {
   placeComponent,
   proposeRoute,
   rejectRoute,
+  removeRailNode,
   select,
 } from "../state/actions";
 import {
@@ -77,10 +79,16 @@ import {
   appendOrthogonal,
   closestWireSegmentIndex,
   finishWireNodeDrag,
+  insertRailNode,
   insertWireNode,
   snappedRoutePoint,
 } from "../editor/wire-routing";
-import { netForWireStart, parsePinKey, terminalForWireEnd } from "./hit";
+import {
+  netForWireStart,
+  netsAtPin,
+  parsePinKey,
+  terminalForWireEnd,
+} from "./hit";
 import { BoardBase } from "./BoardBase";
 import { BoardScene, TEXT_CENTER_DY, defaultViewBox } from "./BoardScene";
 import { CanvasHud } from "./CanvasHud";
@@ -126,6 +134,9 @@ type Gesture =
 
 interface WireDraft {
   netId: string;
+  /** The start had no net of its own and took the active net from the tool
+   * bar, so the wire may still adopt the net of the terminal it ends on. */
+  netFromActive?: boolean;
   start: TerminalRef;
   vertices: RoutePoint[];
 }
@@ -559,6 +570,7 @@ export function BoardCanvas() {
     const draft = wireDraft.peek();
     if (!draft) {
       let netId: string | undefined;
+      let netFromActive = false;
       if (terminal.kind === "pin") {
         const resolved = netForWireStart(target, terminal, activeNetId.peek());
         if (resolved.reason) {
@@ -566,6 +578,7 @@ export function BoardCanvas() {
           return;
         }
         netId = resolved.netId;
+        netFromActive = Boolean(resolved.fromActive);
         if (!netId) {
           const host = svgRef.current?.parentElement?.getBoundingClientRect();
           netPrompt.value = {
@@ -583,37 +596,111 @@ export function BoardCanvas() {
       }
       if (!netId) return;
       activeNetId.value = netId;
-      wireDraft.value = { netId, start: terminal, vertices: [position] };
+      wireDraft.value = {
+        netId,
+        netFromActive,
+        start: terminal,
+        vertices: [position],
+      };
       return;
     }
     if (JSON.stringify(terminal) === JSON.stringify(draft.start)) {
       wireDraft.value = null;
       return;
     }
-    if (terminal.kind === "pin") {
-      const owner = Object.values(target.nets ?? {}).find((net) =>
-        net.pins?.some(
-          (pin) =>
-            pin.component_id === terminal.component_id &&
-            pin.pin_id === terminal.pin_id,
-        ),
-      );
-      if (owner && owner.id !== draft.netId) {
-        toast("error", `That pin belongs to ${owner.name}`, {
-          detail: `This wire carries ${target.nets?.[draft.netId]?.name ?? "another net"}.`,
+    const endNet = endTerminalNet(terminal);
+    if (endNet.reason) {
+      toast("error", endNet.reason);
+      return;
+    }
+    let netId = draft.netId;
+    if (endNet.net && endNet.net.id !== netId) {
+      if (!draft.netFromActive) {
+        toast("error", `That ${endNet.what} carries ${endNet.net.name}`, {
+          detail: `This wire carries ${target.nets?.[netId]?.name ?? "another net"}.`,
         });
         return;
       }
-    } else if (
-      terminal.kind === "rail_node" &&
-      target.rails?.[terminal.rail_id]?.net_id !== draft.netId
-    ) {
-      toast("error", "That rail carries a different net");
-      return;
+      if (endNet.net.state !== "accepted") {
+        toast(
+          "info",
+          `Net ${endNet.net.name} is still a proposal; accept it before wiring`,
+        );
+        return;
+      }
+      // The start was unconnected and only borrowed the active net.
+      netId = endNet.net.id;
+      activeNetId.value = netId;
     }
     const vertices = appendOrthogonal(draft.vertices, position);
     wireDraft.value = null;
-    await addWire(draft.netId, draft.start, terminal, vertices);
+    await addWire(netId, draft.start, terminal, vertices);
+  }
+
+  /** The net already present at a terminal a wire is about to end on. */
+  function endTerminalNet(terminal: TerminalRef): {
+    net?: ElectricalNet;
+    what?: string;
+    reason?: string;
+  } {
+    if (terminal.kind === "pin") {
+      const nets = netsAtPin(target, terminal);
+      if (nets.length > 1)
+        return {
+          reason: `That hole joins ${nets.map((net) => net.name).join(" and ")}`,
+        };
+      return { net: nets[0], what: "pin" };
+    }
+    if (terminal.kind === "rail_node") {
+      const netId = target.rails?.[terminal.rail_id]?.net_id;
+      return { net: netId ? target.nets?.[netId] : undefined, what: "rail" };
+    }
+    return {};
+  }
+
+  /** Wire tool on a rail's body: add a connection node there and use it. */
+  async function wireToNewRailNode(
+    railId: string,
+    point: { x: number; y: number },
+    event: PointerEvent,
+  ): Promise<void> {
+    const rail = target.rails?.[railId];
+    if (!rail) return;
+    const draft = wireDraft.peek();
+    if (draft && rail.net_id !== draft.netId && !draft.netFromActive) {
+      toast(
+        "error",
+        `That rail carries ${target.nets?.[rail.net_id]?.name ?? "a different net"}`,
+        {
+          detail: `This wire carries ${target.nets?.[draft.netId]?.name ?? "another net"}.`,
+        },
+      );
+      return;
+    }
+    const inserted = insertRailNode(rail.vertices, point);
+    if (!inserted) return;
+    if (inserted.vertices !== rail.vertices) {
+      if (rail.locked) {
+        toast("info", "This rail is locked", {
+          detail: "Connect at one of its existing nodes instead.",
+        });
+        return;
+      }
+      const added = await mutate(
+        {
+          type: "modify_rail_path",
+          rail_id: rail.id,
+          vertices: inserted.vertices,
+        },
+        { failure: "Could not add a node to the rail" },
+      );
+      if (!added) return;
+    }
+    await wireClickTerminal(
+      { kind: "rail_node", rail_id: rail.id, position: { ...inserted.node } },
+      inserted.node,
+      event,
+    );
   }
 
   function onPointerDown(event: PointerEvent): void {
@@ -806,6 +893,10 @@ export function BoardCanvas() {
             position,
             event,
           );
+        return;
+      }
+      if (railEl) {
+        void wireToNewRailNode(railEl.dataset.rail!, point, event);
         return;
       }
       const draft = wireDraft.peek();
@@ -1097,8 +1188,34 @@ export function BoardCanvas() {
       });
       return;
     }
-    const wireEl = element.closest<SVGElement>("[data-wire]");
+    const railNodeEl = element.closest<SVGElement>("[data-rail-node]");
+    if (railNodeEl) {
+      const [railId, index] = railNodeEl.dataset.railNode!.split(":");
+      void removeRailNode(railId!, Number(index));
+      return;
+    }
+    const railEl = element.closest<SVGElement>("[data-rail]");
     const point = canonical(event);
+    if (railEl && point) {
+      const rail = target.rails?.[railEl.dataset.rail!];
+      if (!rail) return;
+      if (rail.locked) {
+        toast("info", "This rail is locked");
+        return;
+      }
+      const inserted = insertRailNode(rail.vertices, point);
+      if (inserted && inserted.vertices !== rail.vertices)
+        void mutate(
+          {
+            type: "modify_rail_path",
+            rail_id: rail.id,
+            vertices: inserted.vertices,
+          },
+          { failure: "Could not add a node to the rail" },
+        );
+      return;
+    }
+    const wireEl = element.closest<SVGElement>("[data-wire]");
     if (wireEl && point) {
       const wire = target.wires?.[wireEl.dataset.wire!];
       if (!wire || wire.locked) return;

@@ -248,6 +248,41 @@ function WireShape({
 }
 
 /**
+ * The nodes of a rail on the other face that sit on whole holes. They are
+ * soldered through the board, so wires on this face can connect to them.
+ */
+function RailThroughNodes({
+  rail,
+  stateClass,
+}: {
+  rail: Rail;
+  stateClass: string;
+}) {
+  const nodes = rail.vertices
+    .map((point, index) => ({ point, index }))
+    .filter(({ point }) => point.x2 % 2 === 0 && point.y2 % 2 === 0);
+  if (!nodes.length) return null;
+  return (
+    <g
+      class={classes("rail-through", stateClass)}
+      style={{ "--wire": wireColorCss(rail.color) }}
+      data-rail={rail.id}
+    >
+      {nodes.map(({ point, index }) => (
+        <circle
+          key={index}
+          class="rail-node"
+          cx={point.x2 / 2}
+          cy={point.y2 / 2}
+          r={0.22}
+          data-rail-node={`${rail.id}:${index}`}
+        />
+      ))}
+    </g>
+  );
+}
+
+/**
  * A wire tie: a strap lying across wires on its own face, with its two legs
  * soldered on the far face. Seen from the far face only the joints matter.
  */
@@ -645,6 +680,16 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                 stateClass={stateOf(wire.id, wire.net_id)}
               />
             ))}
+          {interactive &&
+            rails
+              .filter((rail) => rail.side !== side)
+              .map((rail) => (
+                <RailThroughNodes
+                  key={rail.id}
+                  rail={rail}
+                  stateClass={stateOf(rail.id, rail.net_id)}
+                />
+              ))}
         </g>
 
         <g class="layer-saddles">

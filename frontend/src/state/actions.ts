@@ -605,6 +605,64 @@ export function removeSelection(): void {
   selection.value = null;
 }
 
+// ── Rails ──────────────────────────────────────────────────────────────────
+
+/**
+ * Why a rail node cannot be removed, or `undefined` when it can. Only plain
+ * connection points (collinear with both neighbours) are removable, so the
+ * rail's shape never changes; its ends and corners stay.
+ */
+export function railNodeLock(
+  current: Design,
+  railId: string,
+  index: number,
+): string | undefined {
+  const rail = current.rails?.[railId];
+  const node = rail?.vertices[index];
+  if (!rail || !node) return "That node no longer exists";
+  if (rail.locked) return "This rail is locked";
+  const before = rail.vertices[index - 1];
+  const after = rail.vertices[index + 1];
+  if (!before || !after) return "A rail end cannot be removed";
+  const collinear =
+    (node.x2 - before.x2) * (after.y2 - node.y2) ===
+    (node.y2 - before.y2) * (after.x2 - node.x2);
+  if (!collinear) return "A rail corner cannot be removed";
+  const used = Object.values(current.wires ?? {}).some((wire) =>
+    [wire.start, wire.end].some(
+      (terminal) =>
+        terminal.kind === "rail_node" &&
+        terminal.rail_id === railId &&
+        terminal.position.x2 === node.x2 &&
+        terminal.position.y2 === node.y2,
+    ),
+  );
+  if (used) return "A wire is connected to this node";
+  return undefined;
+}
+
+export async function removeRailNode(
+  railId: string,
+  index: number,
+): Promise<void> {
+  const current = design.peek();
+  if (!current) return;
+  const reason = railNodeLock(current, railId, index);
+  if (reason) {
+    toast("info", reason);
+    return;
+  }
+  const rail = current.rails![railId]!;
+  await mutate(
+    {
+      type: "modify_rail_path",
+      rail_id: railId,
+      vertices: rail.vertices.filter((_, position) => position !== index),
+    },
+    { failure: "Could not remove the rail node" },
+  );
+}
+
 // ── Nets ───────────────────────────────────────────────────────────────────
 
 export async function createNet(

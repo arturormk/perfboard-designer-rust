@@ -3,6 +3,7 @@ import {
   appendOrthogonal,
   closestWireSegmentIndex,
   finishWireNodeDrag,
+  insertRailNode,
   insertWireNode,
   isStraightRoute,
   orthogonalRoute,
@@ -137,6 +138,43 @@ describe("wire route shapes", () => {
         { x2: 6, y2: 0 },
       ],
       deleted: true,
+    });
+  });
+});
+
+describe("rail connection nodes", () => {
+  const rail = [
+    { x2: 0, y2: 0 },
+    { x2: 8, y2: 0 },
+    { x2: 8, y2: 6 },
+  ];
+
+  it("inserts a node on the path nearest the pointer", () => {
+    expect(insertRailNode(rail, { x: 2.1, y: 0.2 })).toEqual({
+      vertices: [rail[0], { x2: 4, y2: 0 }, rail[1], rail[2]],
+      node: { x2: 4, y2: 0 },
+      index: 1,
+    });
+    expect(insertRailNode(rail, { x: 3.9, y: 1.6 })?.node).toEqual({
+      x2: 8,
+      y2: 3,
+    });
+  });
+
+  it("reuses an existing node instead of duplicating it", () => {
+    const result = insertRailNode(rail, { x: 4.1, y: 0.1 });
+    expect(result?.vertices).toBe(rail);
+    expect(result?.index).toBe(1);
+  });
+
+  it("keeps diagonal nodes exactly on the segment", () => {
+    const diagonal = [
+      { x2: 0, y2: 0 },
+      { x2: 6, y2: 4 },
+    ];
+    expect(insertRailNode(diagonal, { x: 1.6, y: 1 })?.node).toEqual({
+      x2: 3,
+      y2: 2,
     });
   });
 });

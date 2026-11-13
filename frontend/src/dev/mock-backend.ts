@@ -275,6 +275,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
     case "modify_rail_path":
       d.rails![op.rail_id]!.vertices = op.vertices;
       return;
+    case "set_rail_color":
+      d.rails![op.rail_id]!.color = op.color;
+      return;
     case "add_saddle":
     case "update_saddle":
       d.saddles = { ...d.saddles, [op.saddle.id]: op.saddle };
