@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{NetId, RailId, RoutePos, Side, TerminalRef, WireId};
+use crate::{HolePos, NetId, RailId, RoutePos, SaddleId, Side, TerminalRef, WireId};
 
 #[derive(
     Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
@@ -108,6 +108,37 @@ pub struct Rail {
     pub locked: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub notes: String,
+}
+
+/// A mechanical wire tie: a short straight strap whose two legs pass through
+/// free holes on either side of the wires it holds down, and are soldered on
+/// the opposite face.
+///
+/// A saddle belongs to no net and has no terminals. Its end holes must stay
+/// electrically unused: no pin, junction, wire, rail, bridge or other saddle.
+/// `side` is the face where the strap lies, i.e. the face of the wires it holds.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct Saddle {
+    pub id: SaddleId,
+    pub side: Side,
+    pub start: HolePos,
+    pub end: HolePos,
+    #[serde(default = "default_saddle_color")]
+    pub color: WireColor,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
+}
+
+impl Saddle {
+    /// The strap as a two-vertex half-grid polyline.
+    #[must_use]
+    pub fn vertices(&self) -> [RoutePos; 2] {
+        [self.start.as_route_pos(), self.end.as_route_pos()]
+    }
+}
+
+const fn default_saddle_color() -> WireColor {
+    WireColor::Black
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]

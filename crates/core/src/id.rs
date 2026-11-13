@@ -68,6 +68,7 @@ typed_id!(PinId);
 typed_id!(NetId);
 typed_id!(WireId);
 typed_id!(RailId);
+typed_id!(SaddleId);
 typed_id!(JunctionId);
 typed_id!(ConstraintId);
 typed_id!(OperationId);

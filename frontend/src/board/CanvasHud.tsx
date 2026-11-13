@@ -221,6 +221,16 @@ function ToolOptions(props: {
         </span>
       </div>
     );
+  if (current === "saddle")
+    return (
+      <div class="tool-options">
+        <strong>Saddle</strong>
+        <span class="hint">
+          Click a free hole, then another across the wires to hold them down ·
+          the strap lies on the side you are viewing · <kbd>Esc</kbd> cancel
+        </span>
+      </div>
+    );
   if (current === "bridge")
     return (
       <div class="tool-options">

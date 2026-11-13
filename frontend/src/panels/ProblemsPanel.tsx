@@ -41,6 +41,7 @@ function locate(item: Diagnostic): void {
     target.kind === "component" ||
     target.kind === "wire" ||
     target.kind === "rail" ||
+    target.kind === "saddle" ||
     target.kind === "net"
       ? target.kind
       : undefined;

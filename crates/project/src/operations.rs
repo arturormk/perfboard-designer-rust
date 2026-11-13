@@ -4,7 +4,7 @@ use perfboard_core::{
     BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState,
     Constraint, ConstraintId, ConstraintKind, Diagnostic, DiagnosticSeverity, ElectricalNet,
     HolePos, JumperInventoryEntry, Junction, JunctionId, NetId, OperationId, PinRef, Rail, RailId,
-    Rotation, RoutePos, RouteProposal, Side, Wire, WireColor, WireId,
+    Rotation, RoutePos, RouteProposal, Saddle, SaddleId, Side, Wire, WireColor, WireId,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -115,6 +115,17 @@ pub enum OperationPayload {
     ModifyRailPath {
         rail_id: RailId,
         vertices: Vec<RoutePos>,
+    },
+    /// Adds a net-free wire tie between two free holes.
+    AddSaddle {
+        saddle: Saddle,
+    },
+    /// Replaces a saddle's holes, side, color or notes.
+    UpdateSaddle {
+        saddle: Saddle,
+    },
+    RemoveSaddle {
+        saddle_id: SaddleId,
     },
     RemoveWire {
         wire_id: WireId,
@@ -244,6 +255,16 @@ pub enum OperationError {
     LockedWire,
     #[error("locked rail cannot be changed")]
     LockedRail,
+    #[error("saddle already exists")]
+    DuplicateSaddle,
+    #[error("saddle was not found")]
+    SaddleNotFound,
+    #[error("saddle needs two different holes on the board")]
+    InvalidSaddle,
+    #[error("saddle hole is not free: {0}")]
+    SaddleHoleOccupied(String),
+    #[error("saddle passes over a component pin")]
+    SaddleCrossesPin,
     #[error("route proposal does not match the current design or its terminals")]
     InvalidRouteProposal,
     #[error("object is still referenced by circuit or routing data")]
@@ -283,6 +304,24 @@ pub fn apply_operation(
     });
     document.redo_stack.clear();
     Ok(result)
+}
+
+fn check_saddle(design: &crate::Design, saddle: &Saddle) -> Result<(), OperationError> {
+    let size = design.board.size;
+    if saddle.start == saddle.end
+        || [saddle.start, saddle.end]
+            .iter()
+            .any(|hole| hole.x >= size.holes_x() || hole.y >= size.holes_y())
+    {
+        return Err(OperationError::InvalidSaddle);
+    }
+    if let Some(reason) = crate::saddles::hole_conflict(design, saddle) {
+        return Err(OperationError::SaddleHoleOccupied(reason));
+    }
+    if crate::saddles::crosses_pin(design, saddle) {
+        return Err(OperationError::SaddleCrossesPin);
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_lines, clippy::similar_names)] // This match is the auditable operation registry.
@@ -375,6 +414,10 @@ pub(crate) fn apply_operation_untracked(
                     translate_route(vertex)?;
                 }
                 affected_nets.insert(rail.net_id);
+            }
+            for saddle in next.design.saddles.values_mut() {
+                crate::saddles::translate(saddle, *offset_x, *offset_y)
+                    .ok_or(OperationError::BoardResizeOutOfRange)?;
             }
             for hole in &mut next.design.board.features.mounting_holes {
                 translate_hole(&mut hole.position)?;
@@ -695,6 +738,29 @@ pub(crate) fn apply_operation_untracked(
             affected_nets.insert(wire.net_id);
             affected_wires.insert(wire.id);
             format!("Added wire {}", wire.id)
+        }
+        OperationPayload::AddSaddle { saddle } => {
+            if next.design.saddles.contains_key(&saddle.id) {
+                return Err(OperationError::DuplicateSaddle);
+            }
+            check_saddle(&next.design, saddle)?;
+            next.design.saddles.insert(saddle.id, saddle.clone());
+            format!("Added saddle {}", saddle.id)
+        }
+        OperationPayload::UpdateSaddle { saddle } => {
+            if !next.design.saddles.contains_key(&saddle.id) {
+                return Err(OperationError::SaddleNotFound);
+            }
+            check_saddle(&next.design, saddle)?;
+            next.design.saddles.insert(saddle.id, saddle.clone());
+            format!("Updated saddle {}", saddle.id)
+        }
+        OperationPayload::RemoveSaddle { saddle_id } => {
+            next.design
+                .saddles
+                .remove(saddle_id)
+                .ok_or(OperationError::SaddleNotFound)?;
+            format!("Removed saddle {saddle_id}")
         }
         OperationPayload::RemoveWire { wire_id } => {
             if next

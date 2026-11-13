@@ -156,6 +156,7 @@ function announceExternalChanges(
       ...entry.diff.components,
       ...entry.diff.wires,
       ...entry.diff.rails,
+      ...(entry.diff.saddles ?? []),
       ...entry.diff.nets,
     ])
       touched.add(item.object_id);
@@ -255,6 +256,7 @@ function objectExists(target: Design, item: Selection): boolean {
   if (item.kind === "component") return Boolean(target.components?.[item.id]);
   if (item.kind === "wire") return Boolean(target.wires?.[item.id]);
   if (item.kind === "rail") return Boolean(target.rails?.[item.id]);
+  if (item.kind === "saddle") return Boolean(target.saddles?.[item.id]);
   return Boolean(target.nets?.[item.id]);
 }
 
@@ -459,11 +461,7 @@ export function select(
   options: { focus?: boolean } = {},
 ): void {
   const current = design.peek();
-  if (
-    next &&
-    current &&
-    (next.kind === "component" || next.kind === "wire" || next.kind === "rail")
-  ) {
+  if (next && current && next.kind !== "net") {
     const objectSide = sideOf(current, next);
     if (objectSide && objectSide !== side.peek()) side.value = objectSide;
   }
@@ -475,6 +473,7 @@ export function select(
 export function sideOf(target: Design, item: Selection): Side | undefined {
   if (item.kind === "wire") return target.wires?.[item.id]?.side;
   if (item.kind === "rail") return target.rails?.[item.id]?.side;
+  if (item.kind === "saddle") return target.saddles?.[item.id]?.side;
   if (item.kind === "component")
     return componentSide(definitionOf(target, target.components?.[item.id]));
   return undefined;
@@ -494,6 +493,9 @@ export function boundsOf(
     points.push(...(target.wires?.[item.id]?.vertices ?? []).map(fromRoute));
   } else if (item.kind === "rail") {
     points.push(...(target.rails?.[item.id]?.vertices ?? []).map(fromRoute));
+  } else if (item.kind === "saddle") {
+    const saddle = target.saddles?.[item.id];
+    if (saddle) points.push(saddle.start, saddle.end);
   } else {
     for (const pin of target.nets?.[item.id]?.pins ?? []) {
       const point = pinPosition(target, pin);
@@ -597,6 +599,8 @@ export function removeSelection(): void {
     void mutate({ type: "remove_wire", wire_id: current.id });
   else if (current.kind === "rail")
     void mutate({ type: "remove_rail", rail_id: current.id });
+  else if (current.kind === "saddle")
+    void mutate({ type: "remove_saddle", saddle_id: current.id });
   else void mutate({ type: "remove_net", net_id: current.id });
   selection.value = null;
 }

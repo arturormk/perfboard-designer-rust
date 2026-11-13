@@ -495,6 +495,11 @@ fn blocked_positions(
     for junction in design.junctions.values() {
         blocked.insert(junction.position.as_route_pos());
     }
+    // Saddle legs pass through the board and are soldered on the far face,
+    // so their holes are obstacles on both sides.
+    for saddle in design.saddles.values() {
+        blocked.extend(saddle.vertices());
+    }
     blocked.remove(&start);
     blocked.remove(&end);
     blocked

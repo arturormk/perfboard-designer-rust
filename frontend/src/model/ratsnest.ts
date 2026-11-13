@@ -75,7 +75,13 @@ export function changedObjectIds(
   after: Design | undefined,
 ): Set<string> {
   const changed = new Set<string>();
-  const collections = ["components", "wires", "rails", "nets"] as const;
+  const collections = [
+    "components",
+    "wires",
+    "rails",
+    "saddles",
+    "nets",
+  ] as const;
   for (const key of collections) {
     const left = (before?.[key] ?? {}) as Record<string, unknown>;
     const right = (after?.[key] ?? {}) as Record<string, unknown>;

@@ -25,6 +25,7 @@ function touched(entry: ChangeSummary): Set<string> {
       ...entry.diff.components,
       ...entry.diff.wires,
       ...entry.diff.rails,
+      ...(entry.diff.saddles ?? []),
       ...entry.diff.nets,
     ].map((item) => item.object_id),
   );
@@ -48,6 +49,7 @@ function Entry({ entry, undone }: { entry: ChangeSummary; undone?: boolean }) {
     ...entry.diff.nets,
     ...entry.diff.wires,
     ...entry.diff.rails,
+    ...(entry.diff.saddles ?? []),
     ...entry.diff.constraints,
   ];
   return (

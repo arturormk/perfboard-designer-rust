@@ -12,6 +12,7 @@ import type {
   ComponentDefinition,
   ComponentInstance,
   Rail,
+  Saddle,
   Side,
   Wire,
 } from "../api/project";
@@ -48,6 +49,7 @@ export interface SceneProps {
   airwires?: Airwire[];
   wireLabels?: Map<string, string>;
   railLabels?: Map<string, string>;
+  saddleLabels?: Map<string, string>;
   /**
    * Draw the substrate and hole grid in SVG (default). The interactive
    * canvas passes `false` and draws them on a `<BoardBase>` canvas instead.
@@ -246,6 +248,51 @@ function WireShape({
 }
 
 /**
+ * A wire tie: a strap lying across wires on its own face, with its two legs
+ * soldered on the far face. Seen from the far face only the joints matter.
+ */
+function SaddleShape({
+  saddle,
+  stateClass,
+  opposite,
+  interactive,
+}: {
+  saddle: Saddle;
+  stateClass: string;
+  opposite: boolean;
+  interactive: boolean;
+}) {
+  const { start, end } = saddle;
+  const line = { x1: start.x, y1: start.y, x2: end.x, y2: end.y };
+  return (
+    <g
+      class={classes(
+        "saddle",
+        opposite && "opposite",
+        isDarkWire(saddle.color) && "dark",
+        stateClass,
+      )}
+      style={{ "--wire": wireColorCss(saddle.color) }}
+      {...(interactive && !opposite ? { "data-saddle": saddle.id } : {})}
+    >
+      {interactive && !opposite && <line class="saddle-hit" {...line} />}
+      <line class="saddle-halo" {...line} />
+      <line class="saddle-casing" {...line} />
+      <line class="saddle-core" {...line} />
+      {[start, end].map((point, index) => (
+        <circle
+          key={index}
+          class={opposite ? "saddle-joint" : "saddle-leg"}
+          cx={point.x}
+          cy={point.y}
+          r={opposite ? 0.26 : 0.16}
+        />
+      ))}
+    </g>
+  );
+}
+
+/**
  * The scene wrapper. The expensive static layers are memoized so that
  * camera changes, cursor moves and tool previews (the overlays) do not
  * rebuild every part, wire and pad.
@@ -298,6 +345,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
     airwires,
     wireLabels,
     railLabels,
+    saddleLabels,
     baseLayer = true,
   } = props;
   const board = design.board;
@@ -340,6 +388,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
   const ownBridges = own.filter((item) => item.definition.kind === "bridge");
   const wires = Object.values(design.wires ?? {});
   const rails = Object.values(design.rails ?? {});
+  const saddles = Object.values(design.saddles ?? {});
 
   // Pads: every pin of every non-bridge part is a solder point on the board.
   const pads = placed
@@ -477,6 +526,17 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                 stateClass={stateOf(wire.id, wire.net_id)}
               />
             ))}
+          {saddles
+            .filter((saddle) => saddle.side !== side)
+            .map((saddle) => (
+              <SaddleShape
+                key={saddle.id}
+                saddle={saddle}
+                opposite
+                interactive={false}
+                stateClass={stateOf(saddle.id)}
+              />
+            ))}
         </g>
 
         {removed && (
@@ -583,6 +643,20 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                 interactive={interactive}
                 opposite={false}
                 stateClass={stateOf(wire.id, wire.net_id)}
+              />
+            ))}
+        </g>
+
+        <g class="layer-saddles">
+          {saddles
+            .filter((saddle) => saddle.side === side)
+            .map((saddle) => (
+              <SaddleShape
+                key={saddle.id}
+                saddle={saddle}
+                interactive={interactive}
+                opposite={false}
+                stateClass={stateOf(saddle.id)}
               />
             ))}
         </g>
@@ -755,6 +829,21 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                 />
               );
             })}
+        {saddleLabels &&
+          saddles
+            .filter(
+              (saddle) =>
+                saddle.side === side &&
+                (mode === "print" || selection?.id === saddle.id),
+            )
+            .map((saddle) => (
+              <WireLabel
+                key={saddle.id}
+                x={vx((saddle.start.x + saddle.end.x) / 2)}
+                y={(saddle.start.y + saddle.end.y) / 2}
+                text={saddleLabels.get(saddle.id) ?? "Saddle"}
+              />
+            ))}
       </g>
     </>
   );

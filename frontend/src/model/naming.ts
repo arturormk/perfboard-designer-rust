@@ -71,6 +71,12 @@ export function railLabels(design: Design): Map<string, string> {
   );
 }
 
+export function saddleLabels(design: Design): Map<string, string> {
+  return new Map(
+    Object.keys(design.saddles ?? {}).map((id, index) => [id, `S${index + 1}`]),
+  );
+}
+
 export function netOfPin(
   design: Design,
   ref: PinRef,

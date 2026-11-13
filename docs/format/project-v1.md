@@ -76,6 +76,20 @@ the wire's side. All explicit nodes on one rail are electrically connected.
 This deliberately makes connection points stable and editable rather than
 inferring connectivity from geometric crossings.
 
+Saddles are mechanical wire ties stored in the optional `saddles` map, keyed by
+typed UUID. Each records `side` (the face the strap lies on, i.e. the face of
+the wires it holds), whole-hole `start` and `end` positions (`x`, `y`), a
+`color` (default `black`) and optional `notes`. A saddle belongs to no net,
+has no terminals and never contributes to connectivity. Its two holes must
+differ, lie on the board, and be free: no component pin or covered hole,
+junction, wire or rail path, other saddle, mounting hole or forbidden area.
+Adding or updating a saddle that violates this, or whose strap passes over a
+component pin, is rejected. Later edits that take a saddle hole are reported as
+`saddle.hole_conflict` warnings, and a saddle that crosses no wire or rail on
+its side is reported as a `saddle.holds_nothing` advisory. The router treats
+saddle holes as obstacles on both faces, because the legs are soldered on the
+far face.
+
 The permanent minimal fixture is
 [`tests/fixtures/project-v1/empty-1x1.perfboard.json`](../../tests/fixtures/project-v1/empty-1x1.perfboard.json).
 

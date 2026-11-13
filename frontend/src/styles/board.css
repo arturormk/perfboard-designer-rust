@@ -692,6 +692,103 @@
   stroke-dasharray: 0.3 0.18;
 }
 
+/* Saddles (net-free wire ties): a strap across wires, legs in free holes. */
+.saddle {
+  cursor: pointer;
+}
+
+.saddle line,
+.saddle-draft line {
+  stroke-linecap: round;
+}
+
+.saddle-hit {
+  stroke: transparent;
+  stroke-width: 0.8;
+}
+
+.saddle-halo {
+  stroke: transparent;
+  stroke-width: 0.72;
+  transition: stroke 0.12s;
+}
+
+.saddle-casing {
+  stroke: rgb(20 14 8 / 75%);
+  stroke-width: 0.42;
+}
+
+.saddle.dark .saddle-casing {
+  stroke: rgb(255 248 236 / 60%);
+}
+
+.saddle-core {
+  stroke: var(--wire);
+  stroke-width: 0.3;
+}
+
+.saddle-leg {
+  fill: var(--wire);
+  stroke: rgb(255 248 236 / 70%);
+  stroke-width: 0.05;
+}
+
+.saddle-joint {
+  fill: var(--joint);
+  stroke: rgb(30 30 30 / 60%);
+  stroke-width: 0.04;
+}
+
+.saddle.hovered .saddle-halo {
+  stroke: rgb(255 255 255 / 20%);
+}
+
+.saddle.selected .saddle-halo {
+  stroke: rgb(240 168 108 / 55%);
+}
+
+.saddle.diff-added .saddle-halo {
+  stroke: rgb(108 194 138 / 55%);
+}
+
+.saddle.diff-modified .saddle-halo,
+.saddle.diff-moved .saddle-halo {
+  stroke: rgb(231 184 78 / 50%);
+}
+
+.saddle.flash .saddle-halo {
+  animation: agent-flash-halo 1.4s ease-in-out 2;
+}
+
+.saddle.dim {
+  opacity: 0.25;
+}
+
+.saddle.opposite .saddle-halo,
+.saddle.opposite .saddle-casing {
+  display: none;
+}
+
+.saddle.opposite .saddle-core {
+  stroke-width: 0.14;
+  stroke-dasharray: 0.3 0.18;
+  opacity: 0.32;
+}
+
+.saddle-draft {
+  pointer-events: none;
+}
+
+.saddle-draft line {
+  stroke: #f2efe9;
+  stroke-width: 0.26;
+  stroke-dasharray: 0.3 0.15;
+}
+
+.saddle-draft circle {
+  fill: #f2efe9;
+}
+
 /* Bridges (solder-side links) */
 .bridge {
   cursor: pointer;

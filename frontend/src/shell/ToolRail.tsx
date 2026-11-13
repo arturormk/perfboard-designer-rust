@@ -6,6 +6,7 @@ const TOOLS: Array<{ id: Tool; icon: IconName; label: string; key: string }> = [
   { id: "wire", icon: "wire", label: "Draw wire", key: "W" },
   { id: "bridge", icon: "bridge", label: "Place bridge", key: "B" },
   { id: "rail", icon: "rail", label: "Draw rail", key: "L" },
+  { id: "saddle", icon: "saddle", label: "Tie down wires (saddle)", key: "S" },
   { id: "resize", icon: "resize", label: "Resize board", key: "" },
 ];
 

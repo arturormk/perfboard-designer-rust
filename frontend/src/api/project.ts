@@ -184,6 +184,15 @@ export interface Rail {
   locked?: boolean;
   notes?: string;
 }
+/** A net-free wire tie: a strap between two free holes holding wires down. */
+export interface Saddle {
+  id: string;
+  side: Side;
+  start: HolePos;
+  end: HolePos;
+  color: WireColor;
+  notes?: string;
+}
 export type ConstraintSeverity = "required" | "preferred" | "advisory";
 export type Constraint = {
   id: string;
@@ -271,6 +280,7 @@ export interface ProjectDocument {
     nets?: Record<string, ElectricalNet>;
     wires?: Record<string, Wire>;
     rails?: Record<string, Rail>;
+    saddles?: Record<string, Saddle>;
     constraints?: Record<string, Constraint>;
     jumper_inventory?: Record<string, JumperInventoryEntry>;
     crossing_choices?: Record<
@@ -325,6 +335,7 @@ export interface SemanticDiff {
   nets: DiffEntry[];
   wires: DiffEntry[];
   rails: DiffEntry[];
+  saddles: DiffEntry[];
   constraints: DiffEntry[];
   routes: DiffEntry[];
 }
@@ -371,6 +382,9 @@ export type OperationPayload =
       rail_id: string;
       vertices: Array<{ x2: number; y2: number }>;
     }
+  | { type: "add_saddle"; saddle: Saddle }
+  | { type: "update_saddle"; saddle: Saddle }
+  | { type: "remove_saddle"; saddle_id: string }
   | { type: "remove_wire"; wire_id: string }
   | {
       type: "modify_wire_path";

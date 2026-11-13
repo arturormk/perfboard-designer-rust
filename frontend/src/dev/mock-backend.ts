@@ -54,6 +54,7 @@ function emptyDiff(): SemanticDiff {
     nets: [],
     wires: [],
     rails: [],
+    saddles: [],
     constraints: [],
     routes: [],
   };
@@ -62,7 +63,7 @@ function emptyDiff(): SemanticDiff {
 function diffDesigns(before: Design, after: Design): SemanticDiff {
   const diff = emptyDiff();
   const visit = (
-    key: "components" | "wires" | "rails" | "nets",
+    key: "components" | "wires" | "rails" | "saddles" | "nets",
     type: string,
   ) => {
     const left = (before[key] ?? {}) as Record<string, { name?: string }>;
@@ -83,6 +84,7 @@ function diffDesigns(before: Design, after: Design): SemanticDiff {
   visit("components", "component");
   visit("wires", "wire");
   visit("rails", "rail");
+  visit("saddles", "saddle");
   visit("nets", "net");
   return diff;
 }
@@ -272,6 +274,13 @@ function applyPayload(design: Design, op: OperationPayload): void {
       return;
     case "modify_rail_path":
       d.rails![op.rail_id]!.vertices = op.vertices;
+      return;
+    case "add_saddle":
+    case "update_saddle":
+      d.saddles = { ...d.saddles, [op.saddle.id]: op.saddle };
+      return;
+    case "remove_saddle":
+      delete d.saddles?.[op.saddle_id];
       return;
     case "resize_board":
       d.board.holes_x = op.holes_x;

@@ -29,11 +29,11 @@ pub use diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity, ObjectRefer
 pub use geometry::{BoardSize, GeometryError, HolePos, Rotation, RoutePos, Side};
 pub use id::{
     CommitId, ComponentDefinitionId, ComponentInstanceId, ConstraintId, JunctionId, NetId,
-    OperationId, PinId, ProjectId, RailId, WireId,
+    OperationId, PinId, ProjectId, RailId, SaddleId, WireId,
 };
 pub use layout::ComponentInstance;
 pub use routing::{
     CrossingChoice, JumperMatch, JumperMatchKind, Rail, RouteCostBreakdown, RouteCrossing,
-    RouteMeasurements, RouteProposal, Wire, WireColor, measure_route,
+    RouteMeasurements, RouteProposal, Saddle, Wire, WireColor, measure_route,
 };
 pub use validation::{PlacementPolicy, validate_design_placements};

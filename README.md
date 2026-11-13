@@ -101,6 +101,10 @@ keyboard shortcuts.
   lines show connections that are still unrouted; click one to get a suggested
   route, then accept or discard it. Bridges (`B`) and rails (`L`) have their own
   tools.
+- **Tie wires down** with the saddle tool (`S`): click a free hole on each side
+  of a wire or bundle. A saddle is a short strap, typically black wire,
+  soldered into both holes; it belongs to no net, so its holes must stay clear
+  of pins, wires, rails and junctions, and the router avoids them.
 - **Component side / Solder side** switches the face. The solder side is
   mirrored, as seen when the board is flipped; only the presentation is
   mirrored and stored coordinates stay canonical.

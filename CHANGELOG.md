@@ -11,6 +11,8 @@ Development line `v0.1.x`: the first public development builds.
 
 - Graphical perfboard editor with component and solder side views, parts,
   nets, wires, bridges, and rails.
+- Saddles: net-free wire ties that hold wires and bundles to the board through
+  two free holes (`S`).
 - Revisioned working copy with undo, commits, comparison, and restore.
 - Deterministic automatic routing with route proposals.
 - Validation with problems that frame the affected objects.

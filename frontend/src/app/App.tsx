@@ -100,6 +100,10 @@ function handleKey(event: KeyboardEvent): void {
     case "B":
       activateTool("bridge");
       return;
+    case "s":
+    case "S":
+      activateTool("saddle");
+      return;
     case "f":
     case "F":
       side.value = side.value === "component" ? "solder" : "component";

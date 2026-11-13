@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use perfboard_core::{
-    ComponentDefinition, ComponentInstance, ComponentKind, Rotation, Side, WireColor,
+    ComponentDefinition, ComponentInstance, ComponentKind, Rotation, Saddle, Side, WireColor,
 };
 
 use crate::ProjectDocument;
@@ -16,7 +16,7 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
     let height = f64::from(board.size.intervals_y()) + padding * 2.0;
     let _ = write!(
         svg,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
         escape(&board.name),
         side
     );
@@ -66,6 +66,9 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
             rail.id,
             escape(wire_color(&rail.color))
         );
+    }
+    for saddle in document.design.saddles.values() {
+        render_saddle(&mut svg, saddle, side);
     }
     for instance in document.design.components.values() {
         if let Some(definition) = document
@@ -151,6 +154,23 @@ fn render_component(
         );
     }
     svg.push_str("</g>");
+}
+
+fn render_saddle(svg: &mut String, saddle: &Saddle, side: Side) {
+    let [start, end] = saddle.vertices();
+    let opposite = if saddle.side == side { "" } else { " opposite" };
+    let (x1, y1, x2, y2) = (
+        half_grid(start.x2),
+        half_grid(start.y2),
+        half_grid(end.x2),
+        half_grid(end.y2),
+    );
+    let _ = write!(
+        svg,
+        r#"<g class="saddle-group{opposite}" data-saddle-id="{id}"><line class="saddle" x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{color}"/><circle class="saddle-leg" cx="{x1}" cy="{y1}" r=".16" fill="{color}"/><circle class="saddle-leg" cx="{x2}" cy="{y2}" r=".16" fill="{color}"/></g>"#,
+        id = saddle.id,
+        color = escape(wire_color(&saddle.color)),
+    );
 }
 
 fn wire_color(color: &WireColor) -> &str {

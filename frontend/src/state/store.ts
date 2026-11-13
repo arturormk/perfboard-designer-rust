@@ -18,7 +18,7 @@ import type {
   WireColor,
 } from "../api/project";
 import { computeAirwires } from "../model/ratsnest";
-import { railLabels, wireLabels } from "../model/naming";
+import { railLabels, saddleLabels, wireLabels } from "../model/naming";
 import type { Design, Point } from "../model/geometry";
 
 export const EMPTY_DIFF: SemanticDiff = {
@@ -26,6 +26,7 @@ export const EMPTY_DIFF: SemanticDiff = {
   nets: [],
   wires: [],
   rails: [],
+  saddles: [],
   constraints: [],
   routes: [],
 };
@@ -39,6 +40,7 @@ export type Selection =
   | { kind: "component"; id: string }
   | { kind: "wire"; id: string }
   | { kind: "rail"; id: string }
+  | { kind: "saddle"; id: string }
   | { kind: "net"; id: string };
 
 export type HoverTarget =
@@ -46,10 +48,11 @@ export type HoverTarget =
   | { kind: "component"; id: string }
   | { kind: "wire"; id: string }
   | { kind: "rail"; id: string }
+  | { kind: "saddle"; id: string }
   | { kind: "net"; id: string }
   | { kind: "airwire"; netId: string };
 
-export type Tool = "select" | "wire" | "rail" | "bridge" | "resize";
+export type Tool = "select" | "wire" | "rail" | "saddle" | "bridge" | "resize";
 export type AppMode = "board" | "components";
 export type PinLabelMode = "off" | "numbers" | "names";
 
@@ -131,6 +134,9 @@ export const wireLabelMap = computed(() =>
 );
 export const railLabelMap = computed(() =>
   design.value ? railLabels(design.value) : new Map<string, string>(),
+);
+export const saddleLabelMap = computed(() =>
+  design.value ? saddleLabels(design.value) : new Map<string, string>(),
 );
 export const airwires = computed(() =>
   design.value ? computeAirwires(design.value, connectivity.value) : [],

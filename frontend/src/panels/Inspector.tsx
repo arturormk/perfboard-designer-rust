@@ -5,6 +5,7 @@ import type {
   ElectricalNet,
   Rail,
   RouteProposal,
+  Saddle,
   Wire,
 } from "../api/project";
 import {
@@ -23,6 +24,7 @@ import {
   hover,
   library,
   railLabelMap,
+  saddleLabelMap,
   selection,
   side,
   tool,
@@ -81,6 +83,10 @@ export function Inspector() {
   if (item?.kind === "rail") {
     const rail = current.rails?.[item.id];
     if (rail) return <RailInspector rail={rail} design={current} />;
+  }
+  if (item?.kind === "saddle") {
+    const saddle = current.saddles?.[item.id];
+    if (saddle) return <SaddleInspector saddle={saddle} />;
   }
   if (item?.kind === "net") {
     const net = current.nets?.[item.id];
@@ -777,6 +783,64 @@ function RailInspector({
       <footer class="inspector-foot">
         <button class="btn danger" onClick={removeSelection}>
           <Icon name="trash" size={15} /> Remove rail
+        </button>
+      </footer>
+    </div>
+  );
+}
+
+// ── Saddle ───────────────────────────────────────────────────────────────────
+
+function SaddleInspector({ saddle }: { saddle: Saddle }) {
+  const span = Math.hypot(
+    saddle.end.x - saddle.start.x,
+    saddle.end.y - saddle.start.y,
+  );
+  const holes = (point: { x: number; y: number }) => `${point.x},${point.y}`;
+  return (
+    <div class="inspector">
+      <InspectorHead
+        icon={<Icon name="saddle" />}
+        title={saddleLabelMap.value.get(saddle.id) ?? "Saddle"}
+        subtitle={`Wire tie · holes ${holes(saddle.start)} → ${holes(saddle.end)} · ${span.toFixed(span % 1 ? 1 : 0)} pitch`}
+        onFocus={() => focusOn({ kind: "saddle", id: saddle.id })}
+      />
+      <Section title="Placement">
+        <div class="field">
+          <span>Strap lies on</span>
+          <div class="segmented">
+            {(["component", "solder"] as const).map((value) => (
+              <button
+                key={value}
+                class={saddle.side === value ? "on" : ""}
+                onClick={() => {
+                  if (saddle.side === value) return;
+                  side.value = value;
+                  void mutate(
+                    {
+                      type: "update_saddle",
+                      saddle: { ...saddle, side: value },
+                    },
+                    { failure: "Could not move the saddle" },
+                  );
+                }}
+              >
+                {value === "component" ? "Component (top)" : "Solder (bottom)"}
+              </button>
+            ))}
+          </div>
+        </div>
+      </Section>
+      <Section title="About saddles">
+        <p class="field-note">
+          A saddle is a short strap soldered into two free holes on either side
+          of a wire or bundle, holding it to the board. It belongs to no net:
+          its holes must stay clear of pins, wires, rails and junctions.
+        </p>
+      </Section>
+      <footer class="inspector-foot">
+        <button class="btn danger" onClick={removeSelection}>
+          <Icon name="trash" size={15} /> Remove saddle
         </button>
       </footer>
     </div>

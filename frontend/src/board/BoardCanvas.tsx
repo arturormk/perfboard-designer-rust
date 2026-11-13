@@ -40,6 +40,7 @@ import {
   pinLabels,
   placing,
   railLabelMap,
+  saddleLabelMap,
   selection,
   showChanges,
   showKeepouts,
@@ -256,6 +257,7 @@ export function BoardCanvas() {
   const wireDraft = useSignal<WireDraft | null>(null);
   const railDraft = useSignal<RoutePoint[] | null>(null);
   const bridgeStart = useSignal<Point | null>(null);
+  const saddleStart = useSignal<Point | null>(null);
   const cursor = useSignal<Point | null>(null);
   const placementRotation = useSignal<Rotation>("deg0");
   const netPrompt = useSignal<NetPrompt | null>(null);
@@ -286,6 +288,7 @@ export function BoardCanvas() {
     wireDraft.value = null;
     railDraft.value = null;
     bridgeStart.value = null;
+    saddleStart.value = null;
     netPrompt.value = null;
   });
 
@@ -354,6 +357,7 @@ export function BoardCanvas() {
         else if (wireDraft.value) wireDraft.value = null;
         else if (railDraft.value) railDraft.value = null;
         else if (bridgeStart.value) bridgeStart.value = null;
+        else if (saddleStart.value) saddleStart.value = null;
         else if (pendingRoute.value) rejectRoute();
         else if (placing.value) placing.value = null;
         else if (tool.value !== "select") tool.value = "select";
@@ -530,6 +534,23 @@ export function BoardCanvas() {
     );
   }
 
+  function addSaddle(start: Point, end: Point): void {
+    void mutate(
+      {
+        type: "add_saddle",
+        saddle: {
+          id: crypto.randomUUID(),
+          side: side.peek(),
+          start,
+          end,
+          color: "black",
+          notes: "",
+        },
+      },
+      { failure: "Could not add the saddle" },
+    );
+  }
+
   async function wireClickTerminal(
     terminal: TerminalRef,
     position: RoutePoint,
@@ -613,11 +634,15 @@ export function BoardCanvas() {
     if (event.button !== 0) {
       if (
         event.button === 2 &&
-        (wireDraft.peek() || railDraft.peek() || bridgeStart.peek())
+        (wireDraft.peek() ||
+          railDraft.peek() ||
+          bridgeStart.peek() ||
+          saddleStart.peek())
       ) {
         wireDraft.value = null;
         railDraft.value = null;
         bridgeStart.value = null;
+        saddleStart.value = null;
       }
       return;
     }
@@ -627,6 +652,7 @@ export function BoardCanvas() {
     const wireEl = element.closest<SVGElement>("[data-wire]");
     const railEl = element.closest<SVGElement>("[data-rail]");
     const railNodeEl = element.closest<SVGElement>("[data-rail-node]");
+    const saddleEl = element.closest<SVGElement>("[data-saddle]");
     const partEl = element.closest<SVGElement>("[data-component]");
     const airEl = element.closest<SVGElement>("[data-airwire]");
     const resizeEl = element.closest<SVGElement>("[data-resize]");
@@ -681,6 +707,19 @@ export function BoardCanvas() {
       } else {
         bridgeStart.value = hole;
       }
+      return;
+    }
+
+    if (activeTool === "saddle") {
+      const hole = holeAt(point);
+      if (!hole) return;
+      const start = saddleStart.peek();
+      if (!start) {
+        saddleStart.value = hole;
+        return;
+      }
+      saddleStart.value = null;
+      if (start.x !== hole.x || start.y !== hole.y) addSaddle(start, hole);
       return;
     }
 
@@ -826,6 +865,10 @@ export function BoardCanvas() {
         });
       return;
     }
+    if (saddleEl) {
+      select({ kind: "saddle", id: saddleEl.dataset.saddle! });
+      return;
+    }
     if (wireEl || railEl) {
       const id = (wireEl ?? railEl)!.dataset[wireEl ? "wire" : "rail"]!;
       select({ kind: wireEl ? "wire" : "rail", id });
@@ -877,6 +920,7 @@ export function BoardCanvas() {
     const pinEl = element.closest<SVGElement>("[data-pin]");
     const wireEl = element.closest<SVGElement>("[data-wire]");
     const railEl = element.closest<SVGElement>("[data-rail]");
+    const saddleEl = element.closest<SVGElement>("[data-saddle]");
     const partEl = element.closest<SVGElement>("[data-component]");
     const airEl = element.closest<SVGElement>("[data-airwire]");
     let next: HoverTarget | null = null;
@@ -884,7 +928,9 @@ export function BoardCanvas() {
     else if (airEl) {
       const airwire = airwires.peek()[Number(airEl.dataset.airwire)];
       if (airwire) next = { kind: "airwire", netId: airwire.netId };
-    } else if (wireEl) next = { kind: "wire", id: wireEl.dataset.wire! };
+    } else if (saddleEl)
+      next = { kind: "saddle", id: saddleEl.dataset.saddle! };
+    else if (wireEl) next = { kind: "wire", id: wireEl.dataset.wire! };
     else if (railEl) next = { kind: "rail", id: railEl.dataset.rail! };
     else if (partEl)
       next = { kind: "component", id: partEl.dataset.component! };
@@ -1194,6 +1240,9 @@ export function BoardCanvas() {
           ))}
         </g>
       )}
+      {tool.value === "saddle" && cursorPoint && (
+        <SaddlePreview start={saddleStart.value} end={holeAt(cursorPoint)} />
+      )}
       {tool.value === "bridge" && (
         <BridgePreview
           start={bridgeStart.value}
@@ -1232,6 +1281,7 @@ export function BoardCanvas() {
     fade: fadeComponents.value,
     wireLabels: wireLabelMap.value,
     railLabels: railLabelMap.value,
+    saddleLabels: saddleLabelMap.value,
   };
   const compareTarget = compareDesign.value;
   const split = splitCompare.value && compareTarget;
@@ -1424,6 +1474,28 @@ function BridgePreview({
       ))}
       <circle class="bridge-anchor" cx={start.x} cy={start.y} r={0.3} />
       {target && <line x1={start.x} y1={start.y} x2={target.x} y2={target.y} />}
+    </g>
+  );
+}
+
+/**
+ * Saddle tool preview: the hole under the pointer before the first click,
+ * then the strap from the first hole to the hole under the pointer. Whether
+ * the holes are free is decided by Rust when the saddle is added.
+ */
+function SaddlePreview({
+  start,
+  end,
+}: {
+  start: Point | null;
+  end: Point | undefined;
+}) {
+  if (!end) return null;
+  return (
+    <g class="saddle-draft">
+      {start && <line x1={start.x} y1={start.y} x2={end.x} y2={end.y} />}
+      {start && <circle cx={start.x} cy={start.y} r={0.2} />}
+      <circle cx={end.x} cy={end.y} r={0.2} />
     </g>
   );
 }

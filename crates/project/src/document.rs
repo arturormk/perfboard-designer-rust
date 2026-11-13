@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use perfboard_core::{
     BoardFeatures, BoardSize, CommitId, ComponentDefinition, ComponentInstance,
     ComponentInstanceId, Constraint, ConstraintId, CrossingChoice, Diagnostic, ElectricalNet,
-    JumperInventoryEntry, Junction, JunctionId, NetId, ProjectId, Rail, RailId, Wire, WireId,
-    validate_design_placements,
+    JumperInventoryEntry, Junction, JunctionId, NetId, ProjectId, Rail, RailId, Saddle, SaddleId,
+    Wire, WireId, validate_design_placements,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -59,6 +59,8 @@ pub struct Design {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub rails: BTreeMap<RailId, Rail>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub saddles: BTreeMap<SaddleId, Saddle>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub constraints: BTreeMap<ConstraintId, Constraint>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub jumper_inventory: BTreeMap<String, JumperInventoryEntry>,
@@ -111,6 +113,8 @@ pub enum DocumentError {
     WireKeyMismatch,
     #[error("rail map key does not match its embedded id")]
     RailKeyMismatch,
+    #[error("saddle map key does not match its embedded id")]
+    SaddleKeyMismatch,
     #[error("constraint map key does not match its embedded id")]
     ConstraintKeyMismatch,
     #[error("jumper inventory map key does not match its embedded id")]
@@ -136,6 +140,7 @@ impl ProjectDocument {
             junctions: BTreeMap::new(),
             wires: BTreeMap::new(),
             rails: BTreeMap::new(),
+            saddles: BTreeMap::new(),
             constraints: BTreeMap::new(),
             jumper_inventory: BTreeMap::new(),
             crossing_choices: BTreeMap::new(),
@@ -233,6 +238,14 @@ impl ProjectDocument {
         }
         if self
             .design
+            .saddles
+            .iter()
+            .any(|(id, value)| id != &value.id)
+        {
+            return Err(DocumentError::SaddleKeyMismatch);
+        }
+        if self
+            .design
             .constraints
             .iter()
             .any(|(id, value)| id != &value.id)
@@ -251,6 +264,7 @@ impl ProjectDocument {
             .map_err(DocumentError::InvalidCircuit)?;
         crate::constraints::validate_structure(&self.design)
             .map_err(DocumentError::InvalidCircuit)?;
+        crate::saddles::validate_structure(&self.design).map_err(DocumentError::InvalidCircuit)?;
         let calculated = self.calculate_validation();
         if self.validation != calculated {
             return Err(DocumentError::StaleValidation);
@@ -359,6 +373,7 @@ fn calculate_design_validation(design: &Design) -> Vec<Diagnostic> {
     );
     diagnostics.extend(crate::connectivity::diagnostics(design));
     diagnostics.extend(crate::constraints::diagnostics(design));
+    diagnostics.extend(crate::saddles::diagnostics(design));
     diagnostics.sort_by(|left, right| {
         left.code
             .cmp(&right.code)

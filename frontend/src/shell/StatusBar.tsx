@@ -19,6 +19,7 @@ const HINTS: Record<string, string> = {
     "Drag parts to move · click wires to edit · drag empty space to pan · ? for shortcuts",
   wire: "Click a pin to start a wire",
   rail: "Click points to lay a rail",
+  saddle: "Click a free hole on each side of the wires to tie down",
   bridge: "Click two neighbouring holes",
   resize: "Drag the board edges",
 };

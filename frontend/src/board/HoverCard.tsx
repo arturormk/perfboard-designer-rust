@@ -115,6 +115,16 @@ export function HoverCard({ at }: { at: { x: number; y: number } }) {
         <strong>Rail · {current.nets?.[rail.net_id]?.name}</strong>
       </div>
     );
+  } else if (target.kind === "saddle") {
+    if (!current.saddles?.[target.id]) return null;
+    body = (
+      <>
+        <div class="hc-title">
+          <strong>Saddle</strong>
+        </div>
+        <div class="hc-sub">Wire tie · no net</div>
+      </>
+    );
   }
   if (!body) return null;
   return (

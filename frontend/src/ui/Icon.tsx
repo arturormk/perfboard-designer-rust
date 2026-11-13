@@ -3,6 +3,9 @@ const PATHS = {
   select: "M5 3l13 7.5-5.5 1.5L10 18z",
   wire: "M4 18h5V6h6v6h5 M4 18a1.6 1.6 0 1 0 0 .01 M20 12a1.6 1.6 0 1 0 0 .01",
   rail: "M3 12h18 M6 12v0 M12 12v0 M18 12v0 M6 9.5v5 M12 9.5v5 M18 9.5v5",
+  // A strap held down at two holes across a bundle of wires.
+  saddle:
+    "M3 10h18 M3 14h18 M6 5v3 M18 5v3 M6 6.5h12 M6 19v-3 M18 19v-3 M6 17.5h12",
   bridge: "M6 12h12 M6 12a2.5 2.5 0 1 1 0 .01 M18 12a2.5 2.5 0 1 1 0 .01",
   resize: "M4 9V4h5 M20 15v5h-5 M4 4l6 6 M20 20l-6-6",
   undo: "M9 14L4 9l5-5 M4 9h10a6 6 0 0 1 0 12h-3",

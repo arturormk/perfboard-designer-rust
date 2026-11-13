@@ -173,6 +173,7 @@ function CommitDialog() {
     ...diff.nets,
     ...diff.wires,
     ...diff.rails,
+    ...(diff.saddles ?? []),
     ...diff.constraints,
   ];
   const submit = async (event: Event) => {
@@ -339,6 +340,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["W", "Wire tool"],
   ["L", "Rail tool"],
   ["B", "Bridge tool"],
+  ["S", "Saddle (wire tie) tool"],
   ["R", "Rotate selected part (or part being placed)"],
   ["F", "Flip to the other board side"],
   ["Arrows", "Nudge selected part by one hole"],
