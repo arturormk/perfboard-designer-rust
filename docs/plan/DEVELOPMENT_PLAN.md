@@ -446,10 +446,32 @@ Work:
   Progress: `quickstart.sh` builds Linux `.deb`, `.rpm` and AppImage bundles with the MCP adapter and the component library (`src-tauri/tauri.bundle.conf.json`), and the release workflow uses it. Not yet smoke-tested from an installed package; macOS and Windows are not packaged.
 - Perform a complete acceptance-criteria audit against the blueprint.
 
+Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
+
+- **A basic component library.** The bundled `components/` holds nine parts,
+  mostly those of the sample project. Ship a starter set of common
+  through-hole parts for ordinary hobby builds: resistors, diodes, capacitors,
+  LEDs, transistors, pin headers, and DIP sockets, each checked against a real
+  part. The template generators of Milestone CE5 in
+  [the Component Editor plan](DEVELOPMENT_PLAN-ComponentEditor.md) can produce
+  most of them. MCP must see the same library as the palette: today
+  `list_components` and `get_component_definition` still read three
+  definitions compiled into the app (`bundled_component_library`).
+- **Project-specific components.** Today the palette loads only the bundled
+  `components/` directory, which is read-only in an installed package, so a
+  user has nowhere to keep a part of their own. Add a supported place for
+  components that belong to one project, such as a folder next to the project
+  file, that the palette loads alongside the bundled library, that travels
+  with the project, and that never mixes into the shared library. Placed
+  instances keep their embedded snapshots as today.
+
 Exit criteria:
 
 - All 18 version 1 acceptance criteria in the blueprint have an automated test, a documented manual test, or both.
 - A component library edit cannot silently alter an existing project.
+- A new user can place common through-hole parts from the bundled library,
+  and can add a part of their own to a project without editing the
+  application's installed files.
 - The packaged application completes create -> place -> connect -> route -> commit -> MCP edit -> assemble -> save/reopen.
 - Known limitations and the non-guarantee of electrical safety are visible in product documentation.
 
