@@ -112,9 +112,11 @@ function ComponentBody({
           x2={b.x}
           y2={b.y + 0.04}
         />
+        <line class="bridge-casing" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
         <line class="bridge-wire" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
         <circle class="bridge-joint" cx={a.x} cy={a.y} r={0.26} />
         <circle class="bridge-joint" cx={b.x} cy={b.y} r={0.26} />
+        <line class="bridge-gleam" {...gleamLine(a, b, 0.045, 0.32)} />
       </g>
     );
   }
@@ -283,6 +285,39 @@ function RailThroughNodes({
 }
 
 /**
+ * A thin "reflection" streak running alongside a straight conductor, shifted
+ * towards the top-left (the light source) and pulled in from both ends, so
+ * bridges and saddles read as raised, rounded objects rather than flat wires.
+ */
+function gleamLine(
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  offset: number,
+  inset: number,
+): { x1: number; y1: number; x2: number; y2: number } {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
+  const ux = dx / length;
+  const uy = dy / length;
+  // Normal pointing up (or left for vertical runs).
+  let nx = -uy;
+  let ny = ux;
+  if (ny > 0 || (ny === 0 && nx > 0)) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const cut = Math.min(inset, length / 3);
+  return {
+    x1: a.x + ux * cut + nx * offset,
+    y1: a.y + uy * cut + ny * offset,
+    x2: b.x - ux * cut + nx * offset,
+    y2: b.y - uy * cut + ny * offset,
+  };
+}
+
+/**
  * A wire tie: a strap lying across wires on its own face, with its two legs
  * soldered on the far face. Seen from the far face only the joints matter.
  */
@@ -314,6 +349,9 @@ function SaddleShape({
       <line class="saddle-halo" {...line} />
       <line class="saddle-casing" {...line} />
       <line class="saddle-core" {...line} />
+      {!opposite && (
+        <line class="saddle-gleam" {...gleamLine(start, end, 0.07, 0.3)} />
+      )}
       {[start, end].map((point, index) => (
         <circle
           key={index}

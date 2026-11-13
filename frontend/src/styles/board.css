@@ -727,8 +727,8 @@
 }
 
 .saddle-casing {
-  stroke: rgb(20 14 8 / 75%);
-  stroke-width: 0.42;
+  stroke: rgb(12 8 4 / 90%);
+  stroke-width: 0.48;
 }
 
 .saddle.dark .saddle-casing {
@@ -737,7 +737,18 @@
 
 .saddle-core {
   stroke: var(--wire);
-  stroke-width: 0.3;
+  stroke-width: 0.36;
+}
+
+/* Reflection streak: what makes a saddle read as a raised strap, not a wire. */
+.saddle-gleam {
+  stroke: rgb(255 255 255 / 55%);
+  stroke-width: 0.06;
+  pointer-events: none;
+}
+
+.saddle.dim .saddle-gleam {
+  display: none;
 }
 
 .saddle-leg {
@@ -819,10 +830,24 @@
   stroke-linecap: round;
 }
 
-.bridge-wire {
-  stroke: #e4e6e8;
-  stroke-width: 0.22;
+.bridge-casing {
+  stroke: #1b1d20;
+  stroke-width: 0.36;
   stroke-linecap: round;
+}
+
+.bridge-wire {
+  stroke: #9ea4ab;
+  stroke-width: 0.26;
+  stroke-linecap: round;
+}
+
+/* Reflection streak along the bare tinned wire. */
+.bridge-gleam {
+  stroke: #ffffff;
+  stroke-width: 0.06;
+  stroke-linecap: round;
+  pointer-events: none;
 }
 
 .bridge-joint {
@@ -832,7 +857,7 @@
 }
 
 .bridge.hovered .bridge-wire {
-  stroke: #fff;
+  stroke: #c3c8ce;
 }
 
 .bridge.selected .bridge-wire {
@@ -844,7 +869,9 @@
   pointer-events: none;
 }
 
-.bridge.opposite .bridge-joint {
+.bridge.opposite .bridge-joint,
+.bridge.opposite .bridge-gleam,
+.bridge.opposite .bridge-casing {
   display: none;
 }
 
