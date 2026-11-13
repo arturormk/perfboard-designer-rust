@@ -29,3 +29,7 @@ Thumbs.db
 # Alternate Git metadata used only while the workspace's .git mount is read-only
 /.git-local/
 
+
+# MCP server sidecar and component library staged by quickstart.sh for packages
+/src-tauri/binaries/
+/src-tauri/bundle-resources/

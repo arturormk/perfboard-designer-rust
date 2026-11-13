@@ -72,6 +72,12 @@ session, although a process running as the same OS user with permission to read
 that user's runtime files remains inside the trust boundary.
 
 The protocol is versioned independently of MCP and can move to Unix sockets or
-named pipes later without changing tool contracts. Shipping a packaged MCP
-binary and component-library writes remain release-hardening work; developer
-configuration uses `cargo run` from this checkout.
+named pipes later without changing tool contracts. Component-library writes
+remain release-hardening work. Developer configuration uses `cargo run` from
+this checkout.
+
+Update (2026-11-13): Linux packages ship the adapter. `.deb` and `.rpm`
+bundles install it as `/usr/bin/perfboard-mcp-server` (a Tauri sidecar built
+from the same commit as the app, so the session protocol versions match);
+users register that path with their MCP client once. The AppImage carries the
+adapter inside the image only, so it is not usable as an MCP command.

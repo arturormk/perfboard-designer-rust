@@ -443,6 +443,7 @@ Work:
 - Profile the intended upper bound: approximately 12 components and several dozen wires.
 - Add onboarding, limitation/safety language, component-authoring documentation, and example projects.
 - Package and smoke-test supported desktop platforms; document support based on available CI runners.
+  Progress: `quickstart.sh` builds Linux `.deb`, `.rpm` and AppImage bundles with the MCP adapter and the component library (`src-tauri/tauri.bundle.conf.json`), and the release workflow uses it. Not yet smoke-tested from an installed package; macOS and Windows are not packaged.
 - Perform a complete acceptance-criteria audit against the blueprint.
 
 Exit criteria:

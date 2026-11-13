@@ -37,8 +37,18 @@ To install the locked frontend dependencies and build an optimized desktop
 executable in one step:
 
 ```sh
-./quickstart.sh
+./quickstart.sh          # asks; defaults to the executable
+./quickstart.sh exe      # target/release/perfboard-designer and perfboard-mcp-server
+./quickstart.sh deb      # or rpm, appimage, or a mix such as deb,rpm (Linux only)
 ```
+
+The executable loads components from this checkout. The packages are
+self-contained: `.deb` and `.rpm` install `/usr/bin/perfboard-designer`, the
+MCP adapter as `/usr/bin/perfboard-mcp-server`, and the component library
+under `/usr/lib/Perfboard Designer/components`. The AppImage bundles the same
+files but keeps the MCP adapter inside the image, so use a package or the
+executable build for MCP access. Bundle-only settings live in
+`src-tauri/tauri.bundle.conf.json`.
 
 ## Quality checks
 
@@ -84,7 +94,8 @@ development line need Git history; from a source archive, set
    `frontend/package.json`, for example `0.2.0`, and move the
    `Unreleased` notes in [CHANGELOG.md](CHANGELOG.md) under it. Commit.
 2. Tag and push: `git tag v0.2.0 && git push origin main v0.2.0`. The release
-   workflow checks the tag, builds Linux `.deb` and AppImage bundles, and
+   workflow checks the tag, builds Linux `.deb` and AppImage bundles with
+   `./quickstart.sh deb,appimage`, and
    opens a draft GitHub release to review and publish.
 3. Set the next development line, `0.3.0`, in both files and commit.
 
@@ -177,6 +188,26 @@ Claude Code reads `.mcp.json` automatically. Verify it with:
 ```sh
 claude mcp get perfboard-designer
 ```
+
+With an installed package, register the packaged adapter instead (from any
+directory):
+
+```sh
+claude mcp add --scope user perfboard-designer -- /usr/bin/perfboard-mcp-server
+```
+
+For Codex, add this to `~/.codex/config.toml`; the forwarded variables let the
+adapter find the desktop session's runtime directory:
+
+```toml
+[mcp_servers.perfboard_designer]
+command = "/usr/bin/perfboard-mcp-server"
+env_vars = ["XDG_RUNTIME_DIR", "PERFBOARD_DESIGNER_RUNTIME_DIR", "PERFBOARD_DESIGNER_SESSION_ID"]
+default_tools_approval_mode = "writes"
+```
+
+Inside this checkout, the project-scoped configuration takes precedence over a
+user-scoped one with the same name.
 
 The first adapter startup can take longer while Cargo compiles dependencies.
 For a faster reusable executable, run

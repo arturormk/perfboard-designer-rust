@@ -118,6 +118,15 @@ Rust side: `crates/project/src/view.rs` and `net_connectivity()` in
 `perfboard-print` crate (`crates/print`), which converts the page SVGs with
 `svg2pdf`.
 
+## Component library location
+
+`get_component_library` reads `components/` from the app's resource directory
+when it exists, which is where packages install it
+(`/usr/lib/Perfboard Designer/components`). Otherwise it falls back to the
+checkout the binary was compiled from, so `cargo tauri dev` and
+`./quickstart.sh exe` builds see edits to `components/` directly. Packages copy
+the library at build time without Component Designer `*.bak` backups.
+
 ## Printing at true scale
 
 WebKitGTK (the Linux web view) rescales whatever `window.print()` prints, and

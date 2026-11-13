@@ -9,6 +9,11 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- `quickstart.sh` builds the executable or `.deb`, `.rpm` and AppImage
+  bundles, and the release workflow uses it. Bundles include the component
+  library, which installed builds now load from their resources (before, a
+  package found no components outside the build checkout). `.deb` and `.rpm`
+  packages also install the MCP adapter as `/usr/bin/perfboard-mcp-server`.
 - Graphical perfboard editor with component and solder side views, parts,
   nets, wires, bridges, and rails.
 - Saddles: net-free wire ties that hold wires and bundles to the board through

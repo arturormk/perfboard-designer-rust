@@ -169,8 +169,13 @@ fn load_component_library(root: &Path) -> Result<Vec<ComponentDefinition>, Strin
     parse_component_library(sources.iter().map(String::as_str)).map_err(|error| error.to_string())
 }
 
-fn component_library_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../components")
+/// Installed packages ship the library as a Tauri resource; unbundled builds
+/// fall back to the checkout they were compiled from.
+fn component_library_root(resource_dir: Option<PathBuf>) -> PathBuf {
+    resource_dir
+        .map(|dir| dir.join("components"))
+        .filter(|dir| dir.is_dir())
+        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../components"))
 }
 
 struct DesktopSessionHandler {
@@ -687,8 +692,9 @@ fn evaluate_project_route(
 }
 
 #[tauri::command]
-fn get_component_library() -> Result<Vec<ComponentDefinition>, String> {
-    load_component_library(&component_library_root())
+#[allow(clippy::needless_pass_by_value)]
+fn get_component_library(app: tauri::AppHandle) -> Result<Vec<ComponentDefinition>, String> {
+    load_component_library(&component_library_root(app.path().resource_dir().ok()))
 }
 
 #[tauri::command]
@@ -1343,7 +1349,7 @@ mod tests {
 
     #[test]
     fn runtime_component_library_scans_component_directories() {
-        let library = get_component_library().unwrap();
+        let library = load_component_library(&component_library_root(None)).unwrap();
         assert!(library.len() >= 3);
         assert!(
             library
