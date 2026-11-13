@@ -8,8 +8,10 @@ Perfboard Designer is a local-first desktop application for designing small
 circuits on isolated-pad perfboard. The project is under active development.
 Milestone 5 provides the graphical editor, revisioned transactions,
 deterministic automatic routing, and local MCP access to the active desktop
-working copy from Codex or Claude Code. Milestone 6 (assembly planning) has
-started with printable 1:1 wire cut guides and bending templates.
+working copy from Codex or Claude Code. Milestone 6 (assembly planning) adds
+a step-by-step build order with an Assembly mode in the editor, a printable
+build drawing with the wire list and a build-order checklist, and 1:1 wire cut
+guides and bending templates.
 
 ![Perfboard Designer showing the solder side of an Arduino Nano RS-485 board with two RJ45 connectors](docs/screenshots/nano-rs485-board.png)
 
@@ -237,11 +239,23 @@ threat boundary.
 
 ## Current limitations
 
-Assembly planning is in progress: wire cut guides and bending templates exist,
-but there is no assembly order or step-by-step assembly view yet. Template cut
-lengths assume sharp bends and about 5 mm of bare lead at each end, so they are
-estimates. Component-library authoring remains read-only through MCP until MCP
-authoring parity is implemented.
+- The build order is a heuristic. It follows physical dependencies (a rail
+  before the wires soldered to it, a wire under a recorded crossing first) but
+  does not model tool access in three dimensions, such as an iron reaching a
+  joint between tall parts. Same-side crossings without a recorded choice are
+  left unordered with a note, and a dependency cycle is reported as a warning
+  rather than blocking the plan. See
+  [ADR 0012](docs/adr/0012-assembly-planning.md).
+- Wire cut lengths are estimates: they assume sharp bends and about 5 mm of
+  bare lead at each end.
+- Assembly checkmarks are stored per computer, outside the project file; a
+  build continued on another machine starts its checklist afresh (the printed
+  checklist covers that case).
+- Component-library authoring remains read-only through MCP until MCP
+  authoring parity is implemented.
+- Packages are built for Linux only (`.deb`, `.rpm`, AppImage), and the MCP
+  adapter inside the AppImage cannot be registered with an MCP client.
+
 Passing validation means that project geometry and basic connectivity are
 internally consistent; it is never a guarantee of electrical correctness or
 safety.
