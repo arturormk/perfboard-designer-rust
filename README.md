@@ -1,5 +1,6 @@
 # Perfboard Designer
 
+[![CI](https://github.com/arturormk/perfboard-designer-rust/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/arturormk/perfboard-designer-rust/actions/workflows/ci.yml)
 [![Built with Codex: backend and initial UI](https://img.shields.io/badge/Codex-backend%20%26%20initial%20UI-000000)](https://openai.com/codex/)
 [![Built with Claude Code: UI revamp](https://img.shields.io/badge/Claude%20Code-UI%20revamp-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
