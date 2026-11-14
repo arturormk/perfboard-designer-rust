@@ -73,6 +73,7 @@ typed_id!(JunctionId);
 typed_id!(ConstraintId);
 typed_id!(OperationId);
 typed_id!(CommitId);
+typed_id!(ReviewNoteId);
 
 #[cfg(test)]
 mod tests {

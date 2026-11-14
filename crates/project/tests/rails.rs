@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
     BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, ConnectionState,
-    ElectricalNet, HolePos, NetId, OperationId, PinRef, ProjectId, Rail, RailId, Rotation,
-    RoutePos, Side, TerminalRef, Wire, WireColor, WireId,
+    ElectricalNet, HolePos, Junction, JunctionId, NetId, OperationId, PinRef, ProjectId, Rail,
+    RailId, Rotation, RoutePos, Side, TerminalRef, Wire, WireColor, WireId,
 };
 use perfboard_project::{
     Board, OperationOrigin, OperationPayload, OperationRequest, ProjectDocument, apply_operation,
@@ -348,4 +348,104 @@ fn inserted_nodes_take_wires_from_either_side_on_whole_holes() {
             .unwrap_err()
             .contains("whole hole")
     );
+}
+
+#[test]
+fn notes_on_wires_rails_nets_and_junctions_can_be_edited_even_when_locked() {
+    let (mut document, net_id, rail_id) =
+        net_with_rail(Side::Solder, vec![RoutePos::new(0, 0), RoutePos::new(8, 0)]);
+    let junction_id = JunctionId::new();
+    let wire_id = WireId::new();
+    document.design.wires.insert(
+        wire_id,
+        Wire {
+            id: wire_id,
+            net_id,
+            start: TerminalRef::RailNode {
+                rail_id,
+                position: RoutePos::new(0, 0),
+            },
+            end: TerminalRef::RailNode {
+                rail_id,
+                position: RoutePos::new(8, 0),
+            },
+            side: Side::Solder,
+            color: WireColor::Red,
+            vertices: vec![RoutePos::new(0, 0), RoutePos::new(8, 0)],
+            locked: true,
+            notes: "old".into(),
+        },
+    );
+    document.design.rails.get_mut(&rail_id).unwrap().locked = true;
+
+    for payload in [
+        OperationPayload::SetWireNotes {
+            wire_id,
+            notes: "twisted pair with B".into(),
+        },
+        OperationPayload::SetRailNotes {
+            rail_id,
+            notes: "bus bar, 0.8 mm tinned".into(),
+        },
+        OperationPayload::SetNetNotes {
+            net_id,
+            notes: "keep short".into(),
+        },
+        OperationPayload::AddJunction {
+            junction: Junction {
+                id: junction_id,
+                net_id,
+                position: HolePos::new(3, 3),
+                through_hole: false,
+                notes: String::new(),
+            },
+        },
+        OperationPayload::SetJunctionNotes {
+            junction_id,
+            notes: "star ground point".into(),
+        },
+    ] {
+        apply(&mut document, payload).unwrap();
+    }
+    assert_eq!(document.design.wires[&wire_id].notes, "twisted pair with B");
+    assert_eq!(
+        document.design.rails[&rail_id].notes,
+        "bus bar, 0.8 mm tinned"
+    );
+    assert_eq!(document.design.nets[&net_id].notes, "keep short");
+    assert_eq!(
+        document.design.junctions[&junction_id].notes,
+        "star ground point"
+    );
+
+    apply(
+        &mut document,
+        OperationPayload::SetWireNotes {
+            wire_id,
+            notes: String::new(),
+        },
+    )
+    .unwrap();
+    assert_eq!(document.design.wires[&wire_id].notes, "");
+
+    for payload in [
+        OperationPayload::SetWireNotes {
+            wire_id: WireId::new(),
+            notes: "x".into(),
+        },
+        OperationPayload::SetRailNotes {
+            rail_id: RailId::new(),
+            notes: "x".into(),
+        },
+        OperationPayload::SetNetNotes {
+            net_id: NetId::new(),
+            notes: "x".into(),
+        },
+        OperationPayload::SetJunctionNotes {
+            junction_id: JunctionId::new(),
+            notes: "x".into(),
+        },
+    ] {
+        assert!(apply(&mut document, payload).is_err());
+    }
 }

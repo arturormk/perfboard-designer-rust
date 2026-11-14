@@ -3,6 +3,7 @@
 pub mod assembly;
 pub mod diff;
 pub mod document;
+pub mod notes;
 pub mod operations;
 pub mod persistence;
 pub mod rendering;
@@ -21,6 +22,7 @@ pub use document::{
     Board, Design, DocumentError, DocumentRevision, PROJECT_SCHEMA_VERSION, ProjectDocument,
     SchemaVersion,
 };
+pub use notes::{NewReviewNote, ReviewNote, ReviewNoteError, ReviewNoteSeverity};
 pub use operations::{
     OperationError, OperationOrigin, OperationPayload, OperationRequest, OperationResult,
     WireEndpoint, apply_operation,
@@ -33,7 +35,8 @@ pub use routing::{
     suggest_route, suggest_route_alternatives,
 };
 pub use session::{
-    ProjectSession, SessionChangeEvent, SessionError, TransactionRequest, TransactionResult,
+    ChangeMarker, ProjectSession, SessionChangeEvent, SessionError, TransactionRequest,
+    TransactionResult,
 };
 pub use view::{ChangeSummary, CommitSummary, ProjectView, undo_history_bytes};
 

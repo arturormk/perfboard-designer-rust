@@ -9,6 +9,44 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Notes on wires, rails, nets and saddles can now be edited, in the
+  inspector and by agents through the new `set_wire_notes`, `set_rail_notes`
+  and `set_net_notes` operations (saddles use `update_saddle`). Agents can
+  also edit junction notes with `set_junction_notes`; the editor does not
+  show junctions. Before, notes could only be given when the object was
+  created, and the inspector showed them read-only, or not at all for rails
+  and saddles. Editing notes is an undo step, and works on locked wires and
+  rails.
+
+- Closing the window with unsaved changes now asks whether to save them
+  (Save, Don't save, Cancel), and so do opening another project and starting
+  a new board. Unsaved review notes and an unsaved part in the Part designer
+  count. Before, closing discarded them without a word. The unsaved-changes
+  dot next to the file name now also covers review notes and projects that
+  were never saved.
+
+- An application icon: a perfboard with a green jumper, after the top bar's
+  logo. It now shows on the window in the dock and Alt+Tab on Linux, where
+  the previous placeholder never appeared because the window icon was too
+  large for X11 (see `src-tauri/icons/README.md`). Packages get it in all
+  sizes, plus `.ico` and `.icns`.
+
+- Review notes: agents can leave findings in the project with the new
+  `add_review_notes` MCP tool, each marked critical, warning, suggestion or
+  info, optionally pointing at parts, nets or wires. They appear in a new
+  Notes tab beside Inspect and Problems (History moved to the left panel),
+  where you delete them as you address them (Undo is in the toast) and drag
+  them, or use the arrow keys on the grip, to reorder them. New notes are
+  placed by severity: each goes in front of the first less severe note, so a
+  new critical note appears before the first warning, without re-sorting an
+  order you chose. Clicking a part chip shows it on the board. Each note
+  shows the revision it describes and says when the design has changed
+  since; adding notes does not change the revision. Notes are saved in the project file (`review_notes`) but are not
+  undo steps or part of commits. Agents can also read them with
+  `get_review_notes`, reorder them with `move_review_note` and remove them
+  with `remove_review_notes`
+  ([ADR 0015](docs/adr/0015-review-notes.md)).
+
 - Much smaller project files. Undo and redo history is now saved as JSON
   patches between neighbouring designs instead of full copies, and commits no
   longer copy the undo stack with its snapshots. A 40.7 MB project with three

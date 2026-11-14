@@ -1,15 +1,63 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#1d3025"/>
-  <g fill="#b9e9c4">
-    <circle cx="144" cy="144" r="34"/>
-    <circle cx="256" cy="144" r="34"/>
-    <circle cx="368" cy="144" r="34"/>
-    <circle cx="144" cy="256" r="34"/>
-    <circle cx="256" cy="256" r="34"/>
-    <circle cx="368" cy="256" r="34"/>
-    <circle cx="144" cy="368" r="34"/>
-    <circle cx="256" cy="368" r="34"/>
-    <circle cx="368" cy="368" r="34"/>
+  <!--
+    Perfboard Designer application icon: the top bar's brand mark (board,
+    3 × 3 holes, stepped wire) as a tan perfboard with a green jumper, so it
+    reads at 16 px. Regenerate the PNG, ICO and ICNS files after editing it;
+    see src-tauri/icons/README.md.
+  -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a2e34"/>
+      <stop offset="1" stop-color="#121316"/>
+    </linearGradient>
+    <linearGradient id="board" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d2a96f"/>
+      <stop offset="1" stop-color="#b98c52"/>
+    </linearGradient>
+    <linearGradient id="wire" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#4cc77f"/>
+      <stop offset="1" stop-color="#1f8a4c"/>
+    </linearGradient>
+    <radialGradient id="solder" cx="0.38" cy="0.34" r="0.7">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.45" stop-color="#d6d9dd"/>
+      <stop offset="1" stop-color="#8d9298"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#tile)"/>
+  <rect x="6" y="6" width="500" height="500" rx="106" fill="none"
+        stroke="#ffffff" stroke-opacity="0.07" stroke-width="4"/>
+
+  <!-- The board -->
+  <rect x="60" y="60" width="392" height="392" rx="60" fill="url(#board)"
+        stroke="#e0955a" stroke-width="16"/>
+
+  <!-- Holes: copper pads around dark drills -->
+  <g>
+    <g fill="#9c6e3a">
+      <circle cx="166" cy="166" r="34"/><circle cx="256" cy="166" r="34"/><circle cx="346" cy="166" r="34"/>
+      <circle cx="166" cy="256" r="34"/><circle cx="256" cy="256" r="34"/><circle cx="346" cy="256" r="34"/>
+      <circle cx="166" cy="346" r="34"/><circle cx="256" cy="346" r="34"/><circle cx="346" cy="346" r="34"/>
+    </g>
+    <g fill="#2b2016">
+      <circle cx="166" cy="166" r="16"/><circle cx="256" cy="166" r="16"/><circle cx="346" cy="166" r="16"/>
+      <circle cx="166" cy="256" r="16"/><circle cx="256" cy="256" r="16"/><circle cx="346" cy="256" r="16"/>
+      <circle cx="166" cy="346" r="16"/><circle cx="256" cy="346" r="16"/><circle cx="346" cy="346" r="16"/>
+    </g>
   </g>
-  <path d="M144 144h112v112h112" fill="none" stroke="#efb64e" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- The jumper wire, with a soft shadow and a highlight along its core -->
+  <path d="M166 346H256V166H346" fill="none" stroke="#000000" stroke-opacity="0.28"
+        stroke-width="44" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 8)"/>
+  <path d="M166 346H256V166H346" fill="none" stroke="url(#wire)"
+        stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M166 339H249V166H346" fill="none" stroke="#c9f5da" stroke-opacity="0.6"
+        stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Solder joints at the ends -->
+  <circle cx="166" cy="350" r="32" fill="#000000" fill-opacity="0.25"/>
+  <circle cx="346" cy="170" r="32" fill="#000000" fill-opacity="0.25"/>
+  <circle cx="166" cy="346" r="29" fill="url(#solder)"/>
+  <circle cx="346" cy="166" r="29" fill="url(#solder)"/>
 </svg>

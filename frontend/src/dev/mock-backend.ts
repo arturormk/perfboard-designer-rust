@@ -24,10 +24,12 @@ import type {
   RouteProposal,
   SemanticDiff,
   TerminalRef,
+  ReviewNote,
 } from "../api/project";
 import { pinPosition, type Design } from "../model/geometry";
 import { mockAssemblyPlan } from "./mock-assembly";
 import { nextInstanceName } from "../model/naming";
+import { insertBySeverity } from "../panels/note-order";
 
 type Doc = ProjectDocument;
 interface Entry {
@@ -352,6 +354,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
     case "rename_net":
       d.nets![op.net_id]!.name = op.name.trim();
       return;
+    case "set_net_notes":
+      d.nets![op.net_id]!.notes = op.notes;
+      return;
     case "merge_nets": {
       const source = d.nets![op.source_net_id]!;
       const target = d.nets![op.target_net_id]!;
@@ -397,6 +402,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
     case "set_wire_lock":
       d.wires![op.wire_id]!.locked = op.locked;
       return;
+    case "set_wire_notes":
+      d.wires![op.wire_id]!.notes = op.notes;
+      return;
     case "reconnect_wire_endpoint":
       d.wires![op.wire_id]![op.endpoint] = op.terminal;
       return;
@@ -411,6 +419,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
       return;
     case "set_rail_color":
       d.rails![op.rail_id]!.color = op.color;
+      return;
+    case "set_rail_notes":
+      d.rails![op.rail_id]!.notes = op.notes;
       return;
     case "add_saddle":
     case "update_saddle":
@@ -738,16 +749,59 @@ export async function installMockBackend(): Promise<void> {
     doc.design.component_definitions ?? {},
   ) as ComponentDefinition[];
   let grant: { user_components: string; project_name: string } | null = null;
-  const listeners = new Map<number, (event: unknown) => void>();
+  const listeners = new Map<
+    number,
+    { event: string; callback: (event: unknown) => void }
+  >();
   let callbackId = 1;
 
-  const emit = () => {
-    for (const callback of listeners.values())
-      callback({
-        event: "project-changed",
-        id: 0,
-        payload: { revision: doc.revision, kind: "operation", summary: "" },
-      });
+  const send = (event: string, payload: unknown) => {
+    for (const listener of listeners.values())
+      if (listener.event === event)
+        listener.callback({ event, id: 0, payload });
+  };
+  const emit = (kind = "operation") =>
+    send("project-changed", { revision: doc.revision, kind, summary: "" });
+  // Review notes leave the revision alone; this counts their changes, and
+  // `saved` is the marker at the last save, open or create (ADR 0015).
+  let notesGeneration = 0;
+  const marker = () => ({
+    revision: doc.revision,
+    notes_generation: notesGeneration,
+  });
+  let saved = marker();
+  const unsaved = () =>
+    saved.revision !== doc.revision ||
+    saved.notes_generation !== notesGeneration;
+  const noteChanged = () => {
+    notesGeneration += 1;
+    emit("review_notes");
+  };
+  // Lets browser previews play the window manager: `__perfboardRequestClose()`.
+  const previewWindow = window as unknown as Record<string, unknown>;
+  previewWindow.__perfboardRequestClose = () => {
+    if (!unsaved()) {
+      previewWindow.__perfboardClosed = true;
+      return;
+    }
+    send("close-requested", { project: true, part_draft: false });
+  };
+  if (new URLSearchParams(location.search).has("notes"))
+    doc.review_notes = demoNotes(doc.design, doc.revision);
+  // Lets browser previews play the agent: `__perfboardAddNotes([...])`.
+  (window as unknown as Record<string, unknown>).__perfboardAddNotes = (
+    notes: Array<Omit<ReviewNote, "id" | "created_ms">>,
+  ) => {
+    doc.review_notes = insertBySeverity(
+      doc.review_notes ?? [],
+      notes.map((note) => ({
+        ...note,
+        id: crypto.randomUUID(),
+        created_ms: Date.now(),
+        revision: doc.revision,
+      })),
+    );
+    noteChanged();
   };
   const view = (): ProjectView => ({
     schema_version: 2,
@@ -755,6 +809,9 @@ export async function installMockBackend(): Promise<void> {
     name: doc.name,
     revision: doc.revision,
     design: clone(doc.design),
+    review_notes: clone(doc.review_notes ?? []),
+    notes_generation: notesGeneration,
+    unsaved: unsaved(),
     validation: validation(doc.design),
     commits: commits.map(({ design: _design, ...summary }) => summary),
     head_commit: head,
@@ -802,7 +859,11 @@ export async function installMockBackend(): Promise<void> {
     }),
     get_project_view: () => view(),
     get_project: () => clone(doc),
-    get_project_revision: () => doc.revision,
+    get_change_marker: marker,
+    acknowledge_close_request: () => undefined,
+    resolve_close_request: ({ close }) => {
+      if (close) previewWindow.__perfboardClosed = true;
+    },
     get_net_connectivity: () => islands(doc.design),
     // The preview project is never saved, so project folders stay inactive;
     // a granted user library is pretended to be empty.
@@ -976,6 +1037,34 @@ export async function installMockBackend(): Promise<void> {
       emit();
       return { id };
     },
+    remove_review_note: ({ noteId }) => {
+      const notes = doc.review_notes ?? [];
+      const index = notes.findIndex((note) => note.id === noteId);
+      if (index < 0) throw new Error(`review note ${noteId} was not found`);
+      const [note] = notes.splice(index, 1);
+      noteChanged();
+      return { note, index };
+    },
+    move_review_note: ({ noteId, before }) => {
+      const notes = doc.review_notes ?? [];
+      const moving = notes.find((note) => note.id === noteId);
+      if (!moving) throw new Error(`review note ${noteId} was not found`);
+      const rest = notes.filter((note) => note.id !== noteId);
+      const at =
+        before === null
+          ? rest.length
+          : rest.findIndex((note) => note.id === before);
+      if (at < 0) throw new Error(`review note ${before} was not found`);
+      rest.splice(at, 0, moving);
+      doc.review_notes = rest;
+      noteChanged();
+    },
+    insert_review_note: ({ note, index }) => {
+      const notes = doc.review_notes ?? [];
+      notes.splice(index as number, 0, note as ReviewNote);
+      doc.review_notes = notes;
+      noteChanged();
+    },
     rename_project: ({ expectedRevision, name }) => {
       stale(expectedRevision as number);
       doc.name = (name as string).trim();
@@ -1042,11 +1131,13 @@ export async function installMockBackend(): Promise<void> {
       redoStack = [];
       commits.length = 0;
       head = undefined;
+      saved = marker();
       emit();
       return clone(doc);
     },
     save_project: ({ path }) => {
       recordRecent(path as string);
+      saved = marker();
       return undefined;
     },
     get_assembly_plan: () => mockAssemblyPlan(doc.design, doc.revision),
@@ -1082,6 +1173,7 @@ export async function installMockBackend(): Promise<void> {
       doc = await loadFixture();
       undoStack = [];
       redoStack = [];
+      saved = marker();
       emit();
       return clone(doc);
     },
@@ -1121,7 +1213,10 @@ export async function installMockBackend(): Promise<void> {
       }
       if (command === "plugin:event|listen") {
         const id = args.handler as number;
-        listeners.set(id, callbacks.get(id)!);
+        listeners.set(id, {
+          event: args.event as string,
+          callback: callbacks.get(id)!,
+        });
         return id;
       }
       // Async like the real bridge, so ordering bugs still show up.
@@ -1182,4 +1277,49 @@ export async function installMockBackend(): Promise<void> {
       );
     },
   };
+}
+
+/** Sample notes for `?notes` previews, pointing at the fixture's parts. */
+function demoNotes(design: Design, revision: number): ReviewNote[] {
+  const components = Object.values(design.components ?? {});
+  const nets = Object.values(design.nets ?? {});
+  const ref = (kind: string, id: string | undefined) =>
+    id ? [{ kind, id }] : [];
+  const notes: Array<Omit<ReviewNote, "id" | "created_ms">> = [
+    {
+      severity: "critical",
+      title: "RS-485 A and B are swapped at the RJ45",
+      detail:
+        "Pin 4 carries B and pin 5 carries A, the reverse of the convention the other end uses. Swap the two wires or relabel the nets before soldering.",
+      objects: [
+        ...ref("component", components[0]?.id),
+        ...ref("net", nets[0]?.id),
+      ],
+    },
+    {
+      severity: "warning",
+      title: "No bulk capacitor on the 5 V rail",
+      detail:
+        "Add 10 µF near where power enters the board to absorb transceiver switching current.",
+    },
+    {
+      severity: "suggestion",
+      title: "Leave room to probe the bus",
+      detail: "A two-pin header on A/B makes scope access easy.",
+      objects: ref("component", components[1]?.id),
+    },
+    { severity: "info", title: "Termination is assumed off-board" },
+    {
+      severity: "warning",
+      title: "Reference to a part that was removed",
+      objects: [{ kind: "component", id: "gone" }],
+    },
+  ];
+  return notes.map((note, index) => ({
+    ...note,
+    id: `00000000-0000-4000-8000-00000000000${index + 1}`,
+    created_ms: Date.now(),
+    // One note predates the current design, to show how that looks.
+    revision: index === 3 ? Math.max(0, revision - 3) : revision,
+  }));
 }

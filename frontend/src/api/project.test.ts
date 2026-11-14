@@ -3,11 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import {
-  applyOperation,
-  applyTransaction,
-  getProjectRevision,
-} from "./project";
+import { applyOperation, applyTransaction, getChangeMarker } from "./project";
 
 describe("project operation boundary", () => {
   beforeEach(() => vi.mocked(invoke).mockReset());
@@ -60,10 +56,11 @@ describe("project operation boundary", () => {
     });
   });
 
-  it("reads the lightweight authoritative revision for external-change polling", async () => {
-    vi.mocked(invoke).mockResolvedValue(12);
+  it("reads the lightweight change marker for external-change polling", async () => {
+    const marker = { revision: 12, notes_generation: 3 };
+    vi.mocked(invoke).mockResolvedValue(marker);
 
-    await expect(getProjectRevision()).resolves.toBe(12);
-    expect(invoke).toHaveBeenCalledWith("get_project_revision");
+    await expect(getChangeMarker()).resolves.toEqual(marker);
+    expect(invoke).toHaveBeenCalledWith("get_change_marker");
   });
 });

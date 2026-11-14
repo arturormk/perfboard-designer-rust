@@ -9,10 +9,11 @@ use std::{
 };
 
 use directories::{BaseDirs, ProjectDirs};
-use perfboard_core::{CommitId, ComponentDefinition, RoutePos, RouteProposal, Side};
+use perfboard_core::{CommitId, ComponentDefinition, ReviewNoteId, RoutePos, RouteProposal, Side};
 use perfboard_project::{
-    Commit, DocumentRevision, HistoryActionResult, ProjectDocument, ProjectView, RouteAlternative,
-    RouteRequest, SemanticDiff, TransactionRequest, TransactionResult,
+    Commit, DocumentRevision, HistoryActionResult, NewReviewNote, ProjectDocument, ProjectView,
+    ReviewNote, RouteAlternative, RouteRequest, SemanticDiff, TransactionRequest,
+    TransactionResult,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -59,6 +60,22 @@ pub enum SessionRequest {
         expected_revision: DocumentRevision,
         name: String,
     },
+    /// Adds review notes (ADR 0015), each in front of the first less severe
+    /// note. Needs no expected revision and leaves the revision alone.
+    AddReviewNotes {
+        notes: Vec<NewReviewNote>,
+    },
+    /// Removes review notes by ID. Needs no expected revision.
+    RemoveReviewNotes {
+        note_ids: Vec<ReviewNoteId>,
+    },
+    /// Moves a review note in front of `before`, or to the end when `before`
+    /// is absent. Needs no expected revision.
+    MoveReviewNote {
+        note_id: ReviewNoteId,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        before: Option<ReviewNoteId>,
+    },
     Restore {
         expected_revision: DocumentRevision,
         commit_id: CommitId,
@@ -101,6 +118,7 @@ pub enum SessionResponse {
     History(HistoryActionResult),
     Commit(Box<Commit>),
     Renamed(ProjectRenamed),
+    ReviewNotes(ReviewNotesChanged),
     Diff(SemanticDiff),
     Routes(RouteResults),
     Components(Vec<ComponentDefinition>),
@@ -112,6 +130,14 @@ pub enum SessionResponse {
 pub struct ProjectRenamed {
     pub revision: DocumentRevision,
     pub name: String,
+    pub summary: String,
+}
+
+/// The notes a review-note request added, removed or moved.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ReviewNotesChanged {
+    pub revision: DocumentRevision,
+    pub notes: Vec<ReviewNote>,
     pub summary: String,
 }
 
@@ -662,6 +688,60 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<RouteResults>(json).unwrap(),
             results
+        );
+    }
+
+    #[test]
+    fn review_note_requests_use_a_stable_wire_shape() {
+        let json = serde_json::json!({
+            "method": "add_review_notes",
+            "params": { "notes": [
+                { "severity": "critical", "title": "A/B swapped" },
+                { "severity": "info", "title": "Tidy", "detail": "Nice",
+                  "objects": [{ "kind": "net", "id": "n1" }] }
+            ] }
+        });
+        let request = serde_json::from_value::<SessionRequest>(json).unwrap();
+        let SessionRequest::AddReviewNotes { notes } = &request else {
+            panic!("unexpected request {request:?}");
+        };
+        assert_eq!(notes.len(), 2);
+        assert_eq!(notes[0].detail, "");
+        assert_eq!(notes[1].objects[0].kind, "net");
+
+        let id = ReviewNoteId::new();
+        let json =
+            serde_json::to_value(SessionRequest::RemoveReviewNotes { note_ids: vec![id] }).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "method": "remove_review_notes",
+                "params": { "note_ids": [id.to_string()] }
+            })
+        );
+
+        let json = serde_json::json!({
+            "method": "move_review_note",
+            "params": { "note_id": id.to_string() }
+        });
+        assert_eq!(
+            serde_json::from_value::<SessionRequest>(json).unwrap(),
+            SessionRequest::MoveReviewNote {
+                note_id: id,
+                before: None
+            }
+        );
+
+        let response = SessionResponse::ReviewNotes(ReviewNotesChanged {
+            revision: DocumentRevision(5),
+            notes: Vec::new(),
+            summary: "Removed 0 review notes".into(),
+        });
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["type"], "review_notes");
+        assert_eq!(
+            serde_json::from_value::<SessionResponse>(json).unwrap(),
+            response
         );
     }
 

@@ -1,8 +1,9 @@
 use std::str::FromStr;
 
-use perfboard_core::{CommitId, NetId, OperationId, RoutePos, Side};
+use perfboard_core::{CommitId, NetId, OperationId, ReviewNoteId, RoutePos, Side};
 use perfboard_project::{
-    DocumentRevision, OperationOrigin, OperationPayload, RouteRequest, TransactionRequest,
+    DocumentRevision, NewReviewNote, OperationOrigin, OperationPayload, RouteRequest,
+    TransactionRequest,
 };
 use perfboard_session_ipc::{IpcError, SessionClient, SessionRequest, SessionResponse};
 use rmcp::{
@@ -114,6 +115,35 @@ struct RenameProjectInput {
     expected_revision: u64,
     /// New project name; surrounding whitespace is trimmed and it must not be blank.
     name: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct AddReviewNotesInput {
+    /// Notes to add. Each lands in front of the first note that is less
+    /// severe, so the list stays in severity order and notes of the same
+    /// severity keep the order given. Each has a `severity` (`critical`: wrong or unsafe,
+    /// fix before building; `warning`: likely trouble; `suggestion`: an
+    /// improvement; `info`: context, nothing to fix), a one-line `title`, an
+    /// optional plain-text `detail` with the reasoning and suggested fix, and
+    /// optional `objects` the note is about, as `{ "kind", "id" }` with kind
+    /// `component`, `wire`, `rail`, `saddle` or `net` and the ID from the design.
+    notes: Vec<NewReviewNote>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct RemoveReviewNotesInput {
+    /// IDs of the notes to remove, from `get_review_notes`.
+    note_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct MoveReviewNoteInput {
+    /// ID of the note to move, from `get_review_notes`.
+    note_id: String,
+    /// ID of the note to place it in front of; omit or null to move it to
+    /// the end of the list.
+    #[serde(default)]
+    before: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, JsonSchema)]
@@ -543,6 +573,103 @@ impl PerfboardMcp {
         .await
     }
 
+    /// Return the project's review notes, in the order the user keeps them.
+    #[tool(annotations(
+        title = "Get review notes",
+        read_only_hint = true,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    async fn get_review_notes(&self) -> CallToolResult {
+        match self.client.call(SessionRequest::GetProjectView).await {
+            Ok(SessionResponse::ProjectView(project)) => CallToolResult::structured(json!({
+                "ok": true, "revision": project.revision, "review_notes": project.review_notes
+            })),
+            Ok(other) => unexpected(&other),
+            Err(error) => ipc_error(error),
+        }
+    }
+
+    /// Add review notes for the human: findings from reviewing the design,
+    /// each with a severity, shown in the editor's Notes tab, where the user
+    /// deletes them as they address them. Saved with the project file. Notes
+    /// change nothing in the design and are not undo steps. Unlike design
+    /// writes this needs no `expected_revision` and leaves the revision as
+    /// it is; each note records the revision it describes. Read
+    /// `get_review_notes` first to avoid repeating notes already there.
+    #[tool(annotations(
+        title = "Add review notes",
+        read_only_hint = false,
+        destructive_hint = false,
+        idempotent_hint = false,
+        open_world_hint = false
+    ))]
+    async fn add_review_notes(
+        &self,
+        Parameters(input): Parameters<AddReviewNotesInput>,
+    ) -> CallToolResult {
+        if input.notes.is_empty() {
+            return tool_error("request.empty", "at least one note is required");
+        }
+        self.request(SessionRequest::AddReviewNotes { notes: input.notes })
+            .await
+    }
+
+    /// Remove review notes by ID, for example ones that are resolved or that
+    /// a fresh review replaces. Needs no `expected_revision`. Ask the human
+    /// before removing notes you did not just write.
+    #[tool(annotations(
+        title = "Remove review notes",
+        read_only_hint = false,
+        destructive_hint = true,
+        idempotent_hint = false,
+        open_world_hint = false
+    ))]
+    async fn remove_review_notes(
+        &self,
+        Parameters(input): Parameters<RemoveReviewNotesInput>,
+    ) -> CallToolResult {
+        let note_ids = match input
+            .note_ids
+            .iter()
+            .map(|id| ReviewNoteId::from_str(id))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(ids) if !ids.is_empty() => ids,
+            Ok(_) => return tool_error("request.empty", "at least one note ID is required"),
+            Err(_) => return tool_error("request.invalid", "note IDs must be UUIDs"),
+        };
+        self.request(SessionRequest::RemoveReviewNotes { note_ids })
+            .await
+    }
+
+    /// Move a review note in front of another, or to the end. New notes are
+    /// placed by severity; use this when one matters more or less than its
+    /// severity suggests. The user reorders notes by dragging, so respect
+    /// an order they chose. Needs no `expected_revision`.
+    #[tool(annotations(
+        title = "Move review note",
+        read_only_hint = false,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    async fn move_review_note(
+        &self,
+        Parameters(input): Parameters<MoveReviewNoteInput>,
+    ) -> CallToolResult {
+        let parse = |id: &str| ReviewNoteId::from_str(id);
+        let (Ok(note_id), Ok(before)) = (
+            parse(&input.note_id),
+            input.before.as_deref().map(parse).transpose(),
+        ) else {
+            return tool_error("request.invalid", "note IDs must be UUIDs");
+        };
+        self.request(SessionRequest::MoveReviewNote { note_id, before })
+            .await
+    }
+
     /// Undo, redo, discard working changes, or restore a named commit non-destructively.
     #[tool(annotations(
         title = "Manage history",
@@ -653,7 +780,7 @@ mod tests {
     #[test]
     fn tool_catalog_is_codex_and_claude_friendly() {
         let tools = PerfboardMcp::tool_router().list_all();
-        assert_eq!(tools.len(), 19);
+        assert_eq!(tools.len(), 23);
         assert!(tools.iter().all(|tool| {
             tool.annotations
                 .as_ref()
@@ -674,6 +801,7 @@ mod tests {
             "get_rendered_design",
             "suggest_routes",
             "evaluate_route",
+            "get_review_notes",
         ] {
             let tool = tools.iter().find(|tool| tool.name == name).unwrap();
             assert_eq!(
@@ -702,6 +830,26 @@ mod tests {
         let required = schema["required"].as_array().unwrap();
         assert!(required.iter().any(|field| field == "expected_revision"));
         assert!(required.iter().any(|field| field == "name"));
+    }
+
+    #[test]
+    fn review_notes_are_revision_free_writes_with_documented_severities() {
+        let tool = PerfboardMcp::add_review_notes_tool_attr();
+        let annotations = tool.annotations.unwrap();
+        assert_eq!(annotations.read_only_hint, Some(false));
+        assert_eq!(annotations.destructive_hint, Some(false));
+        let schema = serde_json::to_string(&tool.input_schema).unwrap();
+        for severity in ["critical", "warning", "suggestion", "info"] {
+            assert!(schema.contains(severity), "{severity}");
+        }
+        assert!(!schema.contains("expected_revision"));
+        let remove = PerfboardMcp::remove_review_notes_tool_attr();
+        assert_eq!(remove.annotations.unwrap().destructive_hint, Some(true));
+        let moved = PerfboardMcp::move_review_note_tool_attr();
+        assert_eq!(moved.annotations.unwrap().destructive_hint, Some(false));
+        let schema = serde_json::to_string(&moved.input_schema).unwrap();
+        assert!(schema.contains("before"));
+        assert!(!schema.contains("expected_revision"));
     }
 
     #[test]

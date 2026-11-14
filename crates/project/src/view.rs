@@ -11,8 +11,8 @@ use perfboard_core::{CommitId, Diagnostic, ProjectId};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Design, DocumentRevision, OperationOrigin, ProjectDocument, SchemaVersion, SemanticDiff,
-    WorkingChange,
+    Design, DocumentRevision, OperationOrigin, ProjectDocument, ReviewNote, SchemaVersion,
+    SemanticDiff, WorkingChange,
 };
 
 /// One undo or redo entry without its design snapshots.
@@ -51,6 +51,9 @@ pub struct ProjectView {
     pub name: String,
     pub revision: DocumentRevision,
     pub design: Design,
+    /// Review notes in the user's order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub review_notes: Vec<ReviewNote>,
     pub validation: Vec<Diagnostic>,
     /// Commits in chronological order.
     pub commits: Vec<CommitSummary>,
@@ -66,6 +69,15 @@ pub struct ProjectView {
     /// Whether the working copy differs from the head commit.
     #[serde(default)]
     pub dirty: bool,
+    /// Review-note changes made in this session; notes leave `revision`
+    /// alone, so clients watch both to notice changes (ADR 0015).
+    #[serde(default)]
+    pub notes_generation: u64,
+    /// Whether anything changed since the project was last saved, opened or
+    /// created. Set by the session; [`ProjectView::from_document`] alone
+    /// cannot know it and leaves it false.
+    #[serde(default)]
+    pub unsaved: bool,
 }
 
 fn summarize(change: &WorkingChange) -> ChangeSummary {
@@ -115,6 +127,7 @@ impl ProjectView {
             name: document.name.clone(),
             revision: document.revision,
             design: document.design.clone(),
+            review_notes: document.review_notes.clone(),
             validation: document.validation.clone(),
             commits,
             head_commit: document.head_commit,
@@ -125,6 +138,8 @@ impl ProjectView {
             undo: document.undo_stack.iter().map(summarize).collect(),
             redo: document.redo_stack.iter().map(summarize).collect(),
             dirty: document.is_dirty(),
+            notes_generation: 0,
+            unsaved: false,
         }
     }
 }

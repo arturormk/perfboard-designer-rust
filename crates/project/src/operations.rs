@@ -97,6 +97,11 @@ pub enum OperationPayload {
         net_id: NetId,
         name: String,
     },
+    /// Replaces a net's free-text notes. An empty string clears them.
+    SetNetNotes {
+        net_id: NetId,
+        notes: String,
+    },
     /// Moves everything on `source_net_id` (pins, wires, rails, junctions
     /// and net constraints) onto `target_net_id`, then removes the source.
     /// The target keeps its name. Both nets must be accepted.
@@ -124,6 +129,11 @@ pub enum OperationPayload {
     RemoveJunction {
         junction_id: JunctionId,
     },
+    /// Replaces a junction's free-text notes. An empty string clears them.
+    SetJunctionNotes {
+        junction_id: JunctionId,
+        notes: String,
+    },
     AddWire {
         wire: Wire,
     },
@@ -141,6 +151,12 @@ pub enum OperationPayload {
     SetRailColor {
         rail_id: RailId,
         color: WireColor,
+    },
+    /// Replaces a rail's free-text notes. An empty string clears them.
+    /// Allowed on locked rails.
+    SetRailNotes {
+        rail_id: RailId,
+        notes: String,
     },
     /// Adds a net-free wire tie between two free holes.
     AddSaddle {
@@ -176,6 +192,12 @@ pub enum OperationPayload {
     SetWireLock {
         wire_id: WireId,
         locked: bool,
+    },
+    /// Replaces a wire's free-text notes. An empty string clears them.
+    /// Allowed on locked wires.
+    SetWireNotes {
+        wire_id: WireId,
+        notes: String,
     },
     AddConstraint {
         constraint: Constraint,
@@ -822,6 +844,16 @@ pub(crate) fn apply_operation_untracked(
             affected_nets.insert(*net_id);
             format!("Renamed net {old} to {name}")
         }
+        OperationPayload::SetNetNotes { net_id, notes } => {
+            let net = next
+                .design
+                .nets
+                .get_mut(net_id)
+                .ok_or(OperationError::NetNotFound)?;
+            notes.clone_into(&mut net.notes);
+            affected_nets.insert(*net_id);
+            format!("Edited notes on net {}", net.name)
+        }
         OperationPayload::AssignPin { net_id, pin } => {
             let net = next
                 .design
@@ -922,6 +954,16 @@ pub(crate) fn apply_operation_untracked(
                 .ok_or(OperationError::JunctionNotFound)?;
             affected_nets.insert(junction.net_id);
             format!("Removed junction {junction_id}")
+        }
+        OperationPayload::SetJunctionNotes { junction_id, notes } => {
+            let junction = next
+                .design
+                .junctions
+                .get_mut(junction_id)
+                .ok_or(OperationError::JunctionNotFound)?;
+            notes.clone_into(&mut junction.notes);
+            affected_nets.insert(junction.net_id);
+            format!("Edited notes on junction {junction_id}")
         }
         OperationPayload::AddWire { wire } => {
             if next.design.wires.contains_key(&wire.id) {
@@ -1072,6 +1114,16 @@ pub(crate) fn apply_operation_untracked(
             affected_nets.insert(rail.net_id);
             format!("Changed rail {rail_id} color")
         }
+        OperationPayload::SetRailNotes { rail_id, notes } => {
+            let rail = next
+                .design
+                .rails
+                .get_mut(rail_id)
+                .ok_or(OperationError::RailNotFound)?;
+            notes.clone_into(&mut rail.notes);
+            affected_nets.insert(rail.net_id);
+            format!("Edited notes on rail {rail_id}")
+        }
         OperationPayload::ModifyWirePath { wire_id, vertices } => {
             let mut candidate = next
                 .design
@@ -1211,6 +1263,16 @@ pub(crate) fn apply_operation_untracked(
             wire.color.clone_from(color);
             affected_wires.insert(*wire_id);
             format!("Changed wire {wire_id} color")
+        }
+        OperationPayload::SetWireNotes { wire_id, notes } => {
+            let wire = next
+                .design
+                .wires
+                .get_mut(wire_id)
+                .ok_or(OperationError::WireNotFound)?;
+            notes.clone_into(&mut wire.notes);
+            affected_wires.insert(*wire_id);
+            format!("Edited notes on wire {wire_id}")
         }
         OperationPayload::SetWireSide { wire_id, side } => {
             let wire = next

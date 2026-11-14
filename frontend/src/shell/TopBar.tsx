@@ -8,6 +8,7 @@ import {
   save,
   saveAs,
   undo,
+  showHistory,
 } from "../state/actions";
 import {
   appMode,
@@ -17,7 +18,6 @@ import {
   filePath,
   leftTab,
   proposedNets,
-  rightTab,
   view,
   engine,
   canCommit,
@@ -232,7 +232,7 @@ export function TopBar() {
         </div>
         <button
           class="pill"
-          onClick={() => (rightTab.value = "history")}
+          onClick={showHistory}
           title={
             current?.head_commit
               ? "Changes since the last commit"

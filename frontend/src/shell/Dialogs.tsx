@@ -5,7 +5,12 @@ import { parseBoardDimensions } from "../editor/board-size";
 import { commit, newBoard, trimHistory } from "../state/actions";
 import { comparison, view } from "../state/store";
 import { Icon } from "../ui/Icon";
-import { closeDialog, confirmRequest, openDialogKind } from "./dialogs";
+import {
+  choiceRequest,
+  closeDialog,
+  confirmRequest,
+  openDialogKind,
+} from "./dialogs";
 import { LibrariesDialog, PreferencesDialog } from "./LibraryDialogs";
 import { Modal } from "./Modal";
 
@@ -369,6 +374,33 @@ function ConfirmDialog() {
   );
 }
 
+function ChoiceDialog() {
+  const request = choiceRequest.value;
+  if (!request) return null;
+  return (
+    <Modal title={request.title} onClose={() => request.resolve("cancel")}>
+      <div class="modal-body">
+        <p class="confirm-message">{request.message}</p>
+        <footer class="modal-foot">
+          <button class="btn ghost" onClick={() => request.resolve("cancel")}>
+            Cancel
+          </button>
+          {request.choices.map((choice, index) => (
+            <button
+              key={choice.value}
+              autoFocus={index === request.choices.length - 1}
+              class={`btn ${choice.tone ?? "ghost"}`}
+              onClick={() => request.resolve(choice.value)}
+            >
+              {choice.label}
+            </button>
+          ))}
+        </footer>
+      </div>
+    </Modal>
+  );
+}
+
 export function Dialogs() {
   const kind = openDialogKind.value;
   return (
@@ -380,6 +412,7 @@ export function Dialogs() {
       {kind === "libraries" && <LibrariesDialog />}
       {kind === "preferences" && <PreferencesDialog />}
       <ConfirmDialog />
+      <ChoiceDialog />
     </>
   );
 }

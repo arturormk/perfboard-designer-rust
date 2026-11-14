@@ -38,6 +38,9 @@ pub struct ProjectDocument {
     /// default project layer. A project setting: outside the design and its
     /// history, like the name.
     pub component_paths: Option<Vec<String>>,
+    /// Review notes, in the user's order (ADR 0015). Metadata like the name:
+    /// outside the design and its history.
+    pub review_notes: Vec<crate::ReviewNote>,
     pub revision: DocumentRevision,
     pub design: Design,
     pub validation: Vec<Diagnostic>,
@@ -156,6 +159,7 @@ impl ProjectDocument {
             project_id,
             name: name.into(),
             component_paths: None,
+            review_notes: Vec::new(),
             revision: DocumentRevision::default(),
             working_base: None,
             design,
@@ -309,6 +313,7 @@ impl ProjectDocument {
                 project_id: self.project_id,
                 name: self.name.clone(),
                 component_paths: None,
+                review_notes: Vec::new(),
                 revision: self.revision,
                 design: design.clone(),
                 validation: Vec::new(),

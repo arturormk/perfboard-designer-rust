@@ -206,6 +206,12 @@ impl ComponentDraft {
         self.snapshot()
     }
 
+    /// Whether the draft differs from what was last saved.
+    #[must_use]
+    pub fn is_dirty(&self) -> bool {
+        self.saved.as_ref() != Some(&self.value)
+    }
+
     #[must_use]
     pub fn snapshot(&self) -> ComponentDraftSnapshot {
         let validation = self.value.definition.validate();
@@ -213,7 +219,7 @@ impl ComponentDraft {
             definition: self.value.definition.clone(),
             documentation: self.value.documentation.clone(),
             valid: validation.is_ok(),
-            dirty: self.saved.as_ref() != Some(&self.value),
+            dirty: self.is_dirty(),
             can_undo: !self.undo.is_empty(),
             can_redo: !self.redo.is_empty(),
             diagnostics: validation

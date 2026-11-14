@@ -48,3 +48,40 @@ export function confirmAction(
     };
   });
 }
+
+export interface Choice {
+  value: string;
+  label: string;
+  tone?: "primary" | "danger" | "ghost";
+}
+
+export interface ChoiceRequest {
+  title: string;
+  message: string;
+  /** Shown after Cancel, in order; the last one has focus. */
+  choices: Choice[];
+  resolve: (value: string) => void;
+}
+
+export const choiceRequest = signal<ChoiceRequest | null>(null);
+
+/**
+ * In-app question with several answers plus Cancel. Resolves the chosen
+ * value, or "cancel". A second request while one is open answers the first
+ * with "cancel".
+ */
+export function chooseAction(
+  request: Omit<ChoiceRequest, "resolve">,
+): Promise<string> {
+  choiceRequest.peek()?.resolve("cancel");
+  return new Promise((resolve) => {
+    const entry: ChoiceRequest = {
+      ...request,
+      resolve: (value) => {
+        if (choiceRequest.peek() === entry) choiceRequest.value = null;
+        resolve(value);
+      },
+    };
+    choiceRequest.value = entry;
+  });
+}

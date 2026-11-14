@@ -33,7 +33,7 @@ use serde_json::Value;
 
 use crate::{
     Commit, Design, DocumentRevision, OperationOrigin, OperationPayload, PROJECT_SCHEMA_VERSION,
-    ProjectDocument, SchemaVersion, WorkingChange,
+    ProjectDocument, ReviewNote, SchemaVersion, WorkingChange,
     document::{OLDEST_READABLE_SCHEMA_VERSION, calculate_design_validation},
 };
 
@@ -67,6 +67,8 @@ struct StoredDocumentOut<'a> {
     name: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     component_paths: Option<&'a [String]>,
+    #[serde(skip_serializing_if = "<[ReviewNote]>::is_empty")]
+    review_notes: &'a [ReviewNote],
     revision: DocumentRevision,
     design: &'a Design,
     #[serde(skip_serializing_if = "<[Diagnostic]>::is_empty")]
@@ -92,6 +94,8 @@ struct StoredDocumentIn {
     name: String,
     #[serde(default)]
     component_paths: Option<Vec<String>>,
+    #[serde(default)]
+    review_notes: Vec<ReviewNote>,
     revision: DocumentRevision,
     design: Design,
     #[serde(default)]
@@ -134,6 +138,7 @@ impl Serialize for ProjectDocument {
             project_id: self.project_id,
             name: &self.name,
             component_paths: self.component_paths.as_deref(),
+            review_notes: &self.review_notes,
             revision: self.revision,
             design: &self.design,
             validation: &self.validation,
@@ -306,6 +311,7 @@ impl StoredDocumentIn {
             project_id: self.project_id,
             name: self.name,
             component_paths: self.component_paths,
+            review_notes: self.review_notes,
             revision: self.revision,
             design: self.design,
             validation: self.validation,

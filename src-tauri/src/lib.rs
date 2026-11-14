@@ -8,19 +8,21 @@ use std::{
 
 use perfboard_core::{
     BoardSize, CommitId, ComponentDefinition, ComponentDraft, ComponentDraftOperation,
-    ComponentDraftSnapshot, ProjectId, RectMm, Rotation, RoutePos, RouteProposal, Side,
+    ComponentDraftSnapshot, ProjectId, RectMm, ReviewNoteId, Rotation, RoutePos, RouteProposal,
+    Side,
 };
 use perfboard_project::{
-    AssemblyPlan, Board, Commit, DocumentRevision, HistoryActionResult, OperationError,
-    OperationOrigin, OperationRequest, OperationResult, ProjectDocument, ProjectSession,
-    RevisionError, RouteAlternative, RouteError, RouteRequest, RoutingCostConfig, SemanticDiff,
-    SessionChangeEvent, SessionError, TransactionRequest, TransactionResult, assembly_plan,
-    evaluate_route, load_project, render_design_svg, save_project_atomic, suggest_route,
-    suggest_route_alternatives,
+    AssemblyPlan, Board, ChangeMarker, Commit, DocumentRevision, HistoryActionResult,
+    OperationError, OperationOrigin, OperationRequest, OperationResult, ProjectDocument,
+    ProjectSession, ReviewNote, RevisionError, RouteAlternative, RouteError, RouteRequest,
+    RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError, TransactionRequest,
+    TransactionResult, assembly_plan, evaluate_route, load_project, render_design_svg,
+    save_project_atomic, suggest_route, suggest_route_alternatives,
 };
 use perfboard_session_ipc::{
-    ComponentDocumentation, DocumentationTrust, ProjectRenamed, RenderedDesign, RouteResults,
-    SessionApiError, SessionRegistration, SessionRequest, SessionRequestHandler, SessionResponse,
+    ComponentDocumentation, DocumentationTrust, ProjectRenamed, RenderedDesign, ReviewNotesChanged,
+    RouteResults, SessionApiError, SessionRegistration, SessionRequest, SessionRequestHandler,
+    SessionResponse,
 };
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -28,6 +30,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 mod assembly_progress;
+mod close_guard;
 mod component_library;
 mod component_viewer;
 mod library_grants;
@@ -35,6 +38,7 @@ mod library_parts;
 mod recent_projects;
 
 use assembly_progress::{AssemblyProgress, Checkmarks};
+use close_guard::{CLOSE_REQUESTED_EVENT, CloseGuard, Decision, UnsavedWork};
 use recent_projects::{RecentProject, RecentProjects};
 
 use component_library::LibraryInputs;
@@ -218,10 +222,7 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 // user library that is not granted, next to the design's.
                 let (mut view, inputs) = {
                     let session = self.lock()?;
-                    (
-                        perfboard_project::ProjectView::from_document(session.document()),
-                        LibraryInputs::of(&session, &self.grants),
-                    )
+                    (session.view(), LibraryInputs::of(&session, &self.grants))
                 };
                 view.validation
                     .extend(component_library::library_validation(
@@ -289,6 +290,52 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 drop(session);
                 self.publish(&event);
                 Ok(SessionResponse::Renamed(renamed))
+            }
+            SessionRequest::AddReviewNotes { notes } => {
+                let mut session = self.lock()?;
+                let (notes, event) = session
+                    .add_review_notes(notes)
+                    .map_err(|error| session_api_error(&error))?;
+                drop(session);
+                self.publish(&event);
+                Ok(SessionResponse::ReviewNotes(ReviewNotesChanged {
+                    revision: event.revision,
+                    notes,
+                    summary: event.summary,
+                }))
+            }
+            SessionRequest::RemoveReviewNotes { note_ids } => {
+                let mut session = self.lock()?;
+                let (notes, event) = session
+                    .remove_review_notes(&note_ids)
+                    .map_err(|error| session_api_error(&error))?;
+                drop(session);
+                self.publish(&event);
+                Ok(SessionResponse::ReviewNotes(ReviewNotesChanged {
+                    revision: event.revision,
+                    notes,
+                    summary: event.summary,
+                }))
+            }
+            SessionRequest::MoveReviewNote { note_id, before } => {
+                let mut session = self.lock()?;
+                let event = session
+                    .move_review_note(note_id, before)
+                    .map_err(|error| session_api_error(&error))?;
+                let notes = session
+                    .document()
+                    .review_notes
+                    .iter()
+                    .filter(|note| note.id == note_id)
+                    .cloned()
+                    .collect();
+                drop(session);
+                self.publish(&event);
+                Ok(SessionResponse::ReviewNotes(ReviewNotesChanged {
+                    revision: event.revision,
+                    notes,
+                    summary: event.summary,
+                }))
             }
             SessionRequest::Restore {
                 expected_revision,
@@ -472,14 +519,16 @@ fn reset_assembly_progress(
         .map_err(|error| format!("could not save assembly progress: {error}"))
 }
 
+/// What the editor polls to notice changes it missed an event for. Review
+/// notes leave the revision alone, so the marker counts them too.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
-fn get_project_revision(state: tauri::State<'_, SessionState>) -> Result<DocumentRevision, String> {
+fn get_change_marker(state: tauri::State<'_, SessionState>) -> Result<ChangeMarker, String> {
     state
         .0
         .lock()
         .map_err(|error| error.to_string())
-        .map(|value| value.document().revision)
+        .map(|session| session.marker())
 }
 
 #[tauri::command]
@@ -634,6 +683,87 @@ fn rename_project(
     let event = session
         .rename(expected_revision, &name)
         .map_err(CommandError::from)?;
+    publish(&app, &event);
+    Ok(())
+}
+
+fn lock_session<'a>(
+    state: &'a tauri::State<'_, SessionState>,
+) -> Result<std::sync::MutexGuard<'a, ProjectSession>, CommandError> {
+    state.0.lock().map_err(|error| CommandError {
+        code: "session.lock_failed",
+        message: error.to_string(),
+        expected_revision: None,
+        actual_revision: None,
+    })
+}
+
+/// Deletes a review note and returns it with its position, so the editor
+/// can offer to put it back. Like all review-note writes it needs no
+/// expected revision (ADR 0015).
+#[derive(Debug, Serialize)]
+struct RemovedReviewNote {
+    note: ReviewNote,
+    index: usize,
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn remove_review_note(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    note_id: ReviewNoteId,
+) -> Result<RemovedReviewNote, CommandError> {
+    let mut session = lock_session(&state)?;
+    let index = session
+        .document()
+        .review_notes
+        .iter()
+        .position(|note| note.id == note_id)
+        .unwrap_or_default();
+    let (mut removed, event) = session
+        .remove_review_notes(&[note_id])
+        .map_err(CommandError::from)?;
+    drop(session);
+    publish(&app, &event);
+    Ok(RemovedReviewNote {
+        note: removed.remove(0),
+        index,
+    })
+}
+
+/// Moves a review note in front of `before`, or to the end.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn move_review_note(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    note_id: ReviewNoteId,
+    before: Option<ReviewNoteId>,
+) -> Result<(), CommandError> {
+    let mut session = lock_session(&state)?;
+    let event = session
+        .move_review_note(note_id, before)
+        .map_err(CommandError::from)?;
+    drop(session);
+    publish(&app, &event);
+    Ok(())
+}
+
+/// Puts a deleted review note back at `index`.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn insert_review_note(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    note: ReviewNote,
+    index: usize,
+) -> Result<(), CommandError> {
+    let mut session = lock_session(&state)?;
+    let event = session
+        .insert_review_note(note, index)
+        .map_err(CommandError::from)?;
+    drop(session);
     publish(&app, &event);
     Ok(())
 }
@@ -1346,9 +1476,7 @@ fn get_project_view(
     state: tauri::State<'_, SessionState>,
 ) -> Result<perfboard_project::ProjectView, String> {
     let session = state.0.lock().map_err(|error| error.to_string())?;
-    Ok(perfboard_project::ProjectView::from_document(
-        session.document(),
-    ))
+    Ok(session.view())
 }
 
 #[tauri::command]
@@ -1488,7 +1616,7 @@ fn save_project(
 ) -> Result<(), String> {
     let mut session = state.0.lock().map_err(|error| error.to_string())?;
     save_project_atomic(session.document(), &path).map_err(|error| error.to_string())?;
-    session.set_file_path(path.clone());
+    session.mark_saved(path.clone());
     let (project_id, name) = (
         session.document().project_id,
         session.document().name.clone(),
@@ -1558,6 +1686,67 @@ fn open_project(
     Ok(document)
 }
 
+/// What closing the app now would lose.
+fn unsaved_work(app: &tauri::AppHandle) -> UnsavedWork {
+    let project = app
+        .state::<SessionState>()
+        .0
+        .lock()
+        .is_ok_and(|session| session.has_unsaved_changes());
+    let part_draft = app
+        .state::<ComponentViewerState>()
+        .active
+        .lock()
+        .is_ok_and(|active| {
+            active
+                .as_ref()
+                .and_then(|viewer| viewer.draft.as_ref())
+                .is_some_and(ComponentDraft::is_dirty)
+        });
+    UnsavedWork {
+        project,
+        part_draft,
+    }
+}
+
+/// Intercepts closing the main window over unsaved work (see `close_guard`).
+fn guard_close(window: &tauri::Window, api: &tauri::CloseRequestApi) {
+    let app = window.app_handle();
+    let unsaved = unsaved_work(app);
+    let decision = app
+        .state::<CloseGuard>()
+        .on_close_requested(&unsaved, std::time::Instant::now());
+    if decision == Decision::AskEditor {
+        api.prevent_close();
+        if let Err(error) = window.emit(CLOSE_REQUESTED_EVENT, &unsaved) {
+            eprintln!("Could not ask the editor to confirm closing: {error}");
+        }
+    }
+}
+
+/// The editor is showing its unsaved-changes dialog.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn acknowledge_close_request(guard: tauri::State<'_, CloseGuard>) {
+    guard.acknowledge();
+}
+
+/// The unsaved-changes dialog was answered: close the window, or stay.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn resolve_close_request(
+    guard: tauri::State<'_, CloseGuard>,
+    window: tauri::WebviewWindow,
+    close: bool,
+) -> Result<(), String> {
+    guard.reset();
+    if close {
+        // Destroying skips CloseRequested, so the guard does not ask again.
+        window.destroy().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
 fn initial_document() -> ProjectDocument {
     ProjectDocument::new(
         ProjectId::new(),
@@ -1581,6 +1770,12 @@ pub fn run() {
     tauri::Builder::default()
         .manage(SessionState(session))
         .manage(ComponentViewerState::default())
+        .manage(CloseGuard::default())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                guard_close(window, api);
+            }
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
@@ -1609,7 +1804,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_bootstrap_info,
             get_project,
-            get_project_revision,
+            get_change_marker,
+            acknowledge_close_request,
+            resolve_close_request,
             get_assembly_plan,
             get_assembly_progress,
             set_assembly_step_done,
@@ -1623,6 +1820,9 @@ pub fn run() {
             discard_project_changes,
             commit_project,
             rename_project,
+            remove_review_note,
+            move_review_note,
+            insert_review_note,
             restore_project_commit,
             compare_project_revisions,
             suggest_project_route,

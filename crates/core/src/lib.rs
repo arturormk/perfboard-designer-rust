@@ -29,7 +29,7 @@ pub use diagnostic::{Diagnostic, DiagnosticCode, DiagnosticSeverity, ObjectRefer
 pub use geometry::{BoardSize, GeometryError, HolePos, Rotation, RoutePos, Side};
 pub use id::{
     CommitId, ComponentDefinitionId, ComponentInstanceId, ConstraintId, JunctionId, NetId,
-    OperationId, PinId, ProjectId, RailId, SaddleId, WireId,
+    OperationId, PinId, ProjectId, RailId, ReviewNoteId, SaddleId, WireId,
 };
 pub use layout::ComponentInstance;
 pub use routing::{

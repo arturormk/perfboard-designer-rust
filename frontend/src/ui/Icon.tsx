@@ -40,6 +40,7 @@ const PATHS = {
   save: "M5 4h11l3 3v13H5z M8 4v5h7V4 M8 20v-6h8v6",
   print: "M7 9V4h10v5 M5 9h14v7h-2 M7 16H5V9 M7 13h10v7H7z",
   more: "M5 12v.01 M12 12v.01 M19 12v.01",
+  grip: "M9 6v.01 M15 6v.01 M9 12v.01 M15 12v.01 M9 18v.01 M15 18v.01",
   chevron: "M9 6l6 6-6 6",
   chevronDown: "M6 9l6 6 6-6",
   chevronUp: "M6 15l6-6 6 6",

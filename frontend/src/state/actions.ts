@@ -20,9 +20,12 @@ import {
   getComponentLibrary,
   getNetConnectivity,
   getProjectView,
+  insertReviewNote,
+  moveReviewNote,
   openProject,
   pickProjectPath,
   redoProject,
+  removeReviewNote,
   restoreProjectCommit,
   saveProject,
   suggestProjectRoute,
@@ -32,6 +35,7 @@ import {
   type ComponentDefinition,
   type ElectricalNet,
   type HolePos,
+  type ObjectReference,
   type OperationPayload,
   type PinRef,
   type ProjectView,
@@ -65,16 +69,19 @@ import {
   comparison,
   connectivity,
   design,
+  dirty,
   engine,
   filePath,
   flashIds,
   recentProjects,
   focusRequest,
   library,
+  leftOpen,
+  leftTab,
   libraryDetails,
   pendingRoute,
+  rightOpen,
   rightTab,
-  savedRevision,
   selection,
   side,
   tool,
@@ -84,7 +91,12 @@ import {
 } from "./store";
 import { toast } from "./toasts";
 import { buildWirePages, paperForLocale } from "../print/pdf-pages";
-import { confirmAction } from "../shell/dialogs";
+import {
+  chooseAction,
+  confirmAction,
+  openDialog as openShellDialog,
+} from "../shell/dialogs";
+import { reordered } from "../panels/note-order";
 
 // ── Refresh ────────────────────────────────────────────────────────────────
 
@@ -92,6 +104,8 @@ const commitDesignCache = new Map<string, Design>();
 let refreshInFlight: Promise<void> | undefined;
 let refreshQueued = false;
 let knownOperationIds: Set<string> | undefined;
+/** Every review note seen in the open project, so restores are not news. */
+let knownNoteIds: Set<string> | undefined;
 
 function rememberPath(project: ProjectView, path: string | null): void {
   if (path) {
@@ -214,11 +228,51 @@ function announceExternalChanges(
       detail:
         latest.rationale ?? (fresh.length > 1 ? latest.summary : undefined),
       actions: [
-        { label: "Review", run: () => (rightTab.value = "history") },
+        { label: "Review", run: showHistory },
         { label: "Undo", run: () => void undo() },
       ],
     },
   );
+}
+
+function announceNewNotes(
+  previous: ProjectView | null,
+  next: ProjectView,
+): void {
+  const notes = next.review_notes ?? [];
+  if (!knownNoteIds || !previous || previous.project_id !== next.project_id) {
+    knownNoteIds = new Set(notes.map((note) => note.id));
+    return;
+  }
+  // Only agents add notes; the editor only removes, moves and restores them.
+  const fresh = notes.filter((note) => !knownNoteIds!.has(note.id));
+  for (const note of fresh) knownNoteIds.add(note.id);
+  if (!fresh.length) return;
+  const critical = fresh.filter((note) => note.severity === "critical").length;
+  toast(
+    "agent",
+    fresh.length === 1
+      ? `Review note: ${fresh[0]!.title}`
+      : `The agent added ${fresh.length} review notes`,
+    {
+      detail: critical
+        ? `${critical} marked critical`
+        : fresh.length === 1
+          ? undefined
+          : "See the Notes tab.",
+      actions: [{ label: "Show", run: showNotes }],
+    },
+  );
+}
+
+export function showNotes(): void {
+  rightOpen.value = true;
+  rightTab.value = "notes";
+}
+
+export function showHistory(): void {
+  leftOpen.value = true;
+  leftTab.value = "history";
 }
 
 export function flash(ids: Set<string>): void {
@@ -244,12 +298,12 @@ async function doRefresh(): Promise<void> {
   await loadComparison(next);
   batch(() => {
     announceExternalChanges(previous, next);
+    announceNewNotes(previous, next);
     view.value = next;
     connectivity.value = nets;
     if (previous?.project_id !== next.project_id) {
       const stored = localStorage.getItem(`perfboard.path.${next.project_id}`);
       filePath.value = stored;
-      savedRevision.value = stored ? next.revision : null;
     }
     const current = selection.peek();
     if (current && !objectExists(next.design, current)) selection.value = null;
@@ -338,6 +392,93 @@ async function guarded<T>(
     }
     return undefined;
   }
+}
+
+// ── Review notes ───────────────────────────────────────────────────────────
+// Note writes need no expected revision (ADR 0015), so they skip `guarded`'s
+// stale handling.
+
+/** Deletes a review note, offering to put it back. */
+export async function deleteReviewNote(noteId: string): Promise<void> {
+  try {
+    const { note, index } = await removeReviewNote(noteId);
+    await refresh();
+    toast("info", `Deleted “${note.title}”`, {
+      actions: [
+        {
+          label: "Undo",
+          run: () =>
+            void insertReviewNote(note, index)
+              .then(refresh)
+              .catch((error: unknown) =>
+                toast("error", "Could not restore the note", {
+                  detail: errorMessage(error),
+                }),
+              ),
+        },
+      ],
+      durationMs: 6000,
+    });
+  } catch (error) {
+    toast("error", "Could not delete the note", {
+      detail: errorMessage(error),
+    });
+    await refresh();
+  }
+}
+
+/**
+ * Moves a note in front of `before` (or to the end). The list shows the new
+ * order at once; the refresh that follows confirms it.
+ */
+export async function moveNote(
+  noteId: string,
+  before: string | null,
+): Promise<void> {
+  const current = view.peek();
+  if (current?.review_notes)
+    view.value = {
+      ...current,
+      review_notes: reordered(
+        current.review_notes,
+        (note) => note.id,
+        noteId,
+        before,
+      ),
+    };
+  try {
+    await moveReviewNote(noteId, before);
+  } catch (error) {
+    toast("error", "Could not move the note", { detail: errorMessage(error) });
+  }
+  await refresh();
+}
+
+/**
+ * Selects and frames a referenced design object. Returns false when there
+ * is nothing on the board to show.
+ */
+export function locateObject(
+  target: ObjectReference,
+  options: { keepTab?: boolean } = {},
+): boolean {
+  if (target.kind === "component_layer") {
+    openShellDialog("libraries");
+    return true;
+  }
+  const kind =
+    target.kind === "component" ||
+    target.kind === "wire" ||
+    target.kind === "rail" ||
+    target.kind === "saddle" ||
+    target.kind === "net"
+      ? target.kind
+      : undefined;
+  if (!kind) return false;
+  if (kind === "net") leftTab.value = "nets";
+  select({ kind, id: target.id }, { keepTab: options.keepTab });
+  focusOn({ kind, id: target.id });
+  return true;
 }
 
 function revision(): number {
@@ -448,37 +589,83 @@ export async function exportWireTemplates(): Promise<void> {
   }
 }
 
-export async function saveAs(): Promise<void> {
+/** Resolves true when the project was written to a file. */
+export async function saveAs(): Promise<boolean> {
   try {
     const path = await pickProjectPath(true, suggestedFileName());
-    if (!path) return;
+    if (!path) return false;
     await saveProject(path);
     filePath.value = path;
-    savedRevision.value = revision();
     rememberPath(view.peek()!, path);
+    await refresh();
     toast("success", "Project saved", { detail: path });
     // The project's own component folder sits next to its file.
     void refreshLibrary();
+    return true;
   } catch (error) {
     toast("error", "Could not save the project", {
       detail: errorMessage(error),
     });
+    return false;
   }
 }
 
-export async function save(): Promise<void> {
+/** Resolves true when the project was written to a file. */
+export async function save(): Promise<boolean> {
   const path = filePath.peek();
   if (!path) return saveAs();
   try {
     await saveProject(path);
-    savedRevision.value = revision();
     rememberPath(view.peek()!, path);
+    await refresh();
     toast("success", "Saved", { detail: path, durationMs: 2000 });
+    return true;
   } catch (error) {
     toast("error", "Could not save the project", {
       detail: errorMessage(error),
     });
+    return false;
   }
+}
+
+/**
+ * Before the open project is replaced or the window closes: if it has
+ * unsaved changes, asks whether to save them. Resolves true to go ahead.
+ */
+export async function settleUnsavedChanges(
+  action: "close" | "open" | "new",
+  options: { partDraft?: boolean } = {},
+): Promise<boolean> {
+  const project = dirty.peek();
+  const partDraft = options.partDraft ?? false;
+  if (!project && !partDraft) return true;
+  const name = view.peek()?.name ?? "This project";
+  const verb = {
+    close: "closing",
+    open: "opening another project",
+    new: "starting a new board",
+  }[action];
+  const draftNote = partDraft
+    ? " The part open in the Part designer has unsaved changes too; they are discarded."
+    : "";
+  if (!project) {
+    return confirmAction(
+      "Discard the unsaved part?",
+      `The part open in the Part designer has unsaved changes. They are lost if you continue ${verb}.`,
+      "Discard and continue",
+      true,
+    );
+  }
+  const choice = await chooseAction({
+    title: "Save changes before " + verb + "?",
+    message: `“${name}” has unsaved changes, such as edits or review notes. They are lost if you don't save them.${draftNote}`,
+    choices: [
+      { value: "discard", label: "Don't save", tone: "danger" },
+      { value: "save", label: "Save", tone: "primary" },
+    ],
+  });
+  if (choice === "save") return save();
+  return choice === "discard";
 }
 
 function resetWorkspace(): void {
@@ -494,14 +681,17 @@ function resetWorkspace(): void {
   commitDesignCache.clear();
 }
 
-export async function openPath(path: string): Promise<void> {
+export async function openPath(
+  path: string,
+  options: { settled?: boolean } = {},
+): Promise<void> {
+  if (!options.settled && !(await settleUnsavedChanges("open"))) return;
   try {
     busy.value = "Opening project…";
     await openProject(path);
     resetWorkspace();
     await Promise.all([refresh(), refreshLibrary()]);
     filePath.value = path;
-    savedRevision.value = revision();
     rememberPath(view.peek()!, path);
     focusBoard();
     toast("success", `Opened ${view.peek()?.name ?? "project"}`, {
@@ -518,8 +708,9 @@ export async function openPath(path: string): Promise<void> {
 
 export async function openDialog(): Promise<void> {
   try {
+    if (!(await settleUnsavedChanges("open"))) return;
     const path = await pickProjectPath(false);
-    if (path) await openPath(path);
+    if (path) await openPath(path, { settled: true });
   } catch (error) {
     toast("error", "Could not open the project", {
       detail: errorMessage(error),
@@ -532,12 +723,12 @@ export async function newBoard(
   holesX: number,
   holesY: number,
 ): Promise<void> {
+  if (!(await settleUnsavedChanges("new"))) return;
   try {
     await createProject(name, holesX, holesY);
     resetWorkspace();
     filePath.value = null;
     await Promise.all([refresh(), refreshLibrary()]);
-    savedRevision.value = null;
     focusBoard();
     toast("success", `Created a ${holesX} × ${holesY} board`);
   } catch (error) {
@@ -551,7 +742,7 @@ export async function newBoard(
 
 export function select(
   next: Selection | null,
-  options: { focus?: boolean } = {},
+  options: { focus?: boolean; keepTab?: boolean } = {},
 ): void {
   const current = design.peek();
   if (next && current && next.kind !== "net") {
@@ -559,7 +750,7 @@ export function select(
     if (objectSide && objectSide !== side.peek()) side.value = objectSide;
   }
   selection.value = next;
-  if (next) rightTab.value = "inspect";
+  if (next && !options.keepTab) rightTab.value = "inspect";
   if (next && options.focus) focusOn(next);
 }
 

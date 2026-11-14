@@ -109,6 +109,9 @@ src/
 | `get_net_connectivity` | Per-net islands of electrically joined pins |
 | `get_commit_design` | One commit's design, for comparison |
 | `rename_project` | Rename the project (revision-checked, not an undo step; also an MCP tool) |
+| `remove_review_note` / `move_review_note` / `insert_review_note` | Delete, reorder and restore review notes; by note ID, no expected revision (ADR 0015) |
+| `get_change_marker` | Revision plus review-note change count, polled to catch missed events (replaces `get_project_revision`) |
+| `acknowledge_close_request` / `resolve_close_request` | Answer the backend's `close-requested` event: the unsaved-changes dialog is showing; close or stay |
 | `get_undo_history_bytes` | Saved size of the undo/redo stacks (patch-encoded, ADR 0013) |
 | `pick_project_path` | Native open/save dialog (`tauri-plugin-dialog`) |
 | `export_pdf` | Save page SVGs as a true-scale PDF and open it (`tauri-plugin-opener`) |

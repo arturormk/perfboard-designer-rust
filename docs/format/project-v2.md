@@ -74,6 +74,42 @@ outside `design`, so it is not part of revision history.
 The field was added after version 2 was introduced and needs no version
 change: readers that predate it ignore it, and drop it when they save.
 
+## Review notes
+
+The optional top-level `review_notes` is an array of findings about the
+project, usually written by an agent, in the order the user keeps them
+([ADR 0015](../adr/0015-review-notes.md)). Like `component_paths` it sits
+outside `design`, so it is not part of revision history or commits. It is
+omitted when empty.
+
+```json
+"review_notes": [
+  {
+    "id": "6f0c2f9e-3b7e-4f5e-9d61-0a8f3c1d2b47",
+    "severity": "critical",
+    "title": "RS-485 A and B are swapped at the RJ45",
+    "detail": "Swap the wires on pins 4 and 5.",
+    "objects": [{ "kind": "component", "id": "…" }],
+    "created_ms": 1794614400000,
+    "revision": 41
+  }
+]
+```
+
+- `severity` is `critical`, `warning`, `suggestion` or `info`.
+- Array order is the display order. Editors add a note in front of the first
+  note that is less severe (or at the end), so the list starts in severity
+  order; the user and agents can then move notes anywhere.
+- `revision` is the document `revision` when the note was added: the design
+  it describes. Adding, removing or reordering notes does not change the
+  document revision. It is optional, for notes written before it was recorded.
+- `detail` and `objects` are optional. `objects` uses the diagnostics'
+  `{ kind, id }` references; a reference to an object that no longer exists
+  is kept and shown as missing.
+
+The field was added after version 2 was introduced and needs no version
+change: readers that predate it ignore it, and drop it when they save.
+
 ## Upgrading version 1
 
 A version 1 document is read with its full snapshots, its undo/redo

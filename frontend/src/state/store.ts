@@ -14,6 +14,7 @@ import type {
   RecentProject,
   PinRef,
   ProjectView,
+  ReviewNote,
   RouteAlternative,
   RouteProposal,
   SemanticDiff,
@@ -88,7 +89,6 @@ export const comparison = signal<SemanticDiff>(EMPTY_DIFF);
 export const filePath = signal<string | null>(
   localStorage.getItem("perfboard.lastPath"),
 );
-export const savedRevision = signal<number | null>(null);
 /** Most recent first; persisted by the backend in the app's config folder. */
 export const recentProjects = signal<RecentProject[]>([]);
 
@@ -112,8 +112,8 @@ export const showChanges = signal(false);
 export const showKeepouts = signal(false);
 export const splitCompare = signal(false);
 
-export const leftTab = signal<"parts" | "nets">("parts");
-export const rightTab = signal<"inspect" | "problems" | "history">("inspect");
+export const leftTab = signal<"parts" | "nets" | "history">("parts");
+export const rightTab = signal<"inspect" | "problems" | "notes">("inspect");
 export const leftOpen = signal(true);
 export const rightOpen = signal(true);
 
@@ -132,6 +132,10 @@ export const focusRequest = signal<{
 
 // ── Derived ────────────────────────────────────────────────────────────────
 export const design = computed(() => view.value?.design);
+/** Review notes in the user's order (ADR 0015). */
+export const reviewNotes = computed<ReviewNote[]>(
+  () => view.value?.review_notes ?? [],
+);
 /** The design's validation plus component library problems (ADR 0014). */
 export const diagnostics = computed<Diagnostic[]>(() => [
   ...(view.value?.validation ?? []),
@@ -179,12 +183,12 @@ export const changeCount = computed(() => {
     diff.constraints.length
   );
 });
-export const dirty = computed(
-  () =>
-    view.value !== null &&
-    savedRevision.value !== null &&
-    view.value.revision !== savedRevision.value,
-);
+/**
+ * Whether anything changed since the project was last saved, opened or
+ * created. The backend tracks it, because review notes change the project
+ * without changing its revision (ADR 0015).
+ */
+export const dirty = computed(() => view.value?.unsaved ?? false);
 export const proposedNets = computed(() =>
   Object.values(design.value?.nets ?? {}).filter(
     (net) => net.state === "proposed",

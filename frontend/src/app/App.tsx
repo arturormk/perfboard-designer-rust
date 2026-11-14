@@ -5,6 +5,7 @@ import { ComponentDesigner } from "../component-designer/ComponentDesigner";
 import { HistoryPanel } from "../panels/HistoryPanel";
 import { Inspector } from "../panels/Inspector";
 import { NetsPanel } from "../panels/NetsPanel";
+import { NotesPanel } from "../panels/NotesPanel";
 import { PartsPanel } from "../panels/PartsPanel";
 import { ProblemsPanel } from "../panels/ProblemsPanel";
 import { PrintSheet } from "../print/PrintSheet";
@@ -33,6 +34,7 @@ import {
   placing,
   problemCounts,
   proposedNets,
+  reviewNotes,
   rightOpen,
   rightTab,
   selection,
@@ -168,8 +170,9 @@ function handleKey(event: KeyboardEvent): void {
 
 function LeftPanel() {
   const proposals = proposedNets.value.length;
+  const steps = view.value?.undo.length ?? 0;
   return (
-    <aside class="side-panel left" aria-label="Parts and nets">
+    <aside class="side-panel left" aria-label="Parts, nets and history">
       <div class="panel-tabs" role="tablist">
         <button
           role="tab"
@@ -189,6 +192,15 @@ function LeftPanel() {
           {proposals > 0 && <span class="tab-badge agent">{proposals}</span>}
         </button>
         <button
+          role="tab"
+          aria-selected={leftTab.value === "history"}
+          class={leftTab.value === "history" ? "on" : ""}
+          onClick={() => (leftTab.value = "history")}
+        >
+          <Icon name="history" size={15} /> History
+          {steps > 0 && <span class="tab-badge">{steps}</span>}
+        </button>
+        <button
           class="icon-btn small collapse"
           title="Hide panel"
           aria-label="Hide panel"
@@ -197,16 +209,27 @@ function LeftPanel() {
           <Icon name="panelLeft" size={15} />
         </button>
       </div>
-      {leftTab.value === "parts" ? <PartsPanel /> : <NetsPanel />}
+      {leftTab.value === "parts" ? (
+        <PartsPanel />
+      ) : leftTab.value === "nets" ? (
+        <NetsPanel />
+      ) : (
+        <HistoryPanel />
+      )}
     </aside>
   );
 }
 
 function RightPanel() {
   const counts = problemCounts.value;
-  const steps = view.value?.undo.length ?? 0;
+  const notes = reviewNotes.value;
+  const noteTone = notes.some((note) => note.severity === "critical")
+    ? "error"
+    : notes.some((note) => note.severity === "warning")
+      ? "warning"
+      : "agent";
   return (
-    <aside class="side-panel right" aria-label="Inspector">
+    <aside class="side-panel right" aria-label="Inspector, problems and notes">
       <div class="panel-tabs" role="tablist">
         <button
           role="tab"
@@ -231,12 +254,15 @@ function RightPanel() {
         </button>
         <button
           role="tab"
-          aria-selected={rightTab.value === "history"}
-          class={rightTab.value === "history" ? "on" : ""}
-          onClick={() => (rightTab.value = "history")}
+          aria-selected={rightTab.value === "notes"}
+          class={rightTab.value === "notes" ? "on" : ""}
+          title="Review notes from your agent"
+          onClick={() => (rightTab.value = "notes")}
         >
-          History
-          {steps > 0 && <span class="tab-badge">{steps}</span>}
+          Notes
+          {notes.length > 0 && (
+            <span class={`tab-badge ${noteTone}`}>{notes.length}</span>
+          )}
         </button>
         <button
           class="icon-btn small collapse"
@@ -252,7 +278,7 @@ function RightPanel() {
       ) : rightTab.value === "problems" ? (
         <ProblemsPanel />
       ) : (
-        <HistoryPanel />
+        <NotesPanel />
       )}
     </aside>
   );

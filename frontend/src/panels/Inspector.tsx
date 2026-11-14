@@ -167,6 +167,38 @@ function Section({
 
 // ── Component ────────────────────────────────────────────────────────────────
 
+/**
+ * Free-text notes on a design object, saved when the field loses focus.
+ * Keyed by object and value so an edit from an agent replaces the text.
+ */
+function NotesField({
+  objectKey,
+  notes,
+  placeholder,
+  onSave,
+}: {
+  objectKey: string;
+  notes: string | undefined;
+  placeholder: string;
+  onSave: (notes: string) => void;
+}) {
+  return (
+    <Section title="Notes">
+      <textarea
+        key={`${objectKey}:${notes ?? ""}`}
+        class="notes"
+        rows={3}
+        placeholder={placeholder}
+        defaultValue={notes ?? ""}
+        onBlur={(event) => {
+          const next = (event.target as HTMLTextAreaElement).value;
+          if (next !== (notes ?? "")) onSave(next);
+        }}
+      />
+    </Section>
+  );
+}
+
 function ComponentInspector({
   instance,
   design: current,
@@ -345,26 +377,20 @@ function ComponentInspector({
         </Section>
       )}
 
-      <Section title="Notes">
-        <textarea
-          key={`${instance.id}:${instance.notes ?? ""}`}
-          class="notes"
-          rows={3}
-          placeholder="Assembly notes, values, reminders…"
-          defaultValue={instance.notes ?? ""}
-          onBlur={(event) => {
-            const notes = (event.target as HTMLTextAreaElement).value;
-            if (notes !== (instance.notes ?? ""))
-              void mutate({
-                type: "change_instance_properties",
-                instance_id: instance.id,
-                name: instance.name,
-                notes,
-                properties: instance.properties ?? {},
-              });
-          }}
-        />
-      </Section>
+      <NotesField
+        objectKey={instance.id}
+        notes={instance.notes}
+        placeholder="Assembly notes, values, reminders…"
+        onSave={(notes) =>
+          void mutate({
+            type: "change_instance_properties",
+            instance_id: instance.id,
+            name: instance.name,
+            notes,
+            properties: instance.properties ?? {},
+          })
+        }
+      />
 
       {definition && (
         <Section title="Definition">
@@ -686,11 +712,17 @@ function WireInspector({
         </ul>
       </Section>
 
-      {wire.notes && (
-        <Section title="Notes">
-          <p class="notes-text">{wire.notes}</p>
-        </Section>
-      )}
+      <NotesField
+        objectKey={wire.id}
+        notes={wire.notes}
+        placeholder="Why it runs here, sleeving, pairing…"
+        onSave={(notes) =>
+          void mutate(
+            { type: "set_wire_notes", wire_id: wire.id, notes },
+            { failure: "Could not save the wire notes" },
+          )
+        }
+      />
 
       <Section
         title="Path points"
@@ -899,6 +931,17 @@ function RailInspector({
           pin: wires on either side of the board can connect there.
         </p>
       </Section>
+      <NotesField
+        objectKey={rail.id}
+        notes={rail.notes}
+        placeholder="Material, gauge, why it is a rail…"
+        onSave={(notes) =>
+          void mutate(
+            { type: "set_rail_notes", rail_id: rail.id, notes },
+            { failure: "Could not save the rail notes" },
+          )
+        }
+      />
       <footer class="inspector-foot">
         <button class="btn danger" onClick={removeSelection}>
           <Icon name="trash" size={15} /> Remove rail
@@ -950,6 +993,17 @@ function SaddleInspector({ saddle }: { saddle: Saddle }) {
           </div>
         </div>
       </Section>
+      <NotesField
+        objectKey={saddle.id}
+        notes={saddle.notes}
+        placeholder="What it holds down, strap material…"
+        onSave={(notes) =>
+          void mutate(
+            { type: "update_saddle", saddle: { ...saddle, notes } },
+            { failure: "Could not save the saddle notes" },
+          )
+        }
+      />
       <Section title="About saddles">
         <p class="field-note">
           A saddle is a short strap soldered into two free holes on either side
@@ -1168,10 +1222,18 @@ function NetInspector({
         </ul>
       </Section>
       {!proposed && <JoinedNetsSection net={net} design={current} />}
-      {net.notes && !proposed && (
-        <Section title="Notes">
-          <p class="notes-text">{net.notes}</p>
-        </Section>
+      {!proposed && (
+        <NotesField
+          objectKey={net.id}
+          notes={net.notes}
+          placeholder="Purpose, current, signal integrity…"
+          onSave={(notes) =>
+            void mutate(
+              { type: "set_net_notes", net_id: net.id, notes },
+              { failure: "Could not save the net notes" },
+            )
+          }
+        />
       )}
       {!proposed && <MergeNetSection net={net} design={current} />}
       <footer class="inspector-foot">

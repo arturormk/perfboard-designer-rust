@@ -1,8 +1,7 @@
 import type { Diagnostic } from "../api/project";
-import { focusOn, select } from "../state/actions";
-import { diagnostics, leftTab, problemCounts } from "../state/store";
+import { locateObject } from "../state/actions";
+import { diagnostics, problemCounts } from "../state/store";
 import { Icon } from "../ui/Icon";
-import { openDialog } from "../shell/dialogs";
 
 /** Plain-language next steps for known diagnostic codes. */
 const ADVICE: Record<string, string> = {
@@ -46,23 +45,7 @@ const TONE = { error: "error", warning: "warning", advisory: "info" } as const;
 
 function locate(item: Diagnostic): void {
   const target = item.objects?.[0];
-  if (!target) return;
-  if (target.kind === "component_layer") {
-    openDialog("libraries");
-    return;
-  }
-  const kind =
-    target.kind === "component" ||
-    target.kind === "wire" ||
-    target.kind === "rail" ||
-    target.kind === "saddle" ||
-    target.kind === "net"
-      ? target.kind
-      : undefined;
-  if (!kind) return;
-  if (kind === "net") leftTab.value = "nets";
-  select({ kind, id: target.id });
-  focusOn({ kind, id: target.id });
+  if (target) locateObject(target);
 }
 
 export function ProblemsPanel() {

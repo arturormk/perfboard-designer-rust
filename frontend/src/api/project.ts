@@ -16,6 +16,18 @@ export interface Diagnostic {
   message: string;
   objects?: ObjectReference[];
 }
+export type ReviewNoteSeverity = "critical" | "warning" | "suggestion" | "info";
+/** A finding about the project, usually from an agent (ADR 0015). */
+export interface ReviewNote {
+  id: string;
+  severity: ReviewNoteSeverity;
+  title: string;
+  detail?: string;
+  objects?: ObjectReference[];
+  created_ms: number;
+  /** The revision the note describes; absent in older notes. */
+  revision?: number;
+}
 export interface NetConnectivity {
   net_id: string;
   islands: PinRef[][];
@@ -266,6 +278,7 @@ export interface ProjectDocument {
   name: string;
   /** Library layers for new placements (ADR 0014); absent means the default. */
   component_paths?: string[];
+  review_notes?: ReviewNote[];
   revision: number;
   design: {
     board: {
@@ -397,6 +410,7 @@ export type OperationPayload =
   | { type: "define_net"; net: ElectricalNet }
   | { type: "remove_net"; net_id: string }
   | { type: "rename_net"; net_id: string; name: string }
+  | { type: "set_net_notes"; net_id: string; notes: string }
   | { type: "merge_nets"; source_net_id: string; target_net_id: string }
   | { type: "assign_pin"; net_id: string; pin: PinRef }
   | { type: "unassign_pin"; net_id: string; pin: PinRef }
@@ -411,6 +425,7 @@ export type OperationPayload =
       vertices: Array<{ x2: number; y2: number }>;
     }
   | { type: "set_rail_color"; rail_id: string; color: WireColor }
+  | { type: "set_rail_notes"; rail_id: string; notes: string }
   | { type: "add_saddle"; saddle: Saddle }
   | { type: "update_saddle"; saddle: Saddle }
   | { type: "remove_saddle"; saddle_id: string }
@@ -429,6 +444,7 @@ export type OperationPayload =
   | { type: "set_wire_color"; wire_id: string; color: WireColor }
   | { type: "set_wire_side"; wire_id: string; side: Side }
   | { type: "set_wire_lock"; wire_id: string; locked: boolean }
+  | { type: "set_wire_notes"; wire_id: string; notes: string }
   | { type: "add_constraint"; constraint: Constraint }
   | { type: "update_constraint"; constraint: Constraint }
   | { type: "remove_constraint"; constraint_id: string }
@@ -447,8 +463,26 @@ export type OperationPayload =
 export function getProject(): Promise<ProjectDocument> {
   return invoke("get_project");
 }
-export function getProjectRevision(): Promise<number> {
-  return invoke("get_project_revision");
+/** Changes with every write, review notes included (ADR 0015). */
+export interface ChangeMarker {
+  revision: number;
+  notes_generation: number;
+}
+export function getChangeMarker(): Promise<ChangeMarker> {
+  return invoke("get_change_marker");
+}
+/** What closing the window now would lose. */
+export interface UnsavedWork {
+  project: boolean;
+  part_draft: boolean;
+}
+/** Tells the backend the unsaved-changes dialog is showing. */
+export function acknowledgeCloseRequest(): Promise<void> {
+  return invoke("acknowledge_close_request");
+}
+/** Answers the unsaved-changes dialog: close the window, or stay. */
+export function resolveCloseRequest(close: boolean): Promise<void> {
+  return invoke("resolve_close_request", { close });
 }
 /** Where a library layer's parts come from (ADR 0014). */
 export type LibraryLayerKind = "project" | "user" | "standard";
@@ -780,6 +814,28 @@ export function renameProject(
 ): Promise<void> {
   return invoke("rename_project", { expectedRevision, name });
 }
+/*
+ * Review-note writes act on note IDs and need no expected revision: notes
+ * cannot conflict with design edits (ADR 0015).
+ */
+export function removeReviewNote(
+  noteId: string,
+): Promise<{ note: ReviewNote; index: number }> {
+  return invoke("remove_review_note", { noteId });
+}
+/** Moves a note in front of `before`, or to the end when it is null. */
+export function moveReviewNote(
+  noteId: string,
+  before: string | null,
+): Promise<void> {
+  return invoke("move_review_note", { noteId, before });
+}
+export function insertReviewNote(
+  note: ReviewNote,
+  index: number,
+): Promise<void> {
+  return invoke("insert_review_note", { note, index });
+}
 export function restoreProjectCommit(
   expectedRevision: number,
   commitId: string,
@@ -863,12 +919,18 @@ export interface ProjectView {
   name: string;
   revision: number;
   design: ProjectDocument["design"];
+  /** In the user's order; absent when there are none. */
+  review_notes?: ReviewNote[];
   validation: Diagnostic[];
   commits: CommitSummary[];
   head_commit?: string;
   head_design?: ProjectDocument["design"];
   undo: ChangeSummary[];
   redo: ChangeSummary[];
+  /** Review-note changes this session; notes leave `revision` alone. */
+  notes_generation?: number;
+  /** Changed since the project was last saved, opened or created. */
+  unsaved?: boolean;
 }
 export function getProjectView(): Promise<ProjectView> {
   return invoke("get_project_view");
