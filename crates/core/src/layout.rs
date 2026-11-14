@@ -9,6 +9,9 @@ use crate::{ComponentInstanceId, HolePos, Rotation};
 pub struct ComponentInstance {
     pub id: ComponentInstanceId,
     pub definition_id: String,
+    /// The part's name on the board, such as `R3`. Leave it empty when
+    /// adding a part to get the next free name from the definition's
+    /// designator.
     pub name: String,
     pub position: HolePos,
     pub rotation: Rotation,

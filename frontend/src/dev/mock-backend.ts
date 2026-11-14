@@ -27,6 +27,7 @@ import type {
 } from "../api/project";
 import { pinPosition, type Design } from "../model/geometry";
 import { mockAssemblyPlan } from "./mock-assembly";
+import { nextInstanceName } from "../model/naming";
 
 type Doc = ProjectDocument;
 interface Entry {
@@ -299,7 +300,13 @@ function applyPayload(design: Design, op: OperationPayload): void {
         ...d.component_definitions,
         [op.definition.id]: op.definition,
       };
-      d.components = { ...d.components, [op.instance.id]: op.instance };
+      d.components = {
+        ...d.components,
+        [op.instance.id]: {
+          ...op.instance,
+          name: op.instance.name.trim() || nextInstanceName(d, op.definition),
+        },
+      };
       return;
     case "remove_component":
       delete d.components?.[op.instance_id];
@@ -586,6 +593,7 @@ function draftCommands(
           id: operation.id,
           definition_version: operation.definition_version,
           name: operation.name,
+          designator: operation.designator,
           description: operation.description,
         });
         break;

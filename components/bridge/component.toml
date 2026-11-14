@@ -3,6 +3,7 @@ kind = "bridge"
 id = "dev.perfboard.bridge"
 definition_version = "1.0.0"
 name = "Bridge"
+designator = "W"
 description = "Bare copper bridge between two adjacent solder points"
 origin_x = 0
 origin_y = 0

@@ -966,6 +966,7 @@ fn start_new_part(
         id: "local.new-part".into(),
         definition_version: "0.1.0".into(),
         name: "New part".into(),
+        designator: String::new(),
         description: String::new(),
         origin_x: 0,
         origin_y: 0,

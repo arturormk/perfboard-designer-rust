@@ -99,6 +99,10 @@ pub struct ComponentDefinition {
     pub id: String,
     pub definition_version: String,
     pub name: String,
+    /// Reference designator prefix for placed parts, such as `R` for R1, R2.
+    /// One to eight ASCII letters; empty names placed parts after `name`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub designator: String,
     #[serde(default)]
     pub description: String,
     #[serde(default)]
@@ -152,7 +156,12 @@ pub enum ComponentDefinitionError {
     InvalidBridgeExclusions,
     #[error("a jumper must have exactly two pins")]
     InvalidJumperPins,
+    #[error("designator `{0}` must be one to eight ASCII letters, such as `R` or `LED`")]
+    InvalidDesignator(String),
 }
+
+/// The longest designator prefix a definition may declare.
+pub const MAX_DESIGNATOR_LEN: usize = 8;
 
 #[allow(clippy::trivially_copy_pass_by_ref)] // Serde's skip predicate receives a reference.
 const fn is_standard_component(kind: &ComponentKind) -> bool {
@@ -181,6 +190,42 @@ pub fn parse_component_library<'a>(
 }
 
 impl ComponentDefinition {
+    /// The first free name for another placed part of this definition: the
+    /// designator with the lowest unused number (`R3`), or, without one, the
+    /// name and a number (`Bridge 3`).
+    #[must_use]
+    pub fn next_instance_name<'a>(&self, used: impl IntoIterator<Item = &'a str>) -> String {
+        let used: BTreeSet<&str> = used.into_iter().collect();
+        let mut index = 1_usize;
+        loop {
+            let candidate = if self.designator.is_empty() {
+                format!("{} {index}", self.name.trim())
+            } else {
+                format!("{}{index}", self.designator)
+            };
+            if !used.contains(candidate.as_str()) {
+                return candidate;
+            }
+            index += 1;
+        }
+    }
+
+    /// Whether `other` differs from this definition at most in what "Update
+    /// metadata" refreshes: name, designator, description, documentation and
+    /// version. Pins, geometry and kind must match.
+    #[must_use]
+    pub fn same_except_metadata(&self, other: &Self) -> bool {
+        let mut other = other.clone();
+        other
+            .definition_version
+            .clone_from(&self.definition_version);
+        other.name.clone_from(&self.name);
+        other.designator.clone_from(&self.designator);
+        other.description.clone_from(&self.description);
+        other.documentation.clone_from(&self.documentation);
+        *self == other
+    }
+
     /// Parses and validates a component library TOML document.
     ///
     /// # Errors
@@ -219,6 +264,17 @@ impl ComponentDefinition {
             || !self.body.y.is_finite()
         {
             return Err(ComponentDefinitionError::InvalidBody);
+        }
+        if !self.designator.is_empty()
+            && (self.designator.len() > MAX_DESIGNATOR_LEN
+                || !self
+                    .designator
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphabetic()))
+        {
+            return Err(ComponentDefinitionError::InvalidDesignator(
+                self.designator.clone(),
+            ));
         }
         let rotations: BTreeSet<_> = self.allowed_rotations.iter().copied().collect();
         if rotations.is_empty() || rotations.len() != self.allowed_rotations.len() {
@@ -310,6 +366,7 @@ mod tests {
             id: "dev.example.part".into(),
             definition_version: "1.0.0".into(),
             name: "Part".into(),
+            designator: String::new(),
             description: String::new(),
             origin_x: 0,
             origin_y: 0,
@@ -414,6 +471,45 @@ mod tests {
         second.x = 1;
         value.pins.push(second);
         assert_eq!(value.validate(), Ok(()));
+    }
+
+    #[test]
+    fn designators_are_short_runs_of_letters() {
+        let mut part = definition();
+        for valid in ["", "R", "LED", "ABCDEFGH"] {
+            part.designator = valid.into();
+            assert_eq!(part.validate(), Ok(()), "{valid}");
+        }
+        for invalid in ["R1", "R-", "ABCDEFGHI", "Ω", " R"] {
+            part.designator = invalid.into();
+            assert_eq!(
+                part.validate(),
+                Err(ComponentDefinitionError::InvalidDesignator(invalid.into()))
+            );
+        }
+    }
+
+    #[test]
+    fn next_instance_names_fill_the_lowest_gap() {
+        let mut part = definition();
+        assert_eq!(part.next_instance_name(["Part 1", "R1"]), "Part 2");
+        part.designator = "R".into();
+        assert_eq!(part.next_instance_name(["R1", "R3", "Part 2"]), "R2");
+        assert_eq!(part.next_instance_name([]), "R1");
+    }
+
+    #[test]
+    fn metadata_differences_are_told_apart_from_shape_changes() {
+        let part = definition();
+        let mut renamed = part.clone();
+        renamed.name = "Other".into();
+        renamed.designator = "U".into();
+        renamed.definition_version = "2.0.0".into();
+        renamed.documentation = "docs".into();
+        assert!(part.same_except_metadata(&renamed));
+        let mut moved = part.clone();
+        moved.origin_x = 3;
+        assert!(!part.same_except_metadata(&moved));
     }
 
     #[test]

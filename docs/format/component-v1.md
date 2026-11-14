@@ -23,6 +23,7 @@ kind = "standard"
 id = "com.example.part.nano-like"
 definition_version = "1.0.0"
 name = "Nano-like controller"
+designator = "U"
 origin_x = 0
 origin_y = 0
 allowed_rotations = ["deg0", "deg90", "deg180", "deg270"]
@@ -74,6 +75,14 @@ allow_board_overhang = true
   placed jumper records whether its shunt is fitted (`shunted` on the
   instance); a fitted shunt joins the two pins electrically, including when
   they sit on two different nets.
+- `designator` is optional: one to eight ASCII letters, by convention the
+  reference designator prefix (`R` resistor, `C` capacitor, `D` diode, `Q`
+  transistor, `U` IC or module, `J` connector, `JP` jumper, `W` wire link).
+  A part placed without a name is named with it and the lowest unused
+  number, `R1`, `R2`, …; without a designator it is named after `name`
+  (`Bridge 1`). Like `name`, `description` and `documentation`, it is
+  metadata: placing a definition that differs from a project's stored copy
+  only in these fields and `definition_version` refreshes the stored copy.
 - `id` is a stable library identifier; `definition_version` or a canonical
   content hash identifies the exact definition revision.
 - Body measurements use millimetres. Pin and mounting positions use signed

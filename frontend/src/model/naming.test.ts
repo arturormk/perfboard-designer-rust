@@ -40,6 +40,9 @@ describe("labels", () => {
 
   it("picks the next free instance name", () => {
     expect(nextInstanceName(testDesign(), resistor)).toBe("Resistor 1");
+    expect(
+      nextInstanceName(testDesign(), { ...resistor, designator: "R" }),
+    ).toBe("R3");
   });
 });
 

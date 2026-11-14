@@ -54,6 +54,8 @@ export interface ComponentDefinition {
   id: string;
   definition_version: string;
   name: string;
+  /** Reference designator prefix such as `R`; placed parts become R1, R2. */
+  designator?: string;
   description: string;
   origin_x?: number;
   origin_y?: number;
@@ -112,6 +114,7 @@ export type ComponentDraftOperation =
       id: string;
       definition_version: string;
       name: string;
+      designator: string;
       description: string;
     }
   | { type: "set_body"; body: ComponentDefinition["body"] }

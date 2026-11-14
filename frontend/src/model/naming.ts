@@ -159,7 +159,11 @@ export function groupPlacedParts(design: Design): PartGroup[] {
     );
 }
 
-/** Next free instance name such as "Resistor 3" for a definition. */
+/**
+ * Next free instance name, such as "R3" from the designator or "Bridge 3"
+ * without one. The backend names parts placed with an empty name; this
+ * mirrors its rule for the browser preview.
+ */
 export function nextInstanceName(
   design: Design,
   definition: ComponentDefinition,
@@ -168,7 +172,9 @@ export function nextInstanceName(
     Object.values(design.components ?? {}).map((item) => item.name),
   );
   for (let index = 1; ; index += 1) {
-    const name = `${definition.name} ${index}`;
+    const name = definition.designator
+      ? `${definition.designator}${index}`
+      : `${definition.name.trim()} ${index}`;
     if (!used.has(name)) return name;
   }
 }

@@ -543,6 +543,7 @@ function IdentityForm({
   const changed =
     fields.id !== definition.id ||
     fields.name !== definition.name ||
+    (fields.designator ?? "") !== (definition.designator ?? "") ||
     fields.definition_version !== definition.definition_version ||
     fields.description !== definition.description;
   const set = (key: keyof ComponentDefinition) => (event: Event) =>
@@ -558,16 +559,28 @@ function IdentityForm({
             id: fields.id,
             definition_version: fields.definition_version,
             name: fields.name,
+            designator: fields.designator ?? "",
             description: fields.description,
           });
         }}
       >
-        <label class="span-2">
+        <label>
           Name
           <input
             value={fields.name}
             disabled={!editable}
             onInput={set("name")}
+          />
+        </label>
+        <label title="Placed parts are named with this and a number: R gives R1, R2, …">
+          Designator
+          <input
+            value={fields.designator ?? ""}
+            disabled={!editable}
+            onInput={set("designator")}
+            placeholder="R, C, U, J…"
+            maxLength={8}
+            spellcheck={false}
           />
         </label>
         <label>

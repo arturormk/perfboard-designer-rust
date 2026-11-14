@@ -2,6 +2,7 @@ schema_version = 1
 id = "dev.perfboard.dupont-pin"
 definition_version = "1.0.1"
 name = "Pin"
+designator = "J"
 description = "Generic single-pin 2.54 mm connector for jumpers, headers, and off-board wires"
 origin_x = 0
 origin_y = 0

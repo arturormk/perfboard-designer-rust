@@ -53,11 +53,7 @@ import {
   type Design,
   type Point,
 } from "../model/geometry";
-import {
-  nextInstanceName,
-  suggestedWireColor,
-  wireLabels,
-} from "../model/naming";
+import { suggestedWireColor, wireLabels } from "../model/naming";
 import { planWireReroutes } from "../editor/net-routing";
 import {
   EMPTY_DIFF,
@@ -638,7 +634,8 @@ export async function placeComponent(
       instance: {
         id,
         definition_id: definition.id,
-        name: nextInstanceName(current, definition),
+        // The backend names it from the definition's designator, as "R3".
+        name: "",
         position,
         rotation,
         properties: {},
@@ -675,7 +672,8 @@ export async function addBridge(from: Point, to: Point): Promise<void> {
       instance: {
         id: crypto.randomUUID(),
         definition_id: definition.id,
-        name: nextInstanceName(current, definition),
+        // The backend names it from the definition's designator, as "R3".
+        name: "",
         position: from,
         rotation,
         properties: {},

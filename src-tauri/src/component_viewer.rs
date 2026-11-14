@@ -555,6 +555,9 @@ fn validation_diagnostic(error: &ComponentDefinitionError) -> ComponentLoadDiagn
             ("component.blank_field", Some((*field).into()))
         }
         ComponentDefinitionError::InvalidBody => ("component.invalid_body", Some("body".into())),
+        ComponentDefinitionError::InvalidDesignator(_) => {
+            ("component.invalid_designator", Some("designator".into()))
+        }
         ComponentDefinitionError::InvalidRotations => (
             "component.invalid_rotations",
             Some("allowed_rotations".into()),

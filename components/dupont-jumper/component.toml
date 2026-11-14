@@ -3,6 +3,7 @@ kind = "jumper"
 id = "dev.perfboard.dupont-jumper"
 definition_version = "1.1.0"
 name = "Dupont Jumper"
+designator = "JP"
 description = "Two-pin male Dupont-style jumper on the standard 2.54 mm pitch"
 origin_x = 0
 origin_y = 0

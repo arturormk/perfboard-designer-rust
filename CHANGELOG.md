@@ -53,6 +53,14 @@ Development line `v0.1.x`: the first public development builds.
   creates a part in the project's folder or user library, and opening a
   folder that holds several parts lists them instead of reporting an error.
   The designer asks before discarding unsaved changes.
+- Placed parts are named by reference designator: a component definition's
+  optional `designator` (such as `R`) names new parts `R1`, `R2`, … using the
+  lowest free number, in the UI and for MCP agents that leave the name empty.
+  The bundled parts have designators (R, W, JP, J, U), and the Part designer
+  edits it. Parts already placed keep their names. Placing a part whose
+  library definition changed only in name, designator, description,
+  documentation or version now refreshes the project's copy instead of
+  failing.
 - Delete a part from the project's folder or the user library with the trash
   button in the Part designer's list. The folder goes to the system trash, so
   it can be restored. Placed parts keep working from the definition stored

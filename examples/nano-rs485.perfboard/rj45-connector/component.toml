@@ -2,6 +2,7 @@ schema_version = 1
 id = "local.rj45-connector"
 definition_version = "1.0.0"
 name = "RJ45 Connector"
+designator = "J"
 description = "Eight-pin RJ45-style board connector"
 origin_x = 0
 origin_y = 0

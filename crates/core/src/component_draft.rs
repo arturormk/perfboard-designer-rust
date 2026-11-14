@@ -12,6 +12,8 @@ pub enum ComponentDraftOperation {
         id: String,
         definition_version: String,
         name: String,
+        #[serde(default)]
+        designator: String,
         description: String,
     },
     SetBody {
@@ -129,11 +131,13 @@ impl ComponentDraft {
                 id,
                 definition_version,
                 name,
+                designator,
                 description,
             } => {
                 next.definition.id = normalized_string(&id);
                 next.definition.definition_version = normalized_string(&definition_version);
                 next.definition.name = normalized_string(&name);
+                next.definition.designator = normalized_string(&designator);
                 next.definition.description = normalized_string(&description);
             }
             ComponentDraftOperation::SetBody { body } => next.definition.body = body,

@@ -500,8 +500,12 @@ pub(crate) fn apply_operation_untracked(
             if next.design.components.contains_key(&instance.id) {
                 return Err(OperationError::DuplicateInstance);
             }
+            // A library definition that differs from the stored snapshot only
+            // in metadata (name, designator, description, documentation,
+            // version) replaces it, as "Update metadata" would; anything else
+            // would change parts already placed.
             if let Some(existing) = next.design.component_definitions.get(&definition.id)
-                && existing != definition
+                && !existing.same_except_metadata(definition)
                 && next
                     .design
                     .components
@@ -519,12 +523,22 @@ pub(crate) fn apply_operation_untracked(
             if !definition.allowed_rotations.contains(&instance.rotation) {
                 return Err(OperationError::RotationNotAllowed);
             }
+            let mut instance = instance.clone();
+            if instance.name.trim().is_empty() {
+                instance.name = definition.next_instance_name(
+                    next.design
+                        .components
+                        .values()
+                        .map(|component| component.name.as_str()),
+                );
+            }
             next.design
                 .component_definitions
                 .insert(definition.id.clone(), definition.clone());
-            next.design.components.insert(instance.id, instance.clone());
+            let summary = format!("Added {}", instance.name);
             affected.insert(instance.id);
-            format!("Added {}", instance.name)
+            next.design.components.insert(instance.id, instance);
+            summary
         }
         OperationPayload::UpdateComponentMetadata {
             instance_id,
@@ -547,6 +561,7 @@ pub(crate) fn apply_operation_untracked(
                 .definition_version
                 .clone_from(&definition.definition_version);
             stored.name.clone_from(&definition.name);
+            stored.designator.clone_from(&definition.designator);
             stored.description.clone_from(&definition.description);
             stored.documentation.clone_from(&definition.documentation);
             // A plain two-pin part can become a shuntable jumper, or back, when
@@ -1513,7 +1528,8 @@ mod tests {
         );
         apply_operation(&mut document, request).unwrap();
 
-        let changed_definition = point_definition("Changed point");
+        let mut changed_definition = point_definition("Old point");
+        changed_definition.body.width = 2.0;
         let changed_instance = point_instance(&changed_definition, 2);
         let request = operation(
             &document,
@@ -1526,6 +1542,85 @@ mod tests {
             apply_operation(&mut document, request),
             Err(OperationError::DefinitionConflict)
         ));
+    }
+
+    fn empty_document() -> ProjectDocument {
+        ProjectDocument::new(
+            ProjectId::from_uuid(Uuid::nil()),
+            "x",
+            Board::new("x", BoardSize::new(4, 4).unwrap(), 2.54),
+        )
+    }
+
+    fn add_unnamed(document: &mut ProjectDocument, definition: &ComponentDefinition, x: u32) {
+        let mut instance = point_instance(definition, x);
+        instance.name = " ".into();
+        let request = operation(
+            document,
+            OperationPayload::AddComponent {
+                definition: definition.clone(),
+                instance,
+            },
+        );
+        apply_operation(document, request).unwrap();
+    }
+
+    fn names(document: &ProjectDocument) -> Vec<String> {
+        let mut names = document
+            .design
+            .components
+            .values()
+            .map(|component| component.name.clone())
+            .collect::<Vec<_>>();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn unnamed_parts_take_the_next_free_designator() {
+        let mut document = empty_document();
+        let mut definition = point_definition("Point");
+        definition.designator = "TP".into();
+        add_unnamed(&mut document, &definition, 1);
+        add_unnamed(&mut document, &definition, 2);
+        let first = document
+            .design
+            .components
+            .values()
+            .find(|component| component.name == "TP1")
+            .unwrap()
+            .id;
+        let request = operation(
+            &document,
+            OperationPayload::RemoveComponent { instance_id: first },
+        );
+        apply_operation(&mut document, request).unwrap();
+        add_unnamed(&mut document, &definition, 3);
+        assert_eq!(names(&document), ["TP1", "TP2"]);
+    }
+
+    #[test]
+    fn unnamed_parts_without_a_designator_are_named_after_the_definition() {
+        let mut document = empty_document();
+        let definition = point_definition("Point");
+        add_unnamed(&mut document, &definition, 1);
+        add_unnamed(&mut document, &definition, 2);
+        assert_eq!(names(&document), ["Point 1", "Point 2"]);
+    }
+
+    #[test]
+    fn a_metadata_only_library_change_refreshes_the_snapshot_when_placing() {
+        let mut document = empty_document();
+        let old = point_definition("Point");
+        add_unnamed(&mut document, &old, 1);
+
+        let mut newer = point_definition("Test point");
+        newer.designator = "TP".into();
+        newer.definition_version = "2".into();
+        add_unnamed(&mut document, &newer, 2);
+
+        assert_eq!(document.design.component_definitions[&newer.id], newer);
+        assert_eq!(names(&document), ["Point 1", "TP1"]);
     }
 
     #[test]

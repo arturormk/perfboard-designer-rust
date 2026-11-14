@@ -2,6 +2,7 @@ schema_version = 1
 id = "local.rs485-breakout.2"
 definition_version = "1.2.1"
 name = "RS-485 B"
+designator = "U"
 description = "Small MAX485-style transceiver breakout"
 origin_x = 0
 origin_y = 0
