@@ -32,4 +32,3 @@ Thumbs.db
 
 # MCP server sidecar and component library staged by quickstart.sh for packages
 /src-tauri/binaries/
-/src-tauri/bundle-resources/

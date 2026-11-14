@@ -443,7 +443,7 @@ Work:
 - Profile the intended upper bound: approximately 12 components and several dozen wires.
 - Add onboarding, limitation/safety language, component-authoring documentation, and example projects.
 - Package and smoke-test supported desktop platforms; document support based on available CI runners.
-  Progress: `quickstart.sh` builds Linux `.deb`, `.rpm` and AppImage bundles with the MCP adapter and the component library (`src-tauri/tauri.bundle.conf.json`), and the release workflow uses it. Not yet smoke-tested from an installed package; macOS and Windows are not packaged.
+  Progress: `quickstart.sh` builds Linux `.deb`, `.rpm` and AppImage bundles with the MCP adapter (`src-tauri/tauri.bundle.conf.json`), and the release workflow uses it; the standard component library is compiled into the binary (ADR 0014). Not yet smoke-tested from an installed package; macOS and Windows are not packaged.
 - Perform a complete acceptance-criteria audit against the blueprint.
 
 Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
@@ -454,9 +454,7 @@ Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
   LEDs, transistors, pin headers, and DIP sockets, each checked against a real
   part. The template generators of Milestone CE5 in
   [the Component Editor plan](DEVELOPMENT_PLAN-ComponentEditor.md) can produce
-  most of them. MCP must see the same library as the palette: today
-  `list_components` and `get_component_definition` still read three
-  definitions compiled into the app (`bundled_component_library`).
+  most of them. MCP sees the same library as the palette (step 2 below).
 - **Project-specific components.** Today the palette loads only the bundled
   `components/` directory, which is read-only in an installed package, so a
   user has nowhere to keep a part of their own. Add a supported place for

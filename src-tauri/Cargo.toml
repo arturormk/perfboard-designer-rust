@@ -21,6 +21,7 @@ tauri-build = { version = "2.5", features = [] }
 [dependencies]
 perfboard-core.workspace = true
 perfboard-project.workspace = true
+perfboard-library.workspace = true
 perfboard-print.workspace = true
 perfboard-session-ipc = { path = "../crates/session-ipc" }
 notify.workspace = true

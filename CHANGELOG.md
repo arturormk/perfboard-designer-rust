@@ -17,10 +17,15 @@ Development line `v0.1.x`: the first public development builds.
   upgraded on the next save, but builds from before this change cannot open
   v2 files.
 - `quickstart.sh` builds the executable or `.deb`, `.rpm` and AppImage
-  bundles, and the release workflow uses it. Bundles include the component
-  library, which installed builds now load from their resources (before, a
-  package found no components outside the build checkout). `.deb` and `.rpm`
-  packages also install the MCP adapter as `/usr/bin/perfboard-mcp-server`.
+  bundles, and the release workflow uses it. `.deb` and `.rpm` packages also
+  install the MCP adapter as `/usr/bin/perfboard-mcp-server`.
+- The standard component library is compiled into the application, so
+  packages and copied executables always have it, and MCP's
+  `list_components`, `get_component_definition` and
+  `get_component_documentation` now offer the same parts as the palette
+  (before, MCP saw three of them). Debug builds read `components/` from the
+  checkout, and `PERFBOARD_STANDARD_COMPONENTS` points any build at another
+  folder ([ADR 0014](docs/adr/0014-component-library-layers.md)).
 - Graphical perfboard editor with component and solder side views, parts,
   nets, wires, bridges, and rails.
 - Saddles: net-free wire ties that hold wires and bundles to the board through

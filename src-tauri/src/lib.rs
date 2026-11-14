@@ -1,5 +1,4 @@
 use std::{
-    fs,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -10,7 +9,6 @@ use std::{
 use perfboard_core::{
     BoardSize, CommitId, ComponentDefinition, ComponentDraft, ComponentDraftOperation,
     ComponentDraftSnapshot, ProjectId, RectMm, Rotation, RoutePos, RouteProposal, Side,
-    parse_component_library,
 };
 use perfboard_project::{
     AssemblyPlan, Board, Commit, DocumentRevision, HistoryActionResult, OperationError,
@@ -31,6 +29,7 @@ use tauri_plugin_opener::OpenerExt;
 mod assembly_progress;
 mod component_viewer;
 mod recent_projects;
+mod standard_library;
 
 use assembly_progress::{AssemblyProgress, Checkmarks};
 use recent_projects::{RecentProject, RecentProjects};
@@ -135,47 +134,13 @@ fn session_api_error(error: &SessionError) -> SessionApiError {
     }
 }
 
-fn bundled_component_library() -> Result<Vec<ComponentDefinition>, String> {
-    parse_component_library([
-        include_str!("../../components/bridge/component.toml"),
-        include_str!("../../components/arduino-nano-like/component.toml"),
-        include_str!("../../components/rs485-breakout/component.toml"),
-    ])
-    .map_err(|error| error.to_string())
-}
-
-fn load_component_library(root: &Path) -> Result<Vec<ComponentDefinition>, String> {
-    let entries = fs::read_dir(root).map_err(|error| {
-        format!(
-            "could not read component library {}: {error}",
-            root.display()
-        )
-    })?;
-    let mut definition_paths = entries
-        .filter_map(Result::ok)
-        .map(|entry| entry.path().join("component.toml"))
-        .filter(|path| path.is_file())
-        .collect::<Vec<_>>();
-    definition_paths.sort();
-
-    let sources = definition_paths
-        .iter()
-        .map(|path| {
-            fs::read_to_string(path)
-                .map_err(|error| format!("could not read {}: {error}", path.display()))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    parse_component_library(sources.iter().map(String::as_str)).map_err(|error| error.to_string())
-}
-
-/// Installed packages ship the library as a Tauri resource; unbundled builds
-/// fall back to the checkout they were compiled from.
-fn component_library_root(resource_dir: Option<PathBuf>) -> PathBuf {
-    resource_dir
-        .map(|dir| dir.join("components"))
-        .filter(|dir| dir.is_dir())
-        .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../components"))
+/// The definitions offered for new placements, in library order.
+fn component_definitions() -> Vec<ComponentDefinition> {
+    standard_library::current_library()
+        .components
+        .into_iter()
+        .map(|component| component.definition)
+        .collect()
 }
 
 struct DesktopSessionHandler {
@@ -334,28 +299,24 @@ impl SessionRequestHandler for DesktopSessionHandler {
                     )],
                 }))
             }
-            SessionRequest::GetComponentLibrary => bundled_component_library()
-                .map(SessionResponse::Components)
-                .map_err(|message| SessionApiError::new("component.library_invalid", message)),
+            SessionRequest::GetComponentLibrary => {
+                Ok(SessionResponse::Components(component_definitions()))
+            }
             SessionRequest::GetComponentDocumentation { definition_id } => {
-                let markdown = match definition_id.as_str() {
-                    "dev.perfboard.bridge" => include_str!("../../components/bridge/README.md"),
-                    "dev.perfboard.nano-like" => {
-                        include_str!("../../components/arduino-nano-like/README.md")
-                    }
-                    "dev.perfboard.rs485-breakout" => {
-                        include_str!("../../components/rs485-breakout/README.md")
-                    }
-                    _ => {
-                        return Err(SessionApiError::new(
-                            "component.not_found",
-                            format!("component definition `{definition_id}` was not found"),
-                        ));
-                    }
+                let Some(markdown) = standard_library::current_library()
+                    .components
+                    .into_iter()
+                    .find(|component| component.definition.id == definition_id)
+                    .map(|component| component.documentation.unwrap_or_default())
+                else {
+                    return Err(SessionApiError::new(
+                        "component.not_found",
+                        format!("component definition `{definition_id}` was not found"),
+                    ));
                 };
                 Ok(SessionResponse::Documentation(ComponentDocumentation {
                     definition_id,
-                    markdown: markdown.into(),
+                    markdown,
                     trust: DocumentationTrust::UntrustedReference,
                 }))
             }
@@ -692,9 +653,8 @@ fn evaluate_project_route(
 }
 
 #[tauri::command]
-#[allow(clippy::needless_pass_by_value)]
-fn get_component_library(app: tauri::AppHandle) -> Result<Vec<ComponentDefinition>, String> {
-    load_component_library(&component_library_root(app.path().resource_dir().ok()))
+fn get_component_library() -> Vec<ComponentDefinition> {
+    component_definitions()
 }
 
 #[tauri::command]
@@ -1343,38 +1303,18 @@ mod tests {
     }
 
     #[test]
-    fn bundled_component_library_is_valid() {
-        assert_eq!(bundled_component_library().unwrap().len(), 3);
-    }
-
-    #[test]
-    fn runtime_component_library_scans_component_directories() {
-        let library = load_component_library(&component_library_root(None)).unwrap();
-        assert!(library.len() >= 3);
-        assert!(
-            library
-                .iter()
-                .any(|definition| definition.id == "dev.perfboard.resistor_3_holes")
-        );
-        assert!(
-            library
-                .iter()
-                .any(|definition| definition.id == "dev.perfboard.resistor_4_holes")
-        );
-        assert!(
-            library
-                .iter()
-                .any(|definition| definition.id == "dev.perfboard.rj45-connector")
-        );
-        assert!(
-            library
-                .iter()
-                .any(|definition| definition.id == "dev.perfboard.dupont-jumper")
-        );
-        assert!(
-            library
-                .iter()
-                .any(|definition| definition.id == "dev.perfboard.bridge")
-        );
+    fn the_session_and_the_palette_offer_the_same_library() {
+        let definitions = component_definitions();
+        for id in [
+            "dev.perfboard.bridge",
+            "dev.perfboard.dupont-jumper",
+            "dev.perfboard.resistor_3_holes",
+            "dev.perfboard.rj45-connector",
+        ] {
+            assert!(
+                definitions.iter().any(|definition| definition.id == id),
+                "{id} is missing"
+            );
+        }
     }
 }

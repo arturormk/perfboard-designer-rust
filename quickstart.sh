@@ -99,8 +99,8 @@ Build complete:
   App:        $project_root/target/release/perfboard-designer
   MCP server: $mcp_server
 
-This executable loads components from $project_root/components,
-so keep the checkout in place. To use the prebuilt MCP server instead of
+The standard component library is built into the executable, so it can
+be copied anywhere. To use the prebuilt MCP server instead of
 'cargo run', register it with your client, for example:
   claude mcp add --scope user perfboard-designer -- $mcp_server
 EOF
@@ -112,12 +112,6 @@ fi
 host_triple="$(rustc -vV | sed -n 's/^host: //p')"
 mkdir -p src-tauri/binaries
 cp "$mcp_server" "src-tauri/binaries/perfboard-mcp-server-$host_triple"
-
-# Stage the component library without Component Designer *.bak backups.
-rm -rf src-tauri/bundle-resources
-mkdir -p src-tauri/bundle-resources
-cp -R components src-tauri/bundle-resources/components
-find src-tauri/bundle-resources/components -name '*.bak' -delete
 
 echo "Building Perfboard Designer packages ($target)..."
 cargo tauri build --bundles "$target" --config src-tauri/tauri.bundle.conf.json

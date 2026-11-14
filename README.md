@@ -44,13 +44,16 @@ executable in one step:
 ./quickstart.sh deb      # or rpm, appimage, or a mix such as deb,rpm (Linux only)
 ```
 
-The executable loads components from this checkout. The packages are
-self-contained: `.deb` and `.rpm` install `/usr/bin/perfboard-designer`, the
-MCP adapter as `/usr/bin/perfboard-mcp-server`, and the component library
-under `/usr/lib/Perfboard Designer/components`. The AppImage bundles the same
-files but keeps the MCP adapter inside the image, so use a package or the
-executable build for MCP access. Bundle-only settings live in
-`src-tauri/tauri.bundle.conf.json`.
+The standard component library in `components/` is compiled into the
+executable ([ADR 0014](docs/adr/0014-component-library-layers.md)), so the
+executable can be copied anywhere. Debug builds (`cargo tauri dev`) read
+`components/` from the checkout instead, so edits to it show without
+rebuilding, and `PERFBOARD_STANDARD_COMPONENTS=/path/to/components` replaces
+the library with another folder in any build. `.deb` and `.rpm` install
+`/usr/bin/perfboard-designer` and the MCP adapter as
+`/usr/bin/perfboard-mcp-server`. The AppImage keeps the MCP adapter inside the
+image, so use a package or the executable build for MCP access. Bundle-only
+settings live in `src-tauri/tauri.bundle.conf.json`.
 
 ## Quality checks
 

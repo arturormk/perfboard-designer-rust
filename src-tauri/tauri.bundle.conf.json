@@ -2,9 +2,6 @@
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
     "active": true,
-    "resources": {
-      "bundle-resources/components/": "components/"
-    },
     "externalBin": ["binaries/perfboard-mcp-server"]
   }
 }

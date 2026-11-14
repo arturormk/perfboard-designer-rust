@@ -32,8 +32,8 @@ jobs:
         run: cargo run -q -p perfboard-version -- --check-tag "$GITHUB_REF_NAME"
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version '^2' --locked
-      # Also installs frontend dependencies and bundles the MCP adapter and
-      # component library (src-tauri/tauri.bundle.conf.json).
+      # Also installs frontend dependencies and bundles the MCP adapter
+      # (src-tauri/tauri.bundle.conf.json).
       - name: Build bundles
         run: ./quickstart.sh deb,appimage
       - name: Create draft release

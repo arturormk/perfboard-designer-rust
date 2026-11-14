@@ -245,7 +245,7 @@ impl PerfboardMcp {
         self.request(SessionRequest::Compare { from, to }).await
     }
 
-    /// List bundled, read-only component definitions available to add to a design.
+    /// List the component definitions available to add to the open project.
     #[tool(annotations(
         title = "List components",
         read_only_hint = true,
@@ -267,7 +267,7 @@ impl PerfboardMcp {
         }
     }
 
-    /// Return one bundled component definition by stable ID.
+    /// Return one available component definition by stable ID.
     #[tool(annotations(
         title = "Get component definition",
         read_only_hint = true,
