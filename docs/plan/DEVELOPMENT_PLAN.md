@@ -465,6 +465,37 @@ Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
   with the project, and that never mixes into the shared library. Placed
   instances keep their embedded snapshots as today.
 
+  Decided in [ADR 0014](../adr/0014-component-library-layers.md): ordered
+  layers rooted at `${PROJECT_DIR}` or `${USER_COMPONENTS}`, a per-machine
+  grant file per project for the user library, and a standard library compiled
+  into the binary. Steps, each leaving the app working:
+
+  1. Shared library resolver in a crate: layers, path validation (no `..`,
+     no absolute paths, symlinks confined to their root), first-match-by-`id`
+     with shadowing and duplicate diagnostics. Unit tests for every rule.
+  2. Standard library embedded by `build.rs`, with the
+     `PERFBOARD_STANDARD_COMPONENTS` override and the checkout default in
+     debug builds. Remove the `components/` Tauri resource and the
+     compile-time path fallback. Switch the palette and MCP `list_components`,
+     `get_component_definition` and `get_component_documentation` to the
+     resolver.
+  3. `component_paths` in the project document, defaulting to
+     `${PROJECT_DIR}/${PROJECT_STEM}.perfboard`, documented in
+     `docs/format/project-v2.md`. The palette shows each part's layer and
+     marks shadowed parts.
+  4. Move `arduino-nano-like`, both `rs485-breakout`s and `rj45-connector` to
+     `examples/nano-rs485.perfboard/`, rename them out of `dev.perfboard.`,
+     and rewrite the example project's instances and snapshots to match.
+     Add the namespace warnings.
+  5. Grant files under `$XDG_CONFIG_HOME/perfboard-designer/projects/`, the
+     Project settings → Component libraries panel (layer list, Grant /
+     Change / Revoke) and Preferences → Granted projects. Ungranted
+     `${USER_COMPONENTS}` layers are reported by validation.
+  6. Component editor save targets: writable project or granted user layers
+     only, with "Copy to project" and "Copy to user library" for standard
+     parts.
+  7. Component-authoring documentation for layers, grants and identifiers.
+
 Exit criteria:
 
 - All 18 version 1 acceptance criteria in the blueprint have an automated test, a documented manual test, or both.
@@ -472,6 +503,9 @@ Exit criteria:
 - A new user can place common through-hole parts from the bundled library,
   and can add a part of their own to a project without editing the
   application's installed files.
+- The palette and MCP list the same components for a project, and opening a
+  project received from someone else reads no folders outside the project
+  folder and the standard library until the user grants access.
 - The packaged application completes create -> place -> connect -> route -> commit -> MCP edit -> assemble -> save/reopen.
 - Known limitations and the non-guarantee of electrical safety are visible in product documentation.
 
