@@ -61,6 +61,12 @@ Development line `v0.1.x`: the first public development builds.
   library definition changed only in name, designator, description,
   documentation or version now refreshes the project's copy instead of
   failing.
+- 41 new standard parts: a standing resistor; ceramic capacitors (2.54 and
+  5.08 mm); radial electrolytics (5, 6.3, 8 and 10 mm); DO-35 and DO-41
+  diodes; 3 and 5 mm LEDs; TO-92 and standing TO-220; DIP-8 to DIP-28 and
+  wide DIP-28 and DIP-40; male and female headers 1x2 to 1x8, 2x3 and 2x5;
+  and 2- and 3-position screw terminals. Families are generated from one
+  description, so every size follows the same rules.
 - [Component libraries](docs/component-libraries.md): a guide to where parts
   live, user-library grants, making and changing parts, identifiers and
   designators, and library problems.
