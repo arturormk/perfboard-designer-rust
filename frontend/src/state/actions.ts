@@ -26,6 +26,7 @@ import {
   restoreProjectCommit,
   saveProject,
   suggestProjectRoute,
+  suggestProjectRouteAlternatives,
   trimProjectUndoHistory,
   undoProject,
   type ComponentDefinition,
@@ -972,17 +973,20 @@ export async function proposeRoute(
   replaceWire?: Wire,
 ): Promise<void> {
   try {
-    busy.value = "Finding a route…";
-    const proposal = await suggestProjectRoute({
+    busy.value = "Finding routes…";
+    const alternatives = await suggestProjectRouteAlternatives({
       net_id: netId,
       start,
       end,
       preferred_side: replaceWire?.side ?? side.peek(),
       replace_wire_id: replaceWire?.id,
     });
+    const proposal = alternatives[0]!.proposal;
     if (proposal.side !== side.peek()) side.value = proposal.side;
     pendingRoute.value = {
       proposal,
+      alternatives,
+      selected: 0,
       color: replaceWire?.color ?? colorForNet(netId),
       replaceWireId: replaceWire?.id,
       newRouteOver: true,
@@ -1020,6 +1024,20 @@ export async function acceptRoute(): Promise<void> {
 
 export function rejectRoute(): void {
   pendingRoute.value = null;
+}
+
+/** Previews another of the pending route's alternatives. */
+export function chooseRouteAlternative(index: number): void {
+  const pending = pendingRoute.peek();
+  const alternative = pending?.alternatives[index];
+  if (!pending || !alternative) return;
+  if (alternative.proposal.side !== side.peek())
+    side.value = alternative.proposal.side;
+  pendingRoute.value = {
+    ...pending,
+    proposal: alternative.proposal,
+    selected: index,
+  };
 }
 
 export async function evaluateWire(

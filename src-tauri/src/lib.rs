@@ -13,9 +13,10 @@ use perfboard_core::{
 use perfboard_project::{
     AssemblyPlan, Board, Commit, DocumentRevision, HistoryActionResult, OperationError,
     OperationOrigin, OperationRequest, OperationResult, ProjectDocument, ProjectSession,
-    RevisionError, RouteRequest, RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError,
-    TransactionRequest, TransactionResult, assembly_plan, evaluate_route, load_project,
-    render_design_svg, save_project_atomic, suggest_route,
+    RevisionError, RouteAlternative, RouteError, RouteRequest, RoutingCostConfig, SemanticDiff,
+    SessionChangeEvent, SessionError, TransactionRequest, TransactionResult, assembly_plan,
+    evaluate_route, load_project, render_design_svg, save_project_atomic, suggest_route,
+    suggest_route_alternatives,
 };
 use perfboard_session_ipc::{
     ComponentDocumentation, DocumentationTrust, ProjectRenamed, RenderedDesign, RouteResults,
@@ -150,6 +151,30 @@ fn component_definitions(inputs: &LibraryInputs) -> Vec<ComponentDefinition> {
         .into_iter()
         .map(|component| component.definition)
         .collect()
+}
+
+/// A part's README from the project's libraries, marked as untrusted
+/// reference content for agents.
+fn component_documentation(
+    inputs: &LibraryInputs,
+    definition_id: String,
+) -> Result<ComponentDocumentation, SessionApiError> {
+    let Some(markdown) = component_library::current_library(inputs)
+        .components
+        .into_iter()
+        .find(|component| component.definition.id == definition_id)
+        .map(|component| component.documentation.unwrap_or_default())
+    else {
+        return Err(SessionApiError::new(
+            "component.not_found",
+            format!("component definition `{definition_id}` was not found"),
+        ));
+    };
+    Ok(ComponentDocumentation {
+        definition_id,
+        markdown,
+        trust: DocumentationTrust::UntrustedReference,
+    })
 }
 
 struct DesktopSessionHandler {
@@ -287,22 +312,38 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 .compare(from, to)
                 .map(SessionResponse::Diff)
                 .ok_or_else(|| SessionApiError::new("revision.not_found", "commit was not found")),
-            SessionRequest::SuggestRoutes { requests } => {
+            SessionRequest::SuggestRoutes {
+                requests,
+                alternatives,
+            } => {
                 let session = self.lock()?;
-                let proposals = requests
-                    .iter()
-                    .map(|request| {
-                        suggest_route(
-                            &session.document().design,
-                            request,
-                            &RoutingCostConfig::default(),
-                        )
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-                    .map_err(|error| SessionApiError::new("route.not_found", error.to_string()))?;
+                let design = &session.document().design;
+                let config = RoutingCostConfig::default();
+                let not_found =
+                    |error: RouteError| SessionApiError::new("route.not_found", error.to_string());
+                let (proposals, alternatives) = if alternatives {
+                    let alternatives = requests
+                        .iter()
+                        .map(|request| suggest_route_alternatives(design, request, &config))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(not_found)?;
+                    let proposals = alternatives
+                        .iter()
+                        .map(|list| list[0].proposal.clone())
+                        .collect();
+                    (proposals, alternatives)
+                } else {
+                    let proposals = requests
+                        .iter()
+                        .map(|request| suggest_route(design, request, &config))
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(not_found)?;
+                    (proposals, Vec::new())
+                };
                 Ok(SessionResponse::Routes(RouteResults {
                     revision: session.document().revision,
                     proposals,
+                    alternatives,
                 }))
             }
             SessionRequest::EvaluateRoute {
@@ -313,6 +354,7 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 let session = self.lock()?;
                 Ok(SessionResponse::Routes(RouteResults {
                     revision: session.document().revision,
+                    alternatives: Vec::new(),
                     proposals: vec![evaluate_route(
                         &session.document().design,
                         &request,
@@ -328,22 +370,7 @@ impl SessionRequestHandler for DesktopSessionHandler {
             }
             SessionRequest::GetComponentDocumentation { definition_id } => {
                 let inputs = LibraryInputs::of(&*self.lock()?, &self.grants);
-                let Some(markdown) = component_library::current_library(&inputs)
-                    .components
-                    .into_iter()
-                    .find(|component| component.definition.id == definition_id)
-                    .map(|component| component.documentation.unwrap_or_default())
-                else {
-                    return Err(SessionApiError::new(
-                        "component.not_found",
-                        format!("component definition `{definition_id}` was not found"),
-                    ));
-                };
-                Ok(SessionResponse::Documentation(ComponentDocumentation {
-                    definition_id,
-                    markdown,
-                    trust: DocumentationTrust::UntrustedReference,
-                }))
+                component_documentation(&inputs, definition_id).map(SessionResponse::Documentation)
             }
             SessionRequest::RenderDesign { side } => {
                 let session = self.lock()?;
@@ -660,6 +687,22 @@ fn suggest_project_route(
 ) -> Result<RouteProposal, String> {
     let session = state.0.lock().map_err(|error| error.to_string())?;
     suggest_route(
+        &session.document().design,
+        &request,
+        &RoutingCostConfig::default(),
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// Distinct suggestions for one connection, the balanced route first.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn suggest_project_route_alternatives(
+    state: tauri::State<'_, SessionState>,
+    request: RouteRequest,
+) -> Result<Vec<RouteAlternative>, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    suggest_route_alternatives(
         &session.document().design,
         &request,
         &RoutingCostConfig::default(),
@@ -1583,6 +1626,7 @@ pub fn run() {
             restore_project_commit,
             compare_project_revisions,
             suggest_project_route,
+            suggest_project_route_alternatives,
             evaluate_project_route,
             get_component_library,
             get_library_settings,
@@ -1653,5 +1697,33 @@ mod tests {
                 "{id} is missing"
             );
         }
+    }
+
+    #[test]
+    fn agents_read_part_documentation_from_the_project_and_standard_libraries() {
+        let dir = std::env::temp_dir().join(format!("perfboard-docs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let part = dir.join("board.perfboard/led");
+        std::fs::create_dir_all(&part).unwrap();
+        std::fs::write(
+            part.join("component.toml"),
+            "schema_version=1\nid='local.led'\ndefinition_version='1'\nname='LED'\nallowed_rotations=['deg0']\n[body]\nx=-1.27\ny=-1.27\nwidth=2.54\nheight=2.54\n[[pins]]\nid='a'\nnumber='1'\nname='A'\nx=0\ny=0",
+        )
+        .unwrap();
+        std::fs::write(part.join("README.md"), "# LED\n\nRed, 20 mA.\n").unwrap();
+        let mut session = ProjectSession::new(initial_document());
+        session.set_file_path(dir.join("board.perfboard.json"));
+        let inputs = LibraryInputs::of(&session, &LibraryGrants::new(None));
+
+        let project = component_documentation(&inputs, "local.led".into());
+        let standard = component_documentation(&inputs, "dev.perfboard.bridge".into());
+        let missing = component_documentation(&inputs, "local.nope".into());
+        let _ = std::fs::remove_dir_all(&dir);
+
+        let project = project.unwrap();
+        assert_eq!(project.markdown, "# LED\n\nRed, 20 mA.\n");
+        assert_eq!(project.trust, DocumentationTrust::UntrustedReference);
+        assert!(standard.unwrap().markdown.starts_with("# Bridge"));
+        assert_eq!(missing.unwrap_err().code, "component.not_found");
     }
 }

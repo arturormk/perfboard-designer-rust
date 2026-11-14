@@ -8,8 +8,8 @@ use perfboard_core::{
 };
 use perfboard_project::{
     Board, OperationError, OperationOrigin, OperationPayload, OperationRequest, ProjectDocument,
-    RouteError, RouteRequest, RoutingCostConfig, WireEndpoint, apply_operation, evaluate_route,
-    suggest_route, to_snapshot_json,
+    RouteError, RouteRequest, RouteStrategy, RoutingCostConfig, WireEndpoint, apply_operation,
+    evaluate_route, suggest_route, suggest_route_alternatives, to_snapshot_json,
 };
 
 fn definition() -> ComponentDefinition {
@@ -775,4 +775,122 @@ fn sample_project_auto_route_manual_adjust_and_reopen_has_no_route_drift() {
     let reopened = ProjectDocument::from_json(&to_snapshot_json(&document).unwrap()).unwrap();
     assert_eq!(reopened.design.wires[&replacement_id].vertices, adjusted);
     assert!(!reopened.design.wires.contains_key(&original.id));
+}
+
+fn strategies(alternatives: &[perfboard_project::RouteAlternative]) -> Vec<RouteStrategy> {
+    alternatives.iter().map(|item| item.strategy).collect()
+}
+
+#[test]
+fn alternatives_lead_with_the_balanced_route_and_never_repeat() {
+    let (mut document, ids) = fixture(&[("a", 1, 2), ("b", 7, 6)]);
+    let (net_id, terminals) = routed_net(&mut document, &ids, &["a", "b"]);
+    apply(
+        &mut document,
+        OperationPayload::AddConstraint {
+            constraint: required_reserved(HolePos::new(3, 2), HolePos::new(5, 5)),
+        },
+    );
+    let request = request(net_id, &terminals);
+    let config = RoutingCostConfig::default();
+    let alternatives = suggest_route_alternatives(&document.design, &request, &config).unwrap();
+    let again = suggest_route_alternatives(&document.design, &request, &config).unwrap();
+    assert_eq!(alternatives, again, "alternatives must be deterministic");
+
+    assert_eq!(alternatives[0].strategy, RouteStrategy::Balanced);
+    assert_eq!(
+        alternatives[0].proposal,
+        suggest_route(&document.design, &request, &config).unwrap()
+    );
+    let kinds = strategies(&alternatives);
+    assert_eq!(
+        kinds.iter().collect::<BTreeSet<_>>().len(),
+        kinds.len(),
+        "{kinds:?}"
+    );
+    for (index, item) in alternatives.iter().enumerate() {
+        for other in &alternatives[..index] {
+            assert!(
+                item.proposal.side != other.proposal.side
+                    || item.proposal.vertices != other.proposal.vertices,
+                "{:?} repeats {:?}",
+                item.strategy,
+                other.strategy
+            );
+        }
+    }
+    let balanced = &alternatives[0].proposal;
+    for item in &alternatives {
+        match item.strategy {
+            RouteStrategy::FewestBends => {
+                assert!(item.proposal.bend_count <= balanced.bend_count);
+            }
+            RouteStrategy::Shortest => {
+                assert!(item.proposal.length_mm <= balanced.length_mm);
+            }
+            RouteStrategy::OtherSide => assert_eq!(item.proposal.side, Side::Component),
+            RouteStrategy::Balanced | RouteStrategy::DifferentPath => {
+                assert_eq!(item.proposal.side, Side::Solder);
+            }
+        }
+    }
+    assert!(kinds.contains(&RouteStrategy::OtherSide), "{kinds:?}");
+    assert!(kinds.contains(&RouteStrategy::DifferentPath), "{kinds:?}");
+}
+
+#[test]
+fn a_straight_connection_offers_a_detour_and_the_other_side() {
+    let (mut document, ids) = fixture(&[("a", 1, 4), ("b", 7, 4)]);
+    let (net_id, terminals) = routed_net(&mut document, &ids, &["a", "b"]);
+    let alternatives = suggest_route_alternatives(
+        &document.design,
+        &request(net_id, &terminals),
+        &RoutingCostConfig::default(),
+    )
+    .unwrap();
+    // Fewest bends and shortest are the straight line again, so they are
+    // dropped as repeats.
+    assert_eq!(
+        strategies(&alternatives),
+        [
+            RouteStrategy::Balanced,
+            RouteStrategy::DifferentPath,
+            RouteStrategy::OtherSide
+        ]
+    );
+    assert_eq!(alternatives[0].proposal.bend_count, 0);
+}
+
+#[test]
+fn a_required_side_rules_out_the_other_side_alternative() {
+    let (mut document, ids) = fixture(&[("a", 1, 2), ("b", 7, 6)]);
+    let (net_id, terminals) = routed_net(&mut document, &ids, &["a", "b"]);
+    apply(
+        &mut document,
+        OperationPayload::AddConstraint {
+            constraint: Constraint {
+                id: perfboard_core::ConstraintId::new(),
+                severity: ConstraintSeverity::Required,
+                origin: ConstraintOrigin::User,
+                rationale: "keep the top clear".into(),
+                annotation: String::new(),
+                kind: ConstraintKind::WireSide {
+                    net_id,
+                    side: Side::Solder,
+                },
+            },
+        },
+    );
+    let alternatives = suggest_route_alternatives(
+        &document.design,
+        &request(net_id, &terminals),
+        &RoutingCostConfig::default(),
+    )
+    .unwrap();
+    assert!(!strategies(&alternatives).contains(&RouteStrategy::OtherSide));
+    assert!(
+        alternatives
+            .iter()
+            .all(|item| item.proposal.side == Side::Solder)
+    );
 }

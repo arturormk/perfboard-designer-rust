@@ -448,7 +448,7 @@ Work:
 
 Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
 
-- **A basic component library.** The bundled `components/` holds nine parts,
+- **A basic component library.** Done: see the checklist below. The bundled `components/` held nine parts,
   mostly those of the sample project. Ship a starter set of common
   through-hole parts for ordinary hobby builds: resistors, diodes, capacitors,
   LEDs, transistors, pin headers, and DIP sockets, each checked against a real
@@ -498,6 +498,42 @@ Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
 
   Progress: all seven steps are done. The authoring guide is
   `docs/component-libraries.md`.
+
+Remaining before 1.0 (noted 2026-11-14), in this order:
+
+- [ ] **Acceptance audit.** Map the blueprint's 18 criteria to tests or
+  manual steps and close the gaps it finds:
+  [ACCEPTANCE.md](ACCEPTANCE.md). First pass done and its automated gaps
+  closed (access-region tests, alternative routes, documentation through MCP).
+  What remains is running its manual acceptance run on the release candidate,
+  together with the packaged smoke test below.
+- [ ] **Project-instance upgrade.** Adopt a changed definition (pins, body,
+  keepouts) in a project that already uses it: preview the change, accept or
+  reject it, apply it as an undoable operation, and refuse while a removed pin
+  is still used by a net or wire. The project half of milestone CE4 in
+  [the Component Editor plan](DEVELOPMENT_PLAN-ComponentEditor.md). Today only
+  metadata can be updated; shape changes need a new `id`.
+- [ ] **Robustness.** Tests for upgrading old project files and for damaged or
+  truncated ones, written backup-restoration guidance, and a timing check at
+  the intended size (about 12 parts and a few dozen wires).
+- [x] **A basic component library.** 41 generated parts beside the original
+  five (`crates/library/tests/generated_parts.rs`).
+- [ ] **Check parts against real ones.** Measure a few physical parts (an
+  electrolytic, a TO-220, a screw terminal, a DIP socket) against their
+  definitions, which use typical datasheet dimensions.
+- [ ] **Review what 1.0 freezes.** Project format v2, component format v1
+  (with `designator`), the `dev.perfboard.*` identifiers and the MCP tool
+  schemas become compatibility promises.
+- [ ] **Packaged smoke test.** Install the `.deb`, `.rpm` and AppImage on a
+  clean system and complete the manual acceptance run in ACCEPTANCE.md,
+  which also covers the release build's embedded standard library. Document
+  Linux as the supported platform.
+- [ ] **Release.** Tag `v1.0.0` (ADR 0010), turn the changelog's Unreleased
+  section into the 1.0 section, and run the release workflow.
+
+Deferred past 1.0: MCP part authoring (CE6), part templates in the UI (CE5),
+the library half of CE4 (variants, archiving), macOS and Windows packages,
+more standard parts, and renumbering placed parts.
 
 Exit criteria:
 

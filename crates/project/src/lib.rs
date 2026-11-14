@@ -28,7 +28,10 @@ pub use operations::{
 pub use persistence::{PersistenceError, load_project, save_project_atomic};
 pub use rendering::render_design_svg;
 pub use revisions::{Commit, CommittedChange, HistoryActionResult, RevisionError, WorkingChange};
-pub use routing::{RouteError, RouteRequest, RoutingCostConfig, evaluate_route, suggest_route};
+pub use routing::{
+    RouteAlternative, RouteError, RouteRequest, RouteStrategy, RoutingCostConfig, evaluate_route,
+    suggest_route, suggest_route_alternatives,
+};
 pub use session::{
     ProjectSession, SessionChangeEvent, SessionError, TransactionRequest, TransactionResult,
 };

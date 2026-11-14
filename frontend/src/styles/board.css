@@ -1286,3 +1286,39 @@
     right: 12px;
   }
 }
+
+.route-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 10px;
+}
+
+.route-choices button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-m);
+  background: var(--bg-2);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.route-choices button:hover {
+  color: var(--text-1);
+}
+
+.route-choices button.on {
+  border-color: var(--copper-line);
+  color: var(--text-1);
+  background: var(--copper-soft, var(--bg-3));
+}
+
+.route-choices kbd {
+  font-size: 10px;
+  color: var(--text-3);
+}

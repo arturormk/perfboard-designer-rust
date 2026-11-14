@@ -81,15 +81,166 @@ struct State {
 const DIRECTIONS: [(i64, i64); 4] = [(1, 0), (0, 1), (-1, 0), (0, -1)];
 const NO_DIRECTION: u8 = 4;
 
+/// The side a net's wires must use, when a required rule fixes it.
+fn required_side(design: &Design, net: NetId) -> Option<Side> {
+    design
+        .constraints
+        .values()
+        .find_map(|constraint| match constraint.kind {
+            ConstraintKind::WireSide { net_id, side }
+                if net_id == net && constraint.severity == ConstraintSeverity::Required =>
+            {
+                Some(side)
+            }
+            _ => None,
+        })
+}
+
+/// The side a request routes on: a required rule, else the request's
+/// preference, else a preferred rule, else the solder side.
+fn route_side(design: &Design, request: &RouteRequest) -> Side {
+    let preferred_rule = design
+        .constraints
+        .values()
+        .find_map(|constraint| match constraint.kind {
+            ConstraintKind::WireSide { net_id, side } if net_id == request.net_id => Some(side),
+            _ => None,
+        });
+    required_side(design, request.net_id)
+        .or(request.preferred_side)
+        .or(preferred_rule)
+        .unwrap_or(Side::Solder)
+}
+
+/// What a suggested alternative favours.
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum RouteStrategy {
+    /// The router's normal balance of length, bends, crossings and jumpers.
+    Balanced,
+    /// Keeps off the balanced route's holes where it can: another way
+    /// through.
+    DifferentPath,
+    /// Bends cost four times as much: easier to form in hard wire.
+    FewestBends,
+    /// Bends cost less than a step: the shortest wire.
+    Shortest,
+    /// The balanced route on the other side of the board.
+    OtherSide,
+}
+
+/// One of several suggestions for the same connection.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct RouteAlternative {
+    pub strategy: RouteStrategy,
+    pub proposal: RouteProposal,
+}
+
+/// Up to five distinct suggestions for one connection, the balanced one
+/// first: a different path, fewest bends, shortest and the other side follow
+/// when they differ from those before them. The other side is skipped when a required rule
+/// fixes the net's side.
+///
+/// # Errors
+/// Returns the balanced route's error when no strategy finds a route.
+pub fn suggest_route_alternatives(
+    design: &Design,
+    request: &RouteRequest,
+    config: &RoutingCostConfig,
+) -> Result<Vec<RouteAlternative>, RouteError> {
+    let side = route_side(design, request);
+    let fewest_bends = RoutingCostConfig {
+        bend: config.bend * 4,
+        cramped_bend: config.cramped_bend * 2,
+        ..config.clone()
+    };
+    let shortest = RoutingCostConfig {
+        bend: config.orthogonal_step / 2,
+        ..config.clone()
+    };
+    let balanced = suggest_route(design, request, config);
+    let mut attempts = vec![
+        (RouteStrategy::FewestBends, request.clone(), fewest_bends),
+        (RouteStrategy::Shortest, request.clone(), shortest),
+    ];
+    if required_side(design, request.net_id).is_none() {
+        let other = RouteRequest {
+            preferred_side: Some(match side {
+                Side::Component => Side::Solder,
+                Side::Solder => Side::Component,
+            }),
+            ..request.clone()
+        };
+        attempts.push((RouteStrategy::OtherSide, other, config.clone()));
+    }
+    let mut alternatives: Vec<RouteAlternative> = Vec::new();
+    let mut first_error = None;
+    let mut results = Vec::new();
+    match balanced {
+        Ok(proposal) => {
+            let path = expand_path(&proposal.vertices);
+            let interior: BTreeSet<RoutePos> = path
+                .iter()
+                .skip(1)
+                .take(path.len().saturating_sub(2))
+                .copied()
+                .collect();
+            results.push((RouteStrategy::Balanced, Ok(proposal)));
+            results.push((
+                RouteStrategy::DifferentPath,
+                search(design, request, config, &interior),
+            ));
+        }
+        Err(error) => results.push((RouteStrategy::Balanced, Err(error))),
+    }
+    for (strategy, request, config) in attempts {
+        results.push((strategy, suggest_route(design, &request, &config)));
+    }
+    for (strategy, result) in results {
+        match result {
+            Ok(proposal) => {
+                let duplicate = alternatives.iter().any(|known| {
+                    known.proposal.side == proposal.side
+                        && known.proposal.vertices == proposal.vertices
+                });
+                if !duplicate {
+                    alternatives.push(RouteAlternative { strategy, proposal });
+                }
+            }
+            Err(error) => {
+                first_error.get_or_insert(error);
+            }
+        }
+    }
+    // The balanced search always runs, so an empty list has an error.
+    match first_error {
+        Some(error) if alternatives.is_empty() => Err(error),
+        _ => Ok(alternatives),
+    }
+}
+
 /// Produces a deterministic proposal without changing the design.
 ///
 /// # Errors
 /// Returns an invalid-terminal error or an explained no-path result.
-#[allow(clippy::too_many_lines)] // Search setup and loop are kept together to make ordering auditable.
 pub fn suggest_route(
     design: &Design,
     request: &RouteRequest,
     config: &RoutingCostConfig,
+) -> Result<RouteProposal, RouteError> {
+    search(design, request, config, &BTreeSet::new())
+}
+
+/// The route search. Every half-grid step onto a position in `avoid` costs
+/// as much as a crossing, which steers the search off an earlier route.
+#[allow(clippy::too_many_lines)] // Search setup and loop are kept together to make ordering auditable.
+fn search(
+    design: &Design,
+    request: &RouteRequest,
+    config: &RoutingCostConfig,
+    avoid: &BTreeSet<RoutePos>,
 ) -> Result<RouteProposal, RouteError> {
     let start = crate::connectivity::terminal_position(design, request.net_id, &request.start)
         .map_err(RouteError::InvalidTerminal)?;
@@ -98,31 +249,7 @@ pub fn suggest_route(
     if start == end {
         return Err(RouteError::SameEndpoint);
     }
-    let constrained_side =
-        design
-            .constraints
-            .values()
-            .find_map(|constraint| match constraint.kind {
-                ConstraintKind::WireSide { net_id, side }
-                    if net_id == request.net_id
-                        && constraint.severity == ConstraintSeverity::Required =>
-                {
-                    Some(side)
-                }
-                _ => None,
-            });
-    let preferred_constraint_side =
-        design
-            .constraints
-            .values()
-            .find_map(|constraint| match constraint.kind {
-                ConstraintKind::WireSide { net_id, side } if net_id == request.net_id => Some(side),
-                _ => None,
-            });
-    let side = constrained_side
-        .or(request.preferred_side)
-        .or(preferred_constraint_side)
-        .unwrap_or(Side::Solder);
+    let side = route_side(design, request);
     let minimum_bend = design
         .constraints
         .values()
@@ -214,6 +341,9 @@ pub fn suggest_route(
             }
             if soft_areas.contains(&point) {
                 step += config.access;
+            }
+            if avoid.contains(&point) {
+                step += config.crossing;
             }
             if is_parallel(point, direction, &existing) {
                 step += config.parallel_run;

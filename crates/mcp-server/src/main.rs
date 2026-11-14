@@ -63,6 +63,11 @@ struct RenderInput {
 struct SuggestRoutesInput {
     /// `RouteRequest` objects using IDs from the current design.
     requests: Vec<RouteRequest>,
+    /// Also return up to five distinct alternatives per request, each
+    /// labelled with what it favours (`balanced`, `different_path`,
+    /// `fewest_bends`, `shortest`, `other_side`). The first is the proposal.
+    #[serde(default)]
+    alternatives: bool,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -407,8 +412,11 @@ impl PerfboardMcp {
         if requests.is_empty() {
             return tool_error("request.empty", "at least one route request is required");
         }
-        self.request(SessionRequest::SuggestRoutes { requests })
-            .await
+        self.request(SessionRequest::SuggestRoutes {
+            requests,
+            alternatives: input.alternatives,
+        })
+        .await
     }
 
     /// Evaluate an explicit manual route with the same cost and warning policy as autorouting.

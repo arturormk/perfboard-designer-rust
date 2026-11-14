@@ -991,6 +991,30 @@ export async function installMockBackend(): Promise<void> {
     },
     suggest_project_route: ({ request }) =>
       routeProposal(doc.design, request as Parameters<typeof routeProposal>[1]),
+    suggest_project_route_alternatives: ({ request }) => {
+      const balanced = routeProposal(
+        doc.design,
+        request as Parameters<typeof routeProposal>[1],
+      );
+      const [a, , b] = balanced.vertices;
+      const alternatives = [{ strategy: "balanced", proposal: balanced }];
+      if (a && b)
+        alternatives.push({
+          strategy: "different_path",
+          proposal: {
+            ...balanced,
+            vertices: [a, { x2: a.x2, y2: b.y2 }, b],
+          },
+        });
+      alternatives.push({
+        strategy: "other_side",
+        proposal: {
+          ...balanced,
+          side: balanced.side === "component" ? "solder" : "component",
+        },
+      });
+      return alternatives;
+    },
     evaluate_project_route: ({ request, side, vertices }) => ({
       ...routeProposal(
         doc.design,

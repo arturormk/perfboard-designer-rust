@@ -14,6 +14,7 @@ import type {
   RecentProject,
   PinRef,
   ProjectView,
+  RouteAlternative,
   RouteProposal,
   SemanticDiff,
   Side,
@@ -60,7 +61,10 @@ export type AppMode = "board" | "assembly" | "components";
 export type PinLabelMode = "off" | "numbers" | "names";
 
 export interface PendingRoute {
+  /** The alternative being previewed; accepting takes this one. */
   proposal: RouteProposal;
+  alternatives: RouteAlternative[];
+  selected: number;
   color: WireColor;
   replaceWireId?: string;
   newRouteOver: boolean;

@@ -11,8 +11,8 @@ use std::{
 use directories::{BaseDirs, ProjectDirs};
 use perfboard_core::{CommitId, ComponentDefinition, RoutePos, RouteProposal, Side};
 use perfboard_project::{
-    Commit, DocumentRevision, HistoryActionResult, ProjectDocument, ProjectView, RouteRequest,
-    SemanticDiff, TransactionRequest, TransactionResult,
+    Commit, DocumentRevision, HistoryActionResult, ProjectDocument, ProjectView, RouteAlternative,
+    RouteRequest, SemanticDiff, TransactionRequest, TransactionResult,
 };
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -70,6 +70,9 @@ pub enum SessionRequest {
     },
     SuggestRoutes {
         requests: Vec<RouteRequest>,
+        /// Also return up to five distinct alternatives per request.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        alternatives: bool,
     },
     EvaluateRoute {
         request: RouteRequest,
@@ -137,6 +140,10 @@ pub struct RenderedDesign {
 pub struct RouteResults {
     pub revision: DocumentRevision,
     pub proposals: Vec<RouteProposal>,
+    /// Per request, when alternatives were asked for; the first of each is
+    /// the proposal above.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alternatives: Vec<Vec<RouteAlternative>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -625,6 +632,37 @@ mod tests {
                 )),
             }
         }
+    }
+
+    #[test]
+    fn route_alternatives_are_optional_on_the_wire() {
+        // A request from an adapter that predates alternatives still parses,
+        // and asks for none.
+        let old = serde_json::json!({
+            "method": "suggest_routes",
+            "params": { "requests": [] }
+        });
+        let request = serde_json::from_value::<SessionRequest>(old.clone()).unwrap();
+        assert_eq!(
+            request,
+            SessionRequest::SuggestRoutes {
+                requests: Vec::new(),
+                alternatives: false
+            }
+        );
+        assert_eq!(serde_json::to_value(&request).unwrap(), old);
+
+        let results = RouteResults {
+            revision: DocumentRevision(2),
+            proposals: Vec::new(),
+            alternatives: Vec::new(),
+        };
+        let json = serde_json::to_value(&results).unwrap();
+        assert_eq!(json, serde_json::json!({ "revision": 2, "proposals": [] }));
+        assert_eq!(
+            serde_json::from_value::<RouteResults>(json).unwrap(),
+            results
+        );
     }
 
     #[test]

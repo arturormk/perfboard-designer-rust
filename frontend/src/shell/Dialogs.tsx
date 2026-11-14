@@ -308,6 +308,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["Delete", "Remove selection"],
   ["Esc", "Cancel / deselect"],
   ["Enter", "Accept suggested route · finish rail"],
+  ["1–5", "Preview another suggested route"],
   ["Backspace", "Remove last bend while drawing"],
   ["Double-click", "Add a point on a wire · remove a point"],
   ["Alt + click pin", "Toggle pin on the active net"],

@@ -797,6 +797,19 @@ export function suggestProjectRoute(
 ): Promise<RouteProposal> {
   return invoke("suggest_project_route", { request });
 }
+/** What a suggested alternative favours. */
+export type RouteStrategy =
+  "balanced" | "different_path" | "fewest_bends" | "shortest" | "other_side";
+export interface RouteAlternative {
+  strategy: RouteStrategy;
+  proposal: RouteProposal;
+}
+/** Distinct suggestions for one connection, the balanced route first. */
+export function suggestProjectRouteAlternatives(
+  request: RouteRequest,
+): Promise<RouteAlternative[]> {
+  return invoke("suggest_project_route_alternatives", { request });
+}
 export function evaluateProjectRoute(
   request: RouteRequest,
   side: Side,

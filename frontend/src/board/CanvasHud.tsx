@@ -1,6 +1,11 @@
 /** Floating controls layered over the board canvas. */
 import { useSignal, type ReadonlySignal } from "@preact/signals";
-import { acceptRoute, rejectRoute } from "../state/actions";
+import {
+  acceptRoute,
+  chooseRouteAlternative,
+  rejectRoute,
+} from "../state/actions";
+import type { RouteStrategy } from "../api/project";
 import {
   activeNetId,
   design,
@@ -251,23 +256,55 @@ function ToolOptions(props: {
   return null;
 }
 
+const STRATEGY_LABELS: Record<RouteStrategy, [string, string]> = {
+  balanced: ["Balanced", "The router's usual balance of length and bends"],
+  different_path: [
+    "Different path",
+    "Keeps off the balanced route where it can: another way through",
+  ],
+  fewest_bends: ["Fewest bends", "Fewer bends to form in hard wire"],
+  shortest: ["Shortest", "The shortest wire, even with more bends"],
+  other_side: ["Other side", "The balanced route on the other board side"],
+};
+
 function RouteCard() {
   const pending = pendingRoute.value;
   if (!pending) return null;
-  const { proposal } = pending;
+  const { proposal, alternatives, selected } = pending;
   const net = design.value?.nets?.[proposal.net_id];
   return (
     <div class="route-card" role="dialog" aria-label="Route proposal">
       <header>
         <Icon name="route" />
         <div>
-          <strong>Suggested route</strong>
+          <strong>
+            {alternatives.length > 1 ? "Suggested routes" : "Suggested route"}
+          </strong>
           <span>
             {net?.name ?? "Net"}
             {pending.replaceWireId ? " · replaces existing wire" : ""}
           </span>
         </div>
       </header>
+      {alternatives.length > 1 && (
+        <div class="route-choices" role="tablist" aria-label="Alternatives">
+          {alternatives.map((alternative, index) => {
+            const [label, hint] = STRATEGY_LABELS[alternative.strategy];
+            return (
+              <button
+                key={alternative.strategy}
+                role="tab"
+                aria-selected={index === selected}
+                class={index === selected ? "on" : undefined}
+                title={`${hint} (${index + 1})`}
+                onClick={() => chooseRouteAlternative(index)}
+              >
+                <kbd>{index + 1}</kbd> {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <dl class="route-stats">
         <div>
           <dt>Length</dt>

@@ -22,6 +22,7 @@ import {
   placeComponent,
   proposeRoute,
   railNodeDragLock,
+  chooseRouteAlternative,
   rejectRoute,
   removeRailNode,
   select,
@@ -400,6 +401,11 @@ export function BoardCanvas() {
           ...wireDraft.value,
           vertices: wireDraft.value.vertices.slice(0, -1),
         };
+        return;
+      }
+      if (pendingRoute.value && /^[1-9]$/.test(event.key)) {
+        event.preventDefault();
+        chooseRouteAlternative(Number(event.key) - 1);
         return;
       }
       if (event.key === "Enter") {

@@ -299,4 +299,82 @@ mod tests {
                 .any(|item| item.code.0 == "placement.out_of_bounds")
         );
     }
+
+    /// A one-pin connector whose required access region is the row south of
+    /// it, optionally allowed to overhang the board edge.
+    fn connector(overhang: bool) -> ComponentDefinition {
+        definition(&format!(
+            "schema_version=1\nid='connector'\ndefinition_version='1'\nname='Connector'\nallowed_rotations=['deg0','deg90']\n[body]\nx=-1.27\ny=-1.27\nwidth=2.54\nheight=2.54\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0\n[[access]]\nlabel='Plug'\ndirection='south'\nmin={{x=0,y=1}}\nmax={{x=0,y=2}}\nallow_board_overhang={overhang}"
+        ))
+    }
+
+    fn access_codes(
+        board: BoardSize,
+        parts: Vec<(ComponentDefinition, ComponentInstance)>,
+    ) -> Vec<String> {
+        let mut definitions = BTreeMap::new();
+        let mut instances = BTreeMap::new();
+        for (definition, instance) in parts {
+            definitions.insert(definition.id.clone(), definition);
+            instances.insert(instance.id, instance);
+        }
+        validate_design_placements(board, &BoardFeatures::default(), &definitions, &instances)
+            .into_iter()
+            .map(|item| item.code.0)
+            .filter(|code| code.contains("access"))
+            .collect()
+    }
+
+    #[test]
+    fn required_access_must_stay_on_the_board_unless_it_may_overhang() {
+        let board = BoardSize::new(4, 4).unwrap();
+        // Access rows 3 and 4: row 4 is off a four-row board.
+        let near_edge = |overhang| vec![(connector(overhang), instance("connector", 1, 2))];
+        assert_eq!(
+            access_codes(board, near_edge(false)),
+            ["placement.required_access_out_of_bounds"]
+        );
+        assert_eq!(access_codes(board, near_edge(true)), [] as [String; 0]);
+        let clear = vec![(connector(false), instance("connector", 1, 0))];
+        assert_eq!(access_codes(board, clear), [] as [String; 0]);
+    }
+
+    #[test]
+    fn required_access_follows_rotation_and_is_blocked_by_other_parts() {
+        let board = BoardSize::new(6, 6).unwrap();
+        let wall = definition(
+            "schema_version=1\nid='blocker'\ndefinition_version='1'\nname='Blocker'\nallowed_rotations=['deg0']\n[body]\nx=-1.27\ny=-1.27\nwidth=2.54\nheight=2.54\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0",
+        );
+        // The connector at (1, 1) needs (1, 2) and (1, 3) free.
+        let blocked = vec![
+            (connector(false), instance("connector", 1, 1)),
+            (wall.clone(), instance("blocker", 1, 3)),
+        ];
+        assert_eq!(
+            access_codes(board, blocked),
+            ["placement.required_access_blocked"]
+        );
+        let beside = vec![
+            (connector(false), instance("connector", 1, 1)),
+            (wall.clone(), instance("blocker", 2, 3)),
+        ];
+        assert_eq!(access_codes(board, beside), [] as [String; 0]);
+        // Turned a quarter clockwise, the access points west, so the same
+        // blocker no longer matters but one to the west does.
+        let mut turned = instance("connector", 3, 1);
+        turned.rotation = Rotation::Deg90;
+        let west = vec![
+            (connector(false), turned.clone()),
+            (wall.clone(), instance("blocker", 3, 3)),
+        ];
+        assert_eq!(access_codes(board, west), [] as [String; 0]);
+        let west_blocked = vec![
+            (connector(false), turned),
+            (wall, instance("blocker", 1, 1)),
+        ];
+        assert_eq!(
+            access_codes(board, west_blocked),
+            ["placement.required_access_blocked"]
+        );
+    }
 }

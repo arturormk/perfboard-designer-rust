@@ -61,6 +61,11 @@ Development line `v0.1.x`: the first public development builds.
   library definition changed only in name, designator, description,
   documentation or version now refreshes the project's copy instead of
   failing.
+- Alternative routes: a suggested route now comes with up to four
+  alternatives, shown as tabs on the route card (keys 1–5): a different path
+  that keeps off the balanced route, fewest bends, shortest, and the other
+  board side, without repeats. MCP's `suggest_routes` returns them with
+  `alternatives: true`.
 - 41 new standard parts: a standing resistor; ceramic capacitors (2.54 and
   5.08 mm); radial electrolytics (5, 6.3, 8 and 10 mm); DO-35 and DO-41
   diodes; 3 and 5 mm LEDs; TO-92 and standing TO-220; DIP-8 to DIP-28 and
