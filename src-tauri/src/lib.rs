@@ -29,12 +29,14 @@ use tauri_plugin_opener::OpenerExt;
 mod assembly_progress;
 mod component_library;
 mod component_viewer;
+mod library_grants;
 mod recent_projects;
 
 use assembly_progress::{AssemblyProgress, Checkmarks};
 use recent_projects::{RecentProject, RecentProjects};
 
 use component_library::LibraryInputs;
+use library_grants::{GrantEntry, LibraryGrant, LibraryGrants};
 use perfboard_library::ResolvedLibrary;
 
 use component_viewer::{
@@ -148,6 +150,7 @@ fn component_definitions(inputs: &LibraryInputs) -> Vec<ComponentDefinition> {
 
 struct DesktopSessionHandler {
     session: Arc<Mutex<ProjectSession>>,
+    grants: Arc<LibraryGrants>,
     app: tauri::AppHandle,
 }
 
@@ -181,9 +184,22 @@ impl SessionRequestHandler for DesktopSessionHandler {
             SessionRequest::GetProject => Ok(SessionResponse::Project(Box::new(
                 self.lock()?.document().clone(),
             ))),
-            SessionRequest::GetProjectView => Ok(SessionResponse::ProjectView(Box::new(
-                perfboard_project::ProjectView::from_document(self.lock()?.document()),
-            ))),
+            SessionRequest::GetProjectView => {
+                // MCP's validation report includes library problems, such as a
+                // user library that is not granted, next to the design's.
+                let (mut view, inputs) = {
+                    let session = self.lock()?;
+                    (
+                        perfboard_project::ProjectView::from_document(session.document()),
+                        LibraryInputs::of(&session, &self.grants),
+                    )
+                };
+                view.validation
+                    .extend(component_library::library_validation(
+                        &component_library::current_library(&inputs),
+                    ));
+                Ok(SessionResponse::ProjectView(Box::new(view)))
+            }
             SessionRequest::ApplyTransaction(request) => {
                 let (result, event) = self
                     .lock()?
@@ -303,11 +319,11 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 }))
             }
             SessionRequest::GetComponentLibrary => {
-                let inputs = LibraryInputs::of(&*self.lock()?);
+                let inputs = LibraryInputs::of(&*self.lock()?, &self.grants);
                 Ok(SessionResponse::Components(component_definitions(&inputs)))
             }
             SessionRequest::GetComponentDocumentation { definition_id } => {
-                let inputs = LibraryInputs::of(&*self.lock()?);
+                let inputs = LibraryInputs::of(&*self.lock()?, &self.grants);
                 let Some(markdown) = component_library::current_library(&inputs)
                     .components
                     .into_iter()
@@ -371,6 +387,14 @@ fn get_assembly_plan(state: tauri::State<'_, SessionState>) -> Result<AssemblyPl
     let session = state.0.lock().map_err(|error| error.to_string())?;
     let document = session.document();
     Ok(assembly_plan(&document.design, document.revision))
+}
+
+fn open_project_id_value(state: &SessionState) -> Result<ProjectId, String> {
+    state
+        .0
+        .lock()
+        .map_err(|error| error.to_string())
+        .map(|session| session.document().project_id)
 }
 
 fn open_project_id(state: &SessionState) -> Result<String, String> {
@@ -657,13 +681,191 @@ fn evaluate_project_route(
     ))
 }
 
+fn library_inputs(state: &SessionState, grants: &LibraryGrants) -> Result<LibraryInputs, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(LibraryInputs::of(&session, grants))
+}
+
 /// The open project's library: its layers, the definitions that won and
 /// what they shadow, and diagnostics. Documentation is fetched separately.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
-fn get_component_library(state: tauri::State<'_, SessionState>) -> Result<ResolvedLibrary, String> {
-    let inputs = LibraryInputs::of(&*state.0.lock().map_err(|error| error.to_string())?);
-    Ok(component_library::current_library(&inputs))
+fn get_component_library(
+    state: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+) -> Result<ResolvedLibrary, String> {
+    Ok(component_library::current_library(&library_inputs(
+        &state, &grants,
+    )?))
+}
+
+/// What the Component libraries panel edits: the project's paths (absent
+/// means the default) and its user-library grant on this machine.
+#[derive(Debug, Serialize)]
+struct LibrarySettings {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    component_paths: Option<Vec<String>>,
+    /// The project file; absent until the project is saved.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    project_file: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    grant: Option<LibraryGrant>,
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_library_settings(
+    state: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+) -> Result<LibrarySettings, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    Ok(LibrarySettings {
+        component_paths: session.document().component_paths.clone(),
+        project_file: session.file_path().map(Path::to_path_buf),
+        grant: grants.get(session.document().project_id),
+    })
+}
+
+/// Replaces the project's library layers; `None` restores the default. Only
+/// the UI can do this: the MCP session has no request for it (ADR 0014).
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn set_component_paths(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    expected_revision: DocumentRevision,
+    paths: Option<Vec<String>>,
+) -> Result<(), CommandError> {
+    let mut session = state.0.lock().map_err(|error| CommandError {
+        code: "session.lock_failed",
+        message: error.to_string(),
+        expected_revision: None,
+        actual_revision: None,
+    })?;
+    let event = session
+        .set_component_paths(expected_revision, paths)
+        .map_err(CommandError::from)?;
+    drop(session);
+    publish(&app, &event);
+    Ok(())
+}
+
+async fn pick_folder(app: &tauri::AppHandle, title: &str) -> Result<Option<PathBuf>, String> {
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title(title)
+        .pick_folder(move |selection| {
+            let _ = sender.send(selection);
+        });
+    let Some(selection) = receiver
+        .await
+        .map_err(|error| format!("the folder picker failed: {error}"))?
+    else {
+        return Ok(None);
+    };
+    selection
+        .into_path()
+        .map(Some)
+        .map_err(|error| format!("the selected folder is unavailable: {error}"))
+}
+
+/// Asks for a folder and grants it to the open project as its user library.
+/// Returns `None` when the picker is cancelled.
+#[tauri::command]
+async fn grant_user_library(
+    state: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+    app: tauri::AppHandle,
+) -> Result<Option<LibraryGrant>, String> {
+    let Some(folder) = pick_folder(&app, "Choose your user component library").await? else {
+        return Ok(None);
+    };
+    let (project_id, name, file) = {
+        let session = state.0.lock().map_err(|error| error.to_string())?;
+        (
+            session.document().project_id,
+            session.document().name.clone(),
+            session.file_path().map(Path::to_path_buf),
+        )
+    };
+    grants
+        .grant(project_id, &folder, &name, file.as_deref())
+        .map(Some)
+        .map_err(|error| format!("could not grant {}: {error}", folder.display()))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn revoke_user_library(
+    state: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+) -> Result<(), String> {
+    let project_id = open_project_id_value(&state)?;
+    grants
+        .revoke(project_id)
+        .map_err(|error| format!("could not revoke the grant: {error}"))
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn list_library_grants(grants: tauri::State<'_, Arc<LibraryGrants>>) -> Vec<GrantEntry> {
+    grants.list()
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn revoke_library_grant(
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+    project_id: ProjectId,
+) -> Result<Vec<GrantEntry>, String> {
+    grants
+        .revoke(project_id)
+        .map_err(|error| format!("could not revoke the grant: {error}"))?;
+    Ok(grants.list())
+}
+
+/// Asks for a folder and returns it as a `component_paths` entry, relative to
+/// the project's folder or its granted user library. Returns `None` when the
+/// picker is cancelled; the caller adds the entry with `set_component_paths`.
+#[tauri::command]
+async fn pick_component_layer(
+    state: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+    app: tauri::AppHandle,
+) -> Result<Option<String>, String> {
+    let inputs = library_inputs(&state, &grants)?;
+    let Some(folder) = pick_folder(&app, "Choose a component library folder").await? else {
+        return Ok(None);
+    };
+    let canonical = |path: &Path| std::fs::canonicalize(path).ok();
+    let folder =
+        canonical(&folder).ok_or_else(|| format!("{} is unavailable", folder.display()))?;
+    let project_dir = inputs
+        .project_file
+        .as_deref()
+        .and_then(Path::parent)
+        .and_then(canonical);
+    let user_components = inputs.user_components.as_deref().and_then(canonical);
+    perfboard_library::template_for_folder(
+        &folder,
+        project_dir.as_deref(),
+        user_components.as_deref(),
+    )
+    .map(|template| Some(template.to_string()))
+    .map_err(|error| match error {
+        perfboard_library::FolderTemplateError::OutsideRoots => format!(
+            "{} is not inside the project's folder{}. Save the project next to its parts, or \
+             grant a user library that contains this folder.",
+            folder.display(),
+            if user_components.is_some() {
+                " or the user library granted to it"
+            } else {
+                ""
+            }
+        ),
+        other @ perfboard_library::FolderTemplateError::Unrepresentable(_) => other.to_string(),
+    })
 }
 
 #[tauri::command]
@@ -1138,12 +1340,18 @@ async fn export_pdf(
 fn save_project(
     state: tauri::State<'_, SessionState>,
     recent: tauri::State<'_, RecentProjects>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
     path: PathBuf,
 ) -> Result<(), String> {
     let mut session = state.0.lock().map_err(|error| error.to_string())?;
     save_project_atomic(session.document(), &path).map_err(|error| error.to_string())?;
     session.set_file_path(path.clone());
+    let (project_id, name) = (
+        session.document().project_id,
+        session.document().name.clone(),
+    );
     drop(session);
+    grants.touch(project_id, &name, &path);
     remember_recent(&recent, &path);
     Ok(())
 }
@@ -1191,11 +1399,13 @@ fn import_recent_projects(
 fn open_project(
     state: tauri::State<'_, SessionState>,
     recent: tauri::State<'_, RecentProjects>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
     app: tauri::AppHandle,
     path: PathBuf,
 ) -> Result<ProjectDocument, String> {
     let document = load_project(&path).map_err(|error| error.to_string())?;
     remember_recent(&recent, &path);
+    grants.touch(document.project_id, &document.name, &path);
     let event = state
         .0
         .lock()
@@ -1233,10 +1443,13 @@ pub fn run() {
         .setup(move |app| {
             let (registration, listener) =
                 SessionRegistration::bind().map_err(Box::<dyn std::error::Error>::from)?;
+            let grants = Arc::new(LibraryGrants::new(app.path().app_config_dir().ok()));
             let handler: Arc<dyn SessionRequestHandler> = Arc::new(DesktopSessionHandler {
                 session: Arc::clone(&ipc_session),
+                grants: Arc::clone(&grants),
                 app: app.handle().clone(),
             });
+            app.manage(grants);
             let task_registration = Arc::clone(&registration);
             tauri::async_runtime::spawn(async move {
                 if let Err(error) =
@@ -1272,6 +1485,13 @@ pub fn run() {
             suggest_project_route,
             evaluate_project_route,
             get_component_library,
+            get_library_settings,
+            set_component_paths,
+            grant_user_library,
+            revoke_user_library,
+            list_library_grants,
+            revoke_library_grant,
+            pick_component_layer,
             select_runtime_component,
             new_component_draft,
             reload_runtime_component,
@@ -1316,7 +1536,8 @@ mod tests {
     #[test]
     fn an_unsaved_project_is_offered_the_standard_library() {
         let session = ProjectSession::new(initial_document());
-        let definitions = component_definitions(&LibraryInputs::of(&session));
+        let definitions =
+            component_definitions(&LibraryInputs::of(&session, &LibraryGrants::new(None)));
         for id in [
             "dev.perfboard.bridge",
             "dev.perfboard.dupont-jumper",

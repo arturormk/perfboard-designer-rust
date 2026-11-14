@@ -2801,6 +2801,7 @@ dependencies = [
  "thiserror 2.0.21",
  "tokio",
  "toml 0.8.2",
+ "uuid",
 ]
 
 [[package]]
@@ -2844,6 +2845,7 @@ version = "0.1.0"
 dependencies = [
  "json-patch",
  "perfboard-core",
+ "perfboard-library",
  "schemars 1.2.3",
  "serde",
  "serde_json",

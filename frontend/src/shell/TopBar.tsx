@@ -94,6 +94,16 @@ function FileMenu() {
             <Icon name="save" size={15} /> Save as…
           </button>
           <hr />
+          <button role="menuitem" onClick={run(() => openDialog("libraries"))}>
+            <Icon name="component" size={15} /> Component libraries…
+          </button>
+          <button
+            role="menuitem"
+            onClick={run(() => openDialog("preferences"))}
+          >
+            <Icon name="more" size={15} /> Preferences…
+          </button>
+          <hr />
           <button role="menuitem" onClick={run(() => void printBuildDrawing())}>
             <Icon name="print" size={15} /> Print build drawing…
           </button>

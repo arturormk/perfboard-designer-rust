@@ -94,6 +94,8 @@ pub enum RevisionError {
     CommitNotFound,
     #[error("project name must not be blank")]
     BlankProjectName,
+    #[error("component path `{entry}` is invalid: {reason}")]
+    InvalidComponentPath { entry: String, reason: String },
 }
 
 #[allow(clippy::missing_errors_doc)] // Methods return the self-explanatory RevisionError variants.
@@ -215,6 +217,36 @@ impl ProjectDocument {
             return Ok(format!("Renamed project {old} to {name}"));
         }
         Ok(format!("Project is already named {name}"))
+    }
+
+    /// Replaces the project's component library layers (ADR 0014). `None`
+    /// restores the default. Every entry must be a valid path template.
+    pub fn set_component_paths(
+        &mut self,
+        expected_revision: DocumentRevision,
+        paths: Option<Vec<String>>,
+    ) -> Result<String, RevisionError> {
+        self.check_revision(expected_revision)?;
+        let paths = paths.map(|paths| {
+            paths
+                .into_iter()
+                .map(|entry| entry.trim().to_owned())
+                .collect::<Vec<_>>()
+        });
+        for entry in paths.iter().flatten() {
+            perfboard_library::PathTemplate::parse(entry).map_err(|error| {
+                RevisionError::InvalidComponentPath {
+                    entry: entry.clone(),
+                    reason: error.to_string(),
+                }
+            })?;
+        }
+        if paths == self.component_paths {
+            return Ok("Component libraries are unchanged".into());
+        }
+        self.component_paths = paths;
+        self.revision.0 += 1;
+        Ok("Changed the project's component libraries".into())
     }
 
     pub fn commit(

@@ -1,52 +1,13 @@
 import { useSignal } from "@preact/signals";
-import { useEffect, useRef } from "preact/hooks";
-import type { ComponentChildren } from "preact";
+import { useEffect } from "preact/hooks";
 import { getUndoHistoryBytes } from "../api/project";
 import { parseBoardDimensions } from "../editor/board-size";
 import { commit, newBoard, trimHistory } from "../state/actions";
 import { comparison, view } from "../state/store";
 import { Icon } from "../ui/Icon";
 import { closeDialog, confirmRequest, openDialogKind } from "./dialogs";
-
-function Modal({
-  title,
-  onClose,
-  children,
-  wide,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ComponentChildren;
-  wide?: boolean;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (dialog && !dialog.open) dialog.showModal();
-    return () => dialog?.close();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      class={`modal${wide ? " wide" : ""}`}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      onClick={(event) => {
-        if (event.target === ref.current) onClose();
-      }}
-    >
-      <header class="modal-head">
-        <h2>{title}</h2>
-        <button class="icon-btn" aria-label="Close" onClick={onClose}>
-          <Icon name="close" />
-        </button>
-      </header>
-      {children}
-    </dialog>
-  );
-}
+import { LibrariesDialog, PreferencesDialog } from "./LibraryDialogs";
+import { Modal } from "./Modal";
 
 // Common prototype board sizes and their usual hole counts.
 const PRESETS: Array<[string, number, number]> = [
@@ -415,6 +376,8 @@ export function Dialogs() {
       {kind === "commit" && <CommitDialog />}
       {kind === "history" && <HistoryDialog />}
       {kind === "shortcuts" && <ShortcutsDialog />}
+      {kind === "libraries" && <LibrariesDialog />}
+      {kind === "preferences" && <PreferencesDialog />}
       <ConfirmDialog />
     </>
   );

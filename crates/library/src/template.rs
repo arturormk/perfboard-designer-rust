@@ -1,6 +1,10 @@
 //! Parsing of `component_paths` entries (ADR 0014).
 
-use std::{fmt, path::PathBuf, str::FromStr};
+use std::{
+    fmt,
+    path::{Component, Path, PathBuf},
+    str::FromStr,
+};
 
 use serde::Serialize;
 use thiserror::Error;
@@ -135,6 +139,56 @@ fn validate_segment(segment: &str) -> Result<String, PathTemplateError> {
     Ok(segment.to_owned())
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Error)]
+pub enum FolderTemplateError {
+    #[error("the folder is not inside the project's folder or the user library granted to it")]
+    OutsideRoots,
+    #[error("the folder's path cannot be written as a component path: {0}")]
+    Unrepresentable(PathTemplateError),
+}
+
+/// The `component_paths` entry for `folder`, relative to whichever root
+/// contains it; the deeper root wins when one contains the other.
+///
+/// All three paths should be canonical, so that a symlinked spelling of a
+/// folder is judged by where it really is.
+///
+/// # Errors
+/// Fails when `folder` is under neither root, or when a folder name contains
+/// characters a template cannot hold (such as `$` or `\`).
+pub fn template_for_folder(
+    folder: &Path,
+    project_dir: Option<&Path>,
+    user_components: Option<&Path>,
+) -> Result<PathTemplate, FolderTemplateError> {
+    let (root, relative) = [
+        (LayerRoot::ProjectDir, project_dir),
+        (LayerRoot::UserComponents, user_components),
+    ]
+    .into_iter()
+    .filter_map(|(root, base)| {
+        let base = base?;
+        let relative = folder.strip_prefix(base).ok()?;
+        Some((root, base.components().count(), relative))
+    })
+    .max_by_key(|(_, depth, _)| *depth)
+    .map(|(root, _, relative)| (root, relative))
+    .ok_or(FolderTemplateError::OutsideRoots)?;
+
+    let mut source = root.variable().to_owned();
+    for component in relative.components() {
+        let Component::Normal(name) = component else {
+            return Err(FolderTemplateError::OutsideRoots);
+        };
+        let name = name.to_str().ok_or(FolderTemplateError::Unrepresentable(
+            PathTemplateError::ControlCharacter,
+        ))?;
+        source.push('/');
+        source.push_str(name);
+    }
+    PathTemplate::parse(&source).map_err(FolderTemplateError::Unrepresentable)
+}
+
 impl FromStr for PathTemplate {
     type Err = PathTemplateError;
 
@@ -262,6 +316,52 @@ mod tests {
                 .unwrap()
                 .relative_path(None),
             Some(PathBuf::from("parts"))
+        );
+    }
+
+    #[test]
+    fn folders_become_templates_under_the_deepest_root() {
+        let project = Path::new("/work/boards");
+        let user = Path::new("/home/me/parts");
+        let template = |folder: &str| {
+            template_for_folder(Path::new(folder), Some(project), Some(user))
+                .map(|template| template.to_string())
+        };
+        assert_eq!(template("/work/boards").unwrap(), "${PROJECT_DIR}");
+        assert_eq!(
+            template("/work/boards/nano.perfboard").unwrap(),
+            "${PROJECT_DIR}/nano.perfboard"
+        );
+        assert_eq!(
+            template("/home/me/parts/rs485/v2").unwrap(),
+            "${USER_COMPONENTS}/rs485/v2"
+        );
+        assert_eq!(
+            template("/home/me/elsewhere"),
+            Err(FolderTemplateError::OutsideRoots)
+        );
+        assert!(matches!(
+            template("/work/boards/$weird"),
+            Err(FolderTemplateError::Unrepresentable(_))
+        ));
+
+        // A user library inside the project folder is the deeper root.
+        let nested = template_for_folder(
+            Path::new("/work/boards/lib/led"),
+            Some(project),
+            Some(Path::new("/work/boards/lib")),
+        )
+        .unwrap();
+        assert_eq!(nested.to_string(), "${USER_COMPONENTS}/led");
+
+        // Without a grant or a saved project, that root is unavailable.
+        assert_eq!(
+            template_for_folder(Path::new("/home/me/parts/x"), Some(project), None),
+            Err(FolderTemplateError::OutsideRoots)
+        );
+        assert_eq!(
+            template_for_folder(Path::new("/work/boards/x"), None, Some(user)),
+            Err(FolderTemplateError::OutsideRoots)
         );
     }
 

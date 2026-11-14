@@ -11,10 +11,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use perfboard_core::{Diagnostic, DiagnosticCode, ObjectReference};
 use perfboard_library::{
     ResolveContext, ResolvedLibrary, StandardComponentSource, StandardLibrary, resolve,
 };
 use perfboard_project::ProjectSession;
+
+use crate::library_grants::LibraryGrants;
 
 /// The environment variable that replaces the standard library with a folder.
 pub const OVERRIDE_VARIABLE: &str = "PERFBOARD_STANDARD_COMPONENTS";
@@ -64,49 +67,62 @@ pub fn standard_library() -> StandardLibrary {
     )
 }
 
-/// What resolution needs from the session, copied out so that no folder is
-/// read while the session is locked.
+/// What resolution needs from the session and the grants, copied out so
+/// that no folder is read while the session is locked.
 pub struct LibraryInputs {
-    component_paths: Option<Vec<String>>,
-    project_file: Option<PathBuf>,
+    pub component_paths: Option<Vec<String>>,
+    pub project_file: Option<PathBuf>,
+    /// The user library granted to the project on this machine.
+    pub user_components: Option<PathBuf>,
 }
 
 impl LibraryInputs {
-    pub fn of(session: &ProjectSession) -> Self {
+    pub fn of(session: &ProjectSession, grants: &LibraryGrants) -> Self {
         Self {
             component_paths: session.document().component_paths.clone(),
             project_file: session.file_path().map(Path::to_path_buf),
+            user_components: grants
+                .get(session.document().project_id)
+                .map(|grant| grant.user_components),
         }
     }
 }
 
-/// The library offered for new placements in the open project.
-///
-/// No user library is granted yet (step 5 of the plan), so `${USER_COMPONENTS}`
-/// layers report "not granted". Diagnostics are also logged; the definitions
-/// that loaded are offered either way.
+/// The library offered for new placements in the open project. Problems are
+/// reported in its diagnostics; the definitions that loaded are offered
+/// either way.
 pub fn current_library(inputs: &LibraryInputs) -> ResolvedLibrary {
-    let library = resolve(
+    resolve(
         inputs.component_paths.as_deref(),
         &ResolveContext {
             project_file: inputs.project_file.as_deref(),
-            user_components: None,
+            user_components: inputs.user_components.as_deref(),
         },
         &standard_library(),
-    );
-    for diagnostic in &library.diagnostics {
-        eprintln!(
-            "Component library: {} ({}){}",
-            diagnostic.message,
-            diagnostic.code,
-            diagnostic
-                .path
-                .as_ref()
-                .map(|path| format!(": {}", path.display()))
-                .unwrap_or_default()
-        );
-    }
+    )
+}
+
+/// Library diagnostics as validation diagnostics, for reports that combine
+/// them with the design's. They reference the layer by its template, or
+/// `standard` for the standard library.
+pub fn library_validation(library: &ResolvedLibrary) -> Vec<Diagnostic> {
     library
+        .diagnostics
+        .iter()
+        .map(|diagnostic| Diagnostic {
+            code: DiagnosticCode(diagnostic.code.to_owned()),
+            severity: diagnostic.severity,
+            message: diagnostic.message.clone(),
+            objects: vec![ObjectReference {
+                kind: "component_layer".into(),
+                id: library
+                    .layers
+                    .get(diagnostic.layer)
+                    .and_then(|layer| layer.template.clone())
+                    .unwrap_or_else(|| "standard".into()),
+            }],
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -118,6 +134,10 @@ mod tests {
     use perfboard_project::{Board, ProjectDocument};
 
     use super::*;
+
+    fn no_grants() -> LibraryGrants {
+        LibraryGrants::new(None)
+    }
 
     fn session(paths: Option<Vec<String>>, file: Option<PathBuf>) -> ProjectSession {
         let mut document = ProjectDocument::new(
@@ -148,14 +168,14 @@ mod tests {
             );
         fs::write(part.join("component.toml"), bridge).unwrap();
 
-        let unsaved = current_library(&LibraryInputs::of(&session(None, None)));
+        let unsaved = current_library(&LibraryInputs::of(&session(None, None), &no_grants()));
         assert_eq!(unsaved.layers[0].status, LayerStatus::Inactive);
         assert_eq!(unsaved.get("dev.perfboard.bridge").unwrap().layer, 1);
 
-        let saved = current_library(&LibraryInputs::of(&session(
-            None,
-            Some(dir.join("board.perfboard.json")),
-        )));
+        let saved = current_library(&LibraryInputs::of(
+            &session(None, Some(dir.join("board.perfboard.json"))),
+            &no_grants(),
+        ));
         let _ = fs::remove_dir_all(&dir);
         assert_eq!(saved.layers[0].kind, LayerKind::Project);
         assert_eq!(saved.layers[0].status, LayerStatus::Loaded);
@@ -175,7 +195,7 @@ mod tests {
         let document = perfboard_project::load_project(&file).unwrap();
         let mut session = ProjectSession::new(document);
         session.set_file_path(file);
-        let library = current_library(&LibraryInputs::of(&session));
+        let library = current_library(&LibraryInputs::of(&session, &no_grants()));
         assert!(library.diagnostics.is_empty(), "{:?}", library.diagnostics);
         assert_eq!(library.layers[0].kind, LayerKind::Project);
         assert_eq!(library.layers[0].component_count, 4);
@@ -195,14 +215,45 @@ mod tests {
     }
 
     #[test]
-    fn user_layers_are_not_granted_yet() {
-        let library = current_library(&LibraryInputs::of(&session(
-            Some(vec!["${USER_COMPONENTS}".into()]),
-            None,
-        )));
-        assert_eq!(library.layers[0].status, LayerStatus::NotGranted);
-        assert_eq!(library.layers[1].kind, LayerKind::Standard);
-        assert!(library.get("dev.perfboard.bridge").is_some());
+    fn a_user_layer_loads_only_once_the_project_is_granted() {
+        let dir =
+            std::env::temp_dir().join(format!("perfboard-desktop-grant-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let parts = dir.join("parts");
+        let led = parts.join("led");
+        fs::create_dir_all(&led).unwrap();
+        fs::write(
+            led.join("component.toml"),
+            fs::read_to_string(checkout_components().join("bridge/component.toml"))
+                .unwrap()
+                .replace("dev.perfboard.bridge", "local.led"),
+        )
+        .unwrap();
+        let grants = LibraryGrants::new(Some(dir.join("config")));
+        let session = session(Some(vec!["${USER_COMPONENTS}".into()]), None);
+
+        let ungranted = current_library(&LibraryInputs::of(&session, &grants));
+        assert_eq!(ungranted.layers[0].status, LayerStatus::NotGranted);
+        assert_eq!(ungranted.layers[1].kind, LayerKind::Standard);
+        assert!(ungranted.get("local.led").is_none());
+        let validation = library_validation(&ungranted);
+        assert_eq!(validation.len(), 1);
+        assert_eq!(validation[0].code.0, "library.not_granted");
+        assert_eq!(validation[0].objects[0].kind, "component_layer");
+        assert_eq!(validation[0].objects[0].id, "${USER_COMPONENTS}");
+
+        grants
+            .grant(session.document().project_id, &parts, "Library", None)
+            .unwrap();
+        let granted = current_library(&LibraryInputs::of(&session, &grants));
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(granted.layers[0].status, LayerStatus::Loaded);
+        assert_eq!(granted.layers[0].kind, LayerKind::User);
+        assert!(granted.get("local.led").is_some());
+        assert_eq!(
+            library_validation(&granted),
+            [] as [perfboard_core::Diagnostic; 0]
+        );
     }
 
     #[test]

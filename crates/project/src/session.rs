@@ -241,6 +241,15 @@ impl ProjectSession {
         Ok(self.event("rename", summary))
     }
 
+    pub fn set_component_paths(
+        &mut self,
+        expected: DocumentRevision,
+        paths: Option<Vec<String>>,
+    ) -> Result<SessionChangeEvent, SessionError> {
+        let summary = self.document.set_component_paths(expected, paths)?;
+        Ok(self.event("component_paths", summary))
+    }
+
     pub fn restore(
         &mut self,
         expected: DocumentRevision,

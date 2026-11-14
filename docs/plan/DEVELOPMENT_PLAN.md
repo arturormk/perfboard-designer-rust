@@ -485,16 +485,16 @@ Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
      `examples/nano-rs485.perfboard/`, rename them out of `dev.perfboard.`,
      and rewrite the example project's instances and snapshots to match.
      Add the namespace warnings.
-  5. Grant files under `$XDG_CONFIG_HOME/perfboard-designer/projects/`, the
-     Project settings → Component libraries panel (layer list, Grant /
-     Change / Revoke) and Preferences → Granted projects. Ungranted
-     `${USER_COMPONENTS}` layers are reported by validation.
+  5. Grant files under `<config>/library-grants/`, the Component libraries
+     dialog (layer list, Grant / Change / Revoke) and Preferences → Granted
+     user libraries. Ungranted `${USER_COMPONENTS}` layers are reported by
+     validation.
   6. Component editor save targets: writable project or granted user layers
      only, with "Copy to project" and "Copy to user library" for standard
      parts.
   7. Component-authoring documentation for layers, grants and identifiers.
 
-  Progress: steps 1–4 are done.
+  Progress: steps 1–5 are done.
 
 Exit criteria:
 

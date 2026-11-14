@@ -38,6 +38,14 @@ Development line `v0.1.x`: the first public development builds.
   renamed from `dev.perfboard.*` to `local.*`, a prefix the library now warns
   about outside the standard library. Projects that placed them keep working
   from their embedded snapshots.
+- User component libraries: File → Component libraries… lists the folders a
+  project takes new parts from, in search order, and lets you add, reorder
+  and remove them. A folder of your own parts (`${USER_COMPONENTS}`) can be
+  granted to each project; grants are kept on your computer, never in the
+  project, so a project you send to someone else carries none. File →
+  Preferences… lists every grant. Library problems, such as a user library
+  that is not granted, appear in the Problems panel and in MCP's validation
+  report.
 - Graphical perfboard editor with component and solder side views, parts,
   nets, wires, bridges, and rails.
 - Saddles: net-free wire ties that hold wires and bundles to the board through

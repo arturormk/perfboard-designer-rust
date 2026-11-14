@@ -1,6 +1,12 @@
 import { signal } from "@preact/signals";
 
-export type DialogKind = "new-board" | "commit" | "history" | "shortcuts";
+export type DialogKind =
+  | "new-board"
+  | "commit"
+  | "history"
+  | "shortcuts"
+  | "libraries"
+  | "preferences";
 
 export const openDialogKind = signal<DialogKind | null>(null);
 

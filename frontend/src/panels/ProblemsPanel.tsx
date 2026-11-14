@@ -2,6 +2,7 @@ import type { Diagnostic } from "../api/project";
 import { focusOn, select } from "../state/actions";
 import { diagnostics, leftTab, problemCounts } from "../state/store";
 import { Icon } from "../ui/Icon";
+import { openDialog } from "../shell/dialogs";
 
 /** Plain-language next steps for known diagnostic codes. */
 const ADVICE: Record<string, string> = {
@@ -30,6 +31,15 @@ const ADVICE: Record<string, string> = {
     "A very short segment is hard to form by hand. Consider removing a bend.",
   "component.definition_missing": "The project lacks this part's definition.",
   "component.rotation_not_allowed": "This part does not allow that rotation.",
+  "library.not_granted":
+    "Grant a user library to this project in Component libraries, or remove the ${USER_COMPONENTS} folder from its list.",
+  "library.user_components_unavailable":
+    "The granted folder has moved or been deleted. Grant it again in Component libraries.",
+  "library.layer_missing":
+    "The folder does not exist. Create it, or remove it in Component libraries.",
+  "library.invalid_path": "Remove or fix this entry in Component libraries.",
+  "library.reserved_id":
+    "Give the part an id with your own prefix, or local., so a future standard part cannot clash with it.",
 };
 
 const TONE = { error: "error", warning: "warning", advisory: "info" } as const;
@@ -37,6 +47,10 @@ const TONE = { error: "error", warning: "warning", advisory: "info" } as const;
 function locate(item: Diagnostic): void {
   const target = item.objects?.[0];
   if (!target) return;
+  if (target.kind === "component_layer") {
+    openDialog("libraries");
+    return;
+  }
   const kind =
     target.kind === "component" ||
     target.kind === "wire" ||

@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
-import type { ComponentDefinition, ComponentLibrary } from "../api/project";
-import { libraryProblems, partProvenance } from "./library";
+import type {
+  ComponentDefinition,
+  ComponentLibrary,
+  LibraryLayer,
+} from "../api/project";
+import {
+  layerStatusLabel,
+  libraryProblems,
+  movedLayer,
+  partProvenance,
+  withLayer,
+  withoutLayer,
+} from "./library";
 
 const definition = (id: string) => ({ id }) as ComponentDefinition;
 
@@ -78,5 +89,45 @@ describe("part provenance", () => {
       "library.not_granted",
     ]);
     expect(libraryProblems(null)).toEqual([]);
+  });
+});
+
+describe("editing the layer list", () => {
+  const paths = ["a", "b", "c"];
+
+  it("appends a layer once", () => {
+    expect(withLayer(paths, "d")).toEqual(["a", "b", "c", "d"]);
+    expect(withLayer(paths, "b")).toBe(paths);
+  });
+
+  it("removes a layer by position", () => {
+    expect(withoutLayer(paths, 1)).toEqual(["a", "c"]);
+  });
+
+  it("moves a layer up or down and stops at the ends", () => {
+    expect(movedLayer(paths, 1, -1)).toEqual(["b", "a", "c"]);
+    expect(movedLayer(paths, 1, 1)).toEqual(["a", "c", "b"]);
+    expect(movedLayer(paths, 0, -1)).toBe(paths);
+    expect(movedLayer(paths, 2, 1)).toBe(paths);
+  });
+});
+
+describe("layer status", () => {
+  const layer = (
+    status: LibraryLayer["status"],
+    component_count = 0,
+  ): LibraryLayer => ({ kind: "project", status, component_count });
+
+  it("counts parts and names problems", () => {
+    expect(layerStatusLabel(layer("loaded", 1))).toEqual({
+      text: "1 part",
+      tone: "ok",
+    });
+    expect(layerStatusLabel(layer("loaded", 3)).text).toBe("3 parts");
+    expect(layerStatusLabel(layer("not_granted")).tone).toBe("error");
+    expect(layerStatusLabel(layer("inactive")).text).toBe(
+      "Save the project first",
+    );
+    expect(layerStatusLabel(undefined).tone).toBe("muted");
   });
 });

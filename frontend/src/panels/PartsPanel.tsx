@@ -15,6 +15,7 @@ import {
 import { groupPlacedParts } from "../model/naming";
 import { libraryProblems, partProvenance } from "../model/library";
 import { Icon } from "../ui/Icon";
+import { openDialog } from "../shell/dialogs";
 
 export function PartThumb({
   definition,
@@ -103,14 +104,24 @@ export function PartsPanel() {
       <section class="panel-section">
         <header class="section-head">
           <h3>Library</h3>
-          <button
-            class="icon-btn small"
-            title="Rescan component folders"
-            aria-label="Rescan component library"
-            onClick={() => void refreshLibrary(true)}
-          >
-            <Icon name="refresh" size={15} />
-          </button>
+          <span class="section-actions">
+            <button
+              class="icon-btn small"
+              title="Component libraries: where new parts come from"
+              aria-label="Component libraries"
+              onClick={() => openDialog("libraries")}
+            >
+              <Icon name="folder" size={15} />
+            </button>
+            <button
+              class="icon-btn small"
+              title="Rescan component folders"
+              aria-label="Rescan component library"
+              onClick={() => void refreshLibrary(true)}
+            >
+              <Icon name="refresh" size={15} />
+            </button>
+          </span>
         </header>
         <div class="search">
           <Icon name="search" size={15} />
@@ -179,8 +190,9 @@ export function PartsPanel() {
           )}
         </ul>
         {problems.length > 0 && (
-          <p
+          <button
             class="library-problems"
+            onClick={() => openDialog("libraries")}
             title={problems
               .map((problem) =>
                 problem.path
@@ -197,7 +209,7 @@ export function PartsPanel() {
                 : `${problems.length} library problems`}
             </span>
             <span>{problems[0]?.message}</span>
-          </p>
+          </button>
         )}
       </section>
 

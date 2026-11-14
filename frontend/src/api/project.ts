@@ -491,6 +491,53 @@ export interface ComponentLibrary {
 export function getComponentLibrary(): Promise<ComponentLibrary> {
   return invoke("get_component_library");
 }
+/** The user library granted to a project on this machine. */
+export interface LibraryGrant {
+  user_components: string;
+  project_name: string;
+  last_seen_path?: string;
+}
+/** A grant as listed in Preferences. */
+export interface LibraryGrantEntry extends LibraryGrant {
+  project_id: string;
+  /** False when the granted folder no longer exists. */
+  exists: boolean;
+}
+export interface LibrarySettings {
+  /** Absent means the default project layer. */
+  component_paths?: string[];
+  /** Absent until the project is saved. */
+  project_file?: string;
+  grant?: LibraryGrant;
+}
+export function getLibrarySettings(): Promise<LibrarySettings> {
+  return invoke("get_library_settings");
+}
+export function setComponentPaths(
+  expectedRevision: number,
+  paths: string[] | null,
+): Promise<void> {
+  return invoke("set_component_paths", { expectedRevision, paths });
+}
+/** Resolves to `null` when the folder picker is cancelled. */
+export function grantUserLibrary(): Promise<LibraryGrant | null> {
+  return invoke("grant_user_library");
+}
+export function revokeUserLibrary(): Promise<void> {
+  return invoke("revoke_user_library");
+}
+export function listLibraryGrants(): Promise<LibraryGrantEntry[]> {
+  return invoke("list_library_grants");
+}
+export function revokeLibraryGrant(
+  projectId: string,
+): Promise<LibraryGrantEntry[]> {
+  return invoke("revoke_library_grant", { projectId });
+}
+/** A picked folder as a `component_paths` entry; `null` when cancelled. */
+export function pickComponentLayer(): Promise<string | null> {
+  return invoke("pick_component_layer");
+}
 export function selectRuntimeComponent(): Promise<ComponentViewerSnapshot | null> {
   return invoke("select_runtime_component");
 }

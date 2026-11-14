@@ -21,6 +21,7 @@ import type {
 } from "../api/project";
 import { computeAirwires } from "../model/ratsnest";
 import { railLabels, saddleLabels, wireLabels } from "../model/naming";
+import { libraryValidation } from "../model/library";
 import type { Design, Point } from "../model/geometry";
 
 export const EMPTY_DIFF: SemanticDiff = {
@@ -127,9 +128,11 @@ export const focusRequest = signal<{
 
 // ── Derived ────────────────────────────────────────────────────────────────
 export const design = computed(() => view.value?.design);
-export const diagnostics = computed<Diagnostic[]>(
-  () => view.value?.validation ?? [],
-);
+/** The design's validation plus component library problems (ADR 0014). */
+export const diagnostics = computed<Diagnostic[]>(() => [
+  ...(view.value?.validation ?? []),
+  ...libraryValidation(libraryDetails.value),
+]);
 export const problemCounts = computed(() => {
   const counts = { error: 0, warning: 0, advisory: 0 };
   for (const item of diagnostics.value) counts[item.severity] += 1;

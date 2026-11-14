@@ -710,6 +710,7 @@ export async function installMockBackend(): Promise<void> {
   const library = Object.values(
     doc.design.component_definitions ?? {},
   ) as ComponentDefinition[];
+  let grant: { user_components: string; project_name: string } | null = null;
   const listeners = new Map<number, (event: unknown) => void>();
   let callbackId = 1;
 
@@ -776,21 +777,78 @@ export async function installMockBackend(): Promise<void> {
     get_project: () => clone(doc),
     get_project_revision: () => doc.revision,
     get_net_connectivity: () => islands(doc.design),
-    get_component_library: () => ({
-      layers: [
-        {
-          kind: "standard",
-          version: "browser preview",
-          status: "loaded",
-          component_count: library.length,
-        },
-      ],
-      components: library.map((definition) => ({
-        definition: clone(definition),
-        layer: 0,
-      })),
-      diagnostics: [],
+    // The preview project is never saved, so project folders stay inactive;
+    // a granted user library is pretended to be empty.
+    get_component_library: () => {
+      const paths = doc.component_paths ?? [
+        "${PROJECT_DIR}/${PROJECT_STEM}.perfboard",
+      ];
+      const layers = paths.map((template) => {
+        const user = template.startsWith("${USER_COMPONENTS}");
+        return {
+          kind: user ? "user" : "project",
+          template,
+          ...(user && grant ? { path: grant.user_components } : {}),
+          status: user ? (grant ? "loaded" : "not_granted") : "inactive",
+          component_count: 0,
+        };
+      });
+      const diagnostics = layers.flatMap((layer, index) =>
+        layer.status === "not_granted"
+          ? [
+              {
+                code: "library.not_granted",
+                severity: "error",
+                message: `\`${layer.template}\` needs a user library, and none is granted to this project`,
+                layer: index,
+              },
+            ]
+          : [],
+      );
+      return {
+        layers: [
+          ...layers,
+          {
+            kind: "standard",
+            version: "browser preview",
+            status: "loaded",
+            component_count: library.length,
+          },
+        ],
+        components: library.map((definition) => ({
+          definition: clone(definition),
+          layer: layers.length,
+        })),
+        diagnostics,
+      };
+    },
+    get_library_settings: () => ({
+      ...(doc.component_paths ? { component_paths: doc.component_paths } : {}),
+      ...(grant ? { grant } : {}),
     }),
+    set_component_paths: ({ expectedRevision, paths }) => {
+      stale(expectedRevision as number);
+      doc.component_paths = (paths as string[] | null) ?? undefined;
+      doc.revision += 1;
+      emit();
+    },
+    pick_component_layer: () => "${PROJECT_DIR}/parts",
+    grant_user_library: () => {
+      grant = {
+        user_components: "/home/maker/electronics/parts",
+        project_name: doc.name,
+      };
+      return grant;
+    },
+    revoke_user_library: () => {
+      grant = null;
+    },
+    list_library_grants: () =>
+      grant ? [{ ...grant, project_id: doc.project_id, exists: true }] : [],
+    revoke_library_grant: () => {
+      grant = null;
+      return [];
+    },
     get_commit_design: ({ commitId }) =>
       clone(commits.find((commit) => commit.id === commitId)!.design),
     get_undo_history_bytes: () => JSON.stringify(undoStack).length,

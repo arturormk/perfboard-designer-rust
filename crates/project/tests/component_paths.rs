@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use perfboard_core::{BoardSize, ProjectId};
-use perfboard_project::{Board, ProjectDocument, ProjectSession};
+use perfboard_project::{Board, ProjectDocument, ProjectSession, RevisionError, SessionError};
 use serde_json::Value;
 
 fn document() -> ProjectDocument {
@@ -69,4 +69,55 @@ fn the_session_tracks_the_project_file() {
 
     session.replace(document());
     assert_eq!(session.file_path(), None);
+}
+
+#[test]
+fn editing_the_paths_checks_them_and_bumps_the_revision() {
+    let mut session = ProjectSession::new(document());
+    let start = session.document().revision;
+    let paths = vec![
+        " ${PROJECT_DIR}/parts ".to_owned(),
+        "${USER_COMPONENTS}".to_owned(),
+    ];
+    let event = session.set_component_paths(start, Some(paths)).unwrap();
+    assert_eq!(event.revision.0, start.0 + 1);
+    assert_eq!(
+        session.document().component_paths,
+        Some(vec![
+            "${PROJECT_DIR}/parts".to_owned(),
+            "${USER_COMPONENTS}".to_owned()
+        ])
+    );
+
+    // The same list again changes nothing.
+    let revision = session.document().revision;
+    let same = session.document().component_paths.clone();
+    session.set_component_paths(revision, same).unwrap();
+    assert_eq!(session.document().revision, revision);
+
+    // Back to the default.
+    session.set_component_paths(revision, None).unwrap();
+    assert_eq!(session.document().component_paths, None);
+    assert_eq!(session.document().revision.0, revision.0 + 1);
+}
+
+#[test]
+fn invalid_or_stale_edits_are_refused() {
+    let mut session = ProjectSession::new(document());
+    let revision = session.document().revision;
+    let error = session
+        .set_component_paths(revision, Some(vec!["${PROJECT_DIR}/../x".into()]))
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        SessionError::Revision(RevisionError::InvalidComponentPath { .. })
+    ));
+    assert_eq!(session.document().revision, revision);
+    assert_eq!(session.document().component_paths, None);
+
+    let stale = perfboard_project::DocumentRevision(revision.0 + 5);
+    assert!(matches!(
+        session.set_component_paths(stale, None),
+        Err(SessionError::Revision(RevisionError::StaleRevision { .. }))
+    ));
 }

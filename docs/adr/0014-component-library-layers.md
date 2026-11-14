@@ -80,10 +80,12 @@ Projects gain an optional top-level field:
 ### User-library grants
 
 `${USER_COMPONENTS}` has no default. It is defined per project by a grant file
-on the user's machine, never stored in or next to the project:
+on the user's machine, never stored in or next to the project. It lives in the
+application's configuration directory, beside the recent-projects list and
+assembly progress (on Linux, `~/.config/dev.perfboarddesigner.desktop/`):
 
 ```
-$XDG_CONFIG_HOME/perfboard-designer/projects/<project_id>.toml
+<config>/library-grants/<project_id>.toml
 ```
 
 ```toml
@@ -107,9 +109,11 @@ directory may be shared by any number of projects.
 
 - A project entry that uses `${USER_COMPONENTS}` while the project has no
   grant, or whose grant points to a missing directory, is an error on that
-  layer. It is shown in the libraries panel and reported by validation. The
-  project still opens, edits and saves normally: only new placements from
-  that layer are unavailable.
+  layer. It is shown in the libraries panel and reported by validation: the
+  UI's Problems panel and MCP's validation report list library diagnostics
+  next to the design's, while the design validation stored in the project is
+  untouched. The project still opens, edits and saves normally: only new
+  placements from that layer are unavailable.
 - An explicitly listed `${PROJECT_DIR}` layer whose folder does not exist is
   a warning. The default entry, used when `component_paths` is absent, is
   silently empty when its folder does not exist.
@@ -122,7 +126,7 @@ Grant files and `component_paths` are written only by Tauri commands invoked
 from the UI. The MCP session bridge (ADR 0007) gets read access to resolved
 layers and no request that changes paths or grants.
 
-- **Project settings → Component libraries:** the ordered layer list with
+- **File → Component libraries…** (also from the palette): the ordered layer list with
   each entry's template, resolved path, status (loaded, missing, not granted,
   read-only) and part count. Entries can be added, removed and reordered,
   except the standard library. A folder picker turns the chosen folder into a
@@ -131,7 +135,7 @@ layers and no request that changes paths or grants.
   **Change…** and **Revoke**. Grant opens a folder picker, checks the folder
   and writes the grant file. Granting works before the first save, because
   `project_id` exists from creation.
-- **Preferences → Granted projects:** every grant file, listed by project name
+- **File → Preferences… → Granted user libraries:** every grant file, listed by project name
   and last-seen path, with **Revoke**, so grants for deleted or moved projects
   can be cleaned up.
 

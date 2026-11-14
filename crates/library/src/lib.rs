@@ -18,8 +18,8 @@ use perfboard_core::{ComponentDefinition, DiagnosticSeverity};
 use serde::Serialize;
 
 pub use template::{
-    DEFAULT_PROJECT_LAYER, LayerRoot, PROJECT_DIR, PROJECT_STEM, PathTemplate, PathTemplateError,
-    USER_COMPONENTS,
+    DEFAULT_PROJECT_LAYER, FolderTemplateError, LayerRoot, PROJECT_DIR, PROJECT_STEM, PathTemplate,
+    PathTemplateError, USER_COMPONENTS, template_for_folder,
 };
 
 use scan::{LoadedComponent, scan_directory};
