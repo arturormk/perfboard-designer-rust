@@ -300,7 +300,9 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 30%;
+  /* Not a percentage: this sits in an auto-sized grid row, where 30% has no
+     definite height to resolve against and clipped the box to a sliver. */
+  max-height: 30vh;
   margin: 0 12px 12px;
   padding: 10px 12px;
   overflow-y: auto;

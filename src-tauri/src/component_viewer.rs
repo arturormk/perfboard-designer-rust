@@ -416,8 +416,11 @@ fn load_component(root: &Path, directory: &Path) -> RuntimeComponentLoad {
             }
         }
         Ok(None) => unreachable!("required files never return None"),
-        Err(error) => {
+        Err(mut error) => {
             hash_file(&mut hasher, DEFINITION_FILE, None);
+            if error.code == "component.definition_missing" {
+                error.message = missing_definition_message(directory);
+            }
             return failed_load(component_path, hasher, error);
         }
     };
@@ -594,6 +597,32 @@ fn validation_diagnostic(error: &ComponentDefinitionError) -> ComponentLoadDiagn
     }
 }
 
+/// Explains a folder without `component.toml`, naming the parts inside it
+/// when it is a library folder (one part per subfolder) rather than a part.
+fn missing_definition_message(directory: &Path) -> String {
+    let mut parts = fs::read_dir(directory)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .filter(|entry| entry.path().join(DEFINITION_FILE).is_file())
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if parts.is_empty() {
+        return "This folder has no component.toml. Open the folder of a single part.".into();
+    }
+    parts.sort();
+    let shown = parts.iter().take(4).cloned().collect::<Vec<_>>().join(", ");
+    let more = match parts.len() {
+        0..=4 => String::new(),
+        count => format!(" and {} more", count - 4),
+    };
+    format!(
+        "This is a component library folder, not a part. Open one of the part folders inside it: {shown}{more}."
+    )
+}
+
 fn diagnostic(
     code: &'static str,
     message: impl Into<String>,
@@ -719,6 +748,31 @@ height = 2.54
                 return load;
             }
         }
+    }
+
+    #[test]
+    fn a_library_folder_names_the_parts_inside_it() {
+        let root = TestDir::new("library-folder");
+        for name in ["b-part", "a-part", "c", "d", "e"] {
+            write_component(&root.0.join(name), VALID);
+        }
+        fs::create_dir_all(root.0.join("not-a-part")).unwrap();
+        let load = AuthorizedComponent::new(&root.0, &root.0).unwrap().load();
+        assert_eq!(load.diagnostics[0].code, "component.definition_missing");
+        assert_eq!(
+            load.diagnostics[0].message,
+            "This is a component library folder, not a part. Open one of the part folders \
+             inside it: a-part, b-part, c, d and 1 more."
+        );
+
+        let empty = TestDir::new("empty-folder");
+        let load = AuthorizedComponent::new(&empty.0, &empty.0).unwrap().load();
+        assert_eq!(load.diagnostics[0].code, "component.definition_missing");
+        assert!(
+            load.diagnostics[0]
+                .message
+                .starts_with("This folder has no component.toml")
+        );
     }
 
     #[test]

@@ -1233,8 +1233,11 @@ export function ComponentDesigner() {
             <div class="designer-empty compact">
               <Icon name="error" size={28} />
               <p>
-                The part on disk could not be read. Fix the file and it will
-                reload.
+                {loadErrors.some(
+                  (item) => item.code === "component.definition_missing",
+                )
+                  ? "There is no part in this folder. Use Open… to pick a part's own folder."
+                  : "The part on disk could not be read. Fix the file and it will reload."}
               </p>
             </div>
           )}
