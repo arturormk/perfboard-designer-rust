@@ -16,8 +16,13 @@ import {
   redoComponentDraft,
   reloadRuntimeComponent,
   saveComponentDraft,
-  selectRuntimeComponent,
+  copyPartToLayer,
+  newPartInLayer,
+  openLibraryPart,
+  pickComponentFolder,
   undoComponentDraft,
+  type FolderPart,
+  type WritableLayerKind,
   type AccessRegion,
   type ComponentDefinition,
   type ComponentDraftOperation,
@@ -30,6 +35,8 @@ import {
 import type { ResizeHandle } from "../editor/board-size";
 import { errorMessage } from "../error-message";
 import { refreshLibrary } from "../state/actions";
+import { confirmAction } from "../shell/dialogs";
+import { PartBrowser, type PartBrowserActions } from "./PartBrowser";
 import { toast } from "../state/toasts";
 import { Icon } from "../ui/Icon";
 import { movePinOperation, splitList } from "./editor";
@@ -65,6 +72,12 @@ const labelMode = signal<PinLabelMode>("name");
 const layer = signal<EditLayer>("pins");
 const selectedPinId = signal<string | undefined>(undefined);
 const showRegions = signal(true);
+/** A folder of parts picked in "Open part folder…". */
+const pickedLibrary = signal<{ path: string; parts: FolderPart[] } | null>(
+  null,
+);
+/** Shows the part list while a part is open. */
+const showBrowser = signal(false);
 /** Live geometry while a pointer drag is in flight. */
 const dragDefinition = signal<ComponentDefinition | undefined>(undefined);
 let listening = false;
@@ -114,6 +127,7 @@ async function openWith(
       return;
     }
     applySnapshot(snapshot);
+    showBrowser.value = false;
     draft.value = (await getComponentDraft()) ?? undefined;
     previewRotation.value =
       snapshot.load.definition?.allowed_rotations[0] ?? "deg0";
@@ -130,8 +144,68 @@ async function openWith(
   }
 }
 
-const openPart = () => openWith(selectRuntimeComponent, "Opened part");
-const newPart = () => openWith(newComponentDraft, "Created part");
+/** Asks before an unsaved draft would be replaced. */
+async function confirmDiscard(): Promise<boolean> {
+  const current = draft.value;
+  if (!current?.dirty) return true;
+  return confirmAction(
+    "Discard unsaved changes?",
+    `${current.definition.name} has changes that are not saved.`,
+    "Discard",
+    true,
+  );
+}
+
+async function openPart(): Promise<void> {
+  if (!(await confirmDiscard())) return;
+  await openWith(async () => {
+    const picked = await pickComponentFolder();
+    if (picked?.kind !== "library") return picked?.snapshot ?? null;
+    pickedLibrary.value = { path: picked.path, parts: picked.parts };
+    showBrowser.value = true;
+    return null;
+  }, "Opened part");
+}
+
+async function newPart(): Promise<void> {
+  if (await confirmDiscard()) await openWith(newComponentDraft, "Created part");
+}
+
+async function openFromLibrary(directory: string): Promise<void> {
+  if (await confirmDiscard())
+    await openWith(() => openLibraryPart(directory), "Opened part");
+}
+
+async function newInLayer(target: WritableLayerKind): Promise<void> {
+  if (await confirmDiscard())
+    await openWith(() => newPartInLayer(target), "Created part");
+}
+
+async function copyToLayer(
+  definitionId: string,
+  target: WritableLayerKind,
+): Promise<void> {
+  try {
+    const directory = await copyPartToLayer(definitionId, target);
+    await refreshLibrary();
+    toast(
+      "success",
+      `Copied to the ${target === "project" ? "project's folder" : "user library"}`,
+      { detail: directory },
+    );
+    await openFromLibrary(directory);
+  } catch (error) {
+    toast("error", "Could not copy the part", { detail: errorMessage(error) });
+  }
+}
+
+const browserActions: PartBrowserActions = {
+  open: (directory) => void openFromLibrary(directory),
+  copy: (definitionId, target) => void copyToLayer(definitionId, target),
+  newIn: (target) => void newInLayer(target),
+  pickFolder: () => void openPart(),
+  newInFolder: () => void newPart(),
+};
 const reloadPart = () => openWith(reloadRuntimeComponent, "Reloaded part");
 
 async function closePart(): Promise<void> {
@@ -1030,28 +1104,6 @@ function DocumentationSection({
 }
 
 // ── Layout ─────────────────────────────────────────────────────────────────
-function EmptyState() {
-  return (
-    <div class="designer-empty">
-      <Icon name="component" size={40} />
-      <h2>Design a part</h2>
-      <p>
-        Parts live in their own folder as <code>component.toml</code> plus
-        optional <code>README.md</code>. Open one to edit it here; changes made
-        on disk by you or an agent reload live.
-      </p>
-      <div class="button-row">
-        <button class="btn primary" onClick={() => void openPart()}>
-          <Icon name="folder" size={16} /> Open part folder…
-        </button>
-        <button class="btn" onClick={() => void newPart()}>
-          <Icon name="plus" size={16} /> New part…
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export function ComponentDesigner() {
   useEffect(() => {
     void ensureListening().catch(() => (listening = false));
@@ -1064,13 +1116,27 @@ export function ComponentDesigner() {
   });
 
   const state = viewerState.value;
-  if (state.kind === "no_component") return <EmptyState />;
   if (state.kind === "loading")
     return (
       <div class="designer-empty">
         <div class="spinner" />
         <p>Waiting for a folder…</p>
       </div>
+    );
+  if (state.kind === "no_component" || showBrowser.value)
+    return (
+      <PartBrowser
+        actions={browserActions}
+        picked={pickedLibrary.value}
+        current={
+          state.kind === "no_component"
+            ? undefined
+            : (draft.value?.definition.name ??
+              displayedLoad(state)?.definition?.name ??
+              "the open part")
+        }
+        onBack={() => (showBrowser.value = false)}
+      />
     );
 
   const load = displayedLoad(state);
@@ -1140,6 +1206,9 @@ export function ComponentDesigner() {
           </button>
           <button class="btn ghost" onClick={() => void reloadPart()}>
             <Icon name="refresh" size={15} /> Reload
+          </button>
+          <button class="btn ghost" onClick={() => (showBrowser.value = true)}>
+            <Icon name="component" size={15} /> Parts
           </button>
           <button class="btn ghost" onClick={() => void openPart()}>
             <Icon name="folder" size={15} /> Open…

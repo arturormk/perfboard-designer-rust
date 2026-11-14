@@ -46,6 +46,13 @@ Development line `v0.1.x`: the first public development builds.
   Preferences… lists every grant. Library problems, such as a user library
   that is not granted, appear in the Problems panel and in MCP's validation
   report.
+- The Part designer opens on a list of the project's parts, layer by layer.
+  Project and user-library parts open for editing; a standard part is copied
+  into the project's folder or the user library first (the copy keeps its
+  `id`, so it overrides the standard part for that project). "New part here"
+  creates a part in the project's folder or user library, and opening a
+  folder that holds several parts lists them instead of reporting an error.
+  The designer asks before discarding unsaved changes.
 - Graphical perfboard editor with component and solder side views, parts,
   nets, wires, bridges, and rails.
 - Saddles: net-free wire ties that hold wires and bundles to the board through

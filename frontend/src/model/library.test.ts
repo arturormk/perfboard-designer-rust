@@ -5,6 +5,7 @@ import type {
   LibraryLayer,
 } from "../api/project";
 import {
+  browserSections,
   layerStatusLabel,
   libraryProblems,
   movedLayer,
@@ -129,5 +130,54 @@ describe("layer status", () => {
       "Save the project first",
     );
     expect(layerStatusLabel(undefined).tone).toBe("muted");
+  });
+});
+
+describe("part browser", () => {
+  it("lists each layer's parts, hidden ones under their own layer", () => {
+    const sections = browserSections({
+      ...details,
+      components: [
+        {
+          definition: {
+            id: "dev.perfboard.bridge",
+            name: "Bridge",
+            pins: [{}, {}],
+          } as unknown as ComponentDefinition,
+          layer: 0,
+          directory: "/work/board.perfboard/bridge",
+          shadows: [{ layer: 2, definition_version: "1.0.0" }],
+        },
+        {
+          definition: {
+            id: "a",
+            name: "Amp",
+            pins: [],
+          } as unknown as ComponentDefinition,
+          layer: 2,
+        },
+      ],
+    });
+    expect(sections.map((section) => section.layer.kind)).toEqual([
+      "project",
+      "user",
+      "standard",
+    ]);
+    expect(sections[0]!.parts).toEqual([
+      {
+        id: "dev.perfboard.bridge",
+        name: "Bridge",
+        directory: "/work/board.perfboard/bridge",
+        pinCount: 2,
+      },
+    ]);
+    expect(sections[1]!.parts).toEqual([]);
+    expect(
+      sections[2]!.parts.map((part) => [part.name, part.hiddenBy]),
+    ).toEqual([
+      ["Amp", undefined],
+      ["Bridge", 0],
+    ]);
+    expect(browserSections(null)).toEqual([]);
   });
 });

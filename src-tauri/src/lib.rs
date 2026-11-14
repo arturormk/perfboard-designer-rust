@@ -30,6 +30,7 @@ mod assembly_progress;
 mod component_library;
 mod component_viewer;
 mod library_grants;
+mod library_parts;
 mod recent_projects;
 
 use assembly_progress::{AssemblyProgress, Checkmarks};
@@ -60,6 +61,8 @@ struct ActiveComponentViewer {
 struct ComponentViewerState {
     active: Mutex<Option<ActiveComponentViewer>>,
     active_generation: Arc<AtomicU64>,
+    /// The folder of parts last picked in "Open part folder…".
+    picked_folder: Mutex<Option<PathBuf>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +75,7 @@ impl Default for ComponentViewerState {
     fn default() -> Self {
         Self {
             active: Mutex::new(None),
+            picked_folder: Mutex::new(None),
             active_generation: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -868,29 +872,16 @@ async fn pick_component_layer(
     })
 }
 
-#[tauri::command]
-#[allow(clippy::needless_pass_by_value)]
-async fn select_runtime_component(
-    state: tauri::State<'_, ComponentViewerState>,
-    app: tauri::AppHandle,
-) -> Result<Option<ComponentViewerSnapshot>, String> {
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Open component directory")
-        .pick_folder(move |selection| {
-            let _ = sender.send(selection);
-        });
-    let Some(selection) = receiver
-        .await
-        .map_err(|error| format!("component directory picker failed: {error}"))?
-    else {
-        return Ok(None);
-    };
-    let path = selection
-        .into_path()
-        .map_err(|error| format!("selected component directory is unavailable: {error}"))?;
-    let authorized = AuthorizedComponent::new(&path, &path).map_err(|error| error.message)?;
+/// Makes `authorized` the Part designer's part: the previous part's watcher
+/// stops, this one's starts, and `draft` (if any) becomes the open draft.
+fn activate_component(
+    state: &ComponentViewerState,
+    app: &tauri::AppHandle,
+    authorized: AuthorizedComponent,
+    load: RuntimeComponentLoad,
+    draft: Option<ComponentDraft>,
+    draft_base_revision: Option<String>,
+) -> Result<ComponentViewerSnapshot, String> {
     let generation = state.active_generation.fetch_add(1, Ordering::AcqRel) + 1;
     let previous = state
         .active
@@ -910,11 +901,6 @@ async fn select_runtime_component(
             }
         },
     );
-    let load = authorized.load();
-    let draft = load.definition.clone().map(|definition| {
-        ComponentDraft::new(definition, load.documentation.clone().unwrap_or_default())
-    });
-    let draft_base_revision = draft.as_ref().map(|_| load.revision.clone());
     let (watch, watcher_error, snapshot) = match watch {
         Ok(watch) => (
             Some(watch),
@@ -938,32 +924,33 @@ async fn select_runtime_component(
         draft,
         draft_base_revision,
     });
-    Ok(Some(snapshot))
+    Ok(snapshot)
 }
 
-#[tauri::command]
-#[allow(clippy::needless_pass_by_value)]
-async fn new_component_draft(
-    state: tauri::State<'_, ComponentViewerState>,
-    app: tauri::AppHandle,
-) -> Result<Option<ComponentViewerSnapshot>, String> {
-    let (sender, receiver) = tokio::sync::oneshot::channel();
-    app.dialog()
-        .file()
-        .set_title("Choose an empty directory for the new component")
-        .pick_folder(move |selection| {
-            let _ = sender.send(selection);
-        });
-    let Some(selection) = receiver
-        .await
-        .map_err(|error| format!("component directory picker failed: {error}"))?
-    else {
-        return Ok(None);
-    };
-    let path = selection
-        .into_path()
-        .map_err(|error| format!("selected component directory is unavailable: {error}"))?;
-    let authorized = AuthorizedComponent::new(&path, &path).map_err(|error| error.message)?;
+/// Opens the part in `directory`, confining its files to `root`.
+fn open_component(
+    state: &ComponentViewerState,
+    app: &tauri::AppHandle,
+    root: &Path,
+    directory: &Path,
+) -> Result<ComponentViewerSnapshot, String> {
+    let authorized = AuthorizedComponent::new(root, directory).map_err(|error| error.message)?;
+    let load = authorized.load();
+    let draft = load.definition.clone().map(|definition| {
+        ComponentDraft::new(definition, load.documentation.clone().unwrap_or_default())
+    });
+    let draft_base_revision = draft.as_ref().map(|_| load.revision.clone());
+    activate_component(state, app, authorized, load, draft, draft_base_revision)
+}
+
+/// Starts an unsaved draft of a new part in the empty folder `directory`.
+fn start_new_part(
+    state: &ComponentViewerState,
+    app: &tauri::AppHandle,
+    root: &Path,
+    directory: &Path,
+) -> Result<ComponentViewerSnapshot, String> {
+    let authorized = AuthorizedComponent::new(root, directory).map_err(|error| error.message)?;
     let disk = authorized.load();
     if !disk
         .diagnostics
@@ -975,9 +962,10 @@ async fn new_component_draft(
     let definition = ComponentDefinition {
         schema_version: perfboard_core::component::COMPONENT_SCHEMA_VERSION,
         kind: perfboard_core::ComponentKind::Standard,
-        id: "dev.example.new-component".into(),
+        // `local.` keeps clear of the prefix reserved for the standard library.
+        id: "local.new-part".into(),
         definition_version: "0.1.0".into(),
-        name: "New component".into(),
+        name: "New part".into(),
         description: String::new(),
         origin_x: 0,
         origin_y: 0,
@@ -996,24 +984,6 @@ async fn new_component_draft(
         documentation: String::new(),
     };
     let draft = ComponentDraft::new_unsaved(definition.clone(), "");
-    let generation = state.active_generation.fetch_add(1, Ordering::AcqRel) + 1;
-    let previous = state
-        .active
-        .lock()
-        .map_err(|error| error.to_string())?
-        .take();
-    drop(previous);
-    let watcher_app = app.clone();
-    let watch = ComponentWatch::start(
-        authorized.clone(),
-        generation,
-        Arc::clone(&state.active_generation),
-        move |event| {
-            if let Err(error) = watcher_app.emit(COMPONENT_VIEWER_EVENT, event) {
-                eprintln!("Failed to publish {COMPONENT_VIEWER_EVENT}: {error}");
-            }
-        },
-    );
     let load = RuntimeComponentLoad {
         definition: Some(definition),
         documentation: None,
@@ -1021,30 +991,128 @@ async fn new_component_draft(
         revision: disk.revision.clone(),
         diagnostics: Vec::new(),
     };
-    let (watch, watcher_error, snapshot) = match watch {
-        Ok(watch) => (
-            Some(watch),
-            None,
-            ComponentViewerSnapshot::watching(generation, load),
-        ),
-        Err(error) => {
-            let message = format!("could not watch component directory: {error}");
-            (
-                None,
-                Some(message.clone()),
-                ComponentViewerSnapshot::watcher_unavailable(generation, load, message),
-            )
-        }
+    activate_component(
+        state,
+        app,
+        authorized,
+        load,
+        Some(draft),
+        Some(disk.revision),
+    )
+}
+
+/// What the user picked in "Open part folder…": a part, or a folder of parts
+/// to choose from.
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+enum PickedFolder {
+    Part {
+        snapshot: Box<ComponentViewerSnapshot>,
+    },
+    Library {
+        path: PathBuf,
+        parts: Vec<library_parts::FolderPart>,
+    },
+}
+
+/// Asks for a folder. A part folder opens; a folder of parts is listed, and
+/// remembered so that `open_library_part` may open one of them.
+#[tauri::command]
+async fn pick_component_folder(
+    state: tauri::State<'_, ComponentViewerState>,
+    app: tauri::AppHandle,
+) -> Result<Option<PickedFolder>, String> {
+    let Some(path) = pick_folder(&app, "Open a part, or a folder of parts").await? else {
+        return Ok(None);
     };
-    *state.active.lock().map_err(|error| error.to_string())? = Some(ActiveComponentViewer {
-        component: authorized,
-        generation,
-        _watch: watch,
-        watcher_error,
-        draft: Some(draft),
-        draft_base_revision: Some(disk.revision),
-    });
-    Ok(Some(snapshot))
+    if !path.join("component.toml").exists()
+        && let Some(parts) = library_parts::folder_parts(&path)
+    {
+        let path = std::fs::canonicalize(&path).unwrap_or(path);
+        *state
+            .picked_folder
+            .lock()
+            .map_err(|error| error.to_string())? = Some(path.clone());
+        return Ok(Some(PickedFolder::Library { path, parts }));
+    }
+    open_component(&state, &app, &path, &path).map(|snapshot| {
+        Some(PickedFolder::Part {
+            snapshot: Box::new(snapshot),
+        })
+    })
+}
+
+/// Opens a part from one of the open project's editable libraries, or from
+/// the folder of parts the user last picked.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn open_library_part(
+    session: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+    state: tauri::State<'_, ComponentViewerState>,
+    app: tauri::AppHandle,
+    directory: PathBuf,
+) -> Result<ComponentViewerSnapshot, String> {
+    let library = component_library::current_library(&library_inputs(&session, &grants)?);
+    let picked = state
+        .picked_folder
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    let root = library_parts::authorized_parent(&library, picked.as_deref(), &directory)?;
+    open_component(&state, &app, &root, &directory)
+}
+
+/// Copies a part (the version in use) into the project's folder or its user
+/// library and returns the new part folder, ready for `open_library_part`.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn copy_part_to_layer(
+    session: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+    definition_id: String,
+    target: perfboard_library::LayerKind,
+) -> Result<PathBuf, String> {
+    let inputs = library_inputs(&session, &grants)?;
+    let library = component_library::current_library(&inputs);
+    let component = library
+        .get(&definition_id)
+        .ok_or_else(|| format!("{definition_id} is not in this project's libraries"))?;
+    let layer = library_parts::writable_layer(&library, &inputs, target)?;
+    library_parts::copy_part(component, &layer)
+}
+
+/// Starts a new part in a fresh folder of the project's folder or its user
+/// library.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn new_part_in_layer(
+    session: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+    state: tauri::State<'_, ComponentViewerState>,
+    app: tauri::AppHandle,
+    target: perfboard_library::LayerKind,
+) -> Result<ComponentViewerSnapshot, String> {
+    let inputs = library_inputs(&session, &grants)?;
+    let library = component_library::current_library(&inputs);
+    let layer = library_parts::writable_layer(&library, &inputs, target)?;
+    let folder = library_parts::create_part_folder(&layer)?;
+    start_new_part(&state, &app, &layer.path, &folder).inspect_err(|_| {
+        let _ = std::fs::remove_dir(&folder);
+    })
+}
+
+/// Starts a new part in an empty folder the user picks anywhere.
+#[tauri::command]
+async fn new_component_draft(
+    state: tauri::State<'_, ComponentViewerState>,
+    app: tauri::AppHandle,
+) -> Result<Option<ComponentViewerSnapshot>, String> {
+    let Some(path) = pick_folder(&app, "Choose an empty directory for the new component").await?
+    else {
+        return Ok(None);
+    };
+    start_new_part(&state, &app, &path, &path).map(Some)
 }
 
 #[tauri::command]
@@ -1492,7 +1560,10 @@ pub fn run() {
             list_library_grants,
             revoke_library_grant,
             pick_component_layer,
-            select_runtime_component,
+            pick_component_folder,
+            open_library_part,
+            copy_part_to_layer,
+            new_part_in_layer,
             new_component_draft,
             reload_runtime_component,
             close_runtime_component,

@@ -643,7 +643,23 @@ function draftCommands(
       .filter((item) => item.kind !== "bridge")
       .sort((a, b) => b.pins.length - a.pins.length)[0]!;
   return {
-    select_runtime_component: () => open(largest()),
+    pick_component_folder: () => ({ kind: "part", snapshot: open(largest()) }),
+    open_library_part: ({ directory }) =>
+      open(
+        library.find((item) => (directory as string).endsWith(item.id)) ??
+          largest(),
+      ),
+    // The preview project is never saved, so it has no folder to write to.
+    copy_part_to_layer: () => {
+      throw new Error(
+        "Save the project first: its own folders sit next to its file.",
+      );
+    },
+    new_part_in_layer: () => {
+      throw new Error(
+        "Save the project first: its own folders sit next to its file.",
+      );
+    },
     new_component_draft: () =>
       open({
         schema_version: 2,

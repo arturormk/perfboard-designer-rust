@@ -538,8 +538,39 @@ export function revokeLibraryGrant(
 export function pickComponentLayer(): Promise<string | null> {
   return invoke("pick_component_layer");
 }
-export function selectRuntimeComponent(): Promise<ComponentViewerSnapshot | null> {
-  return invoke("select_runtime_component");
+/** A part found in a folder of parts the user picked. */
+export interface FolderPart {
+  directory: string;
+  id: string;
+  name: string;
+  pin_count: number;
+}
+/** What "Open part folder…" found: a part, or a folder of parts. */
+export type PickedFolder =
+  | { kind: "part"; snapshot: ComponentViewerSnapshot }
+  | { kind: "library"; path: string; parts: FolderPart[] };
+/** Resolves to `null` when the folder picker is cancelled. */
+export function pickComponentFolder(): Promise<PickedFolder | null> {
+  return invoke("pick_component_folder");
+}
+/** Opens a part from the project's editable libraries or the picked folder. */
+export function openLibraryPart(
+  directory: string,
+): Promise<ComponentViewerSnapshot> {
+  return invoke("open_library_part", { directory });
+}
+export type WritableLayerKind = "project" | "user";
+/** Copies a part into the project folder or user library; returns its folder. */
+export function copyPartToLayer(
+  definitionId: string,
+  target: WritableLayerKind,
+): Promise<string> {
+  return invoke("copy_part_to_layer", { definitionId, target });
+}
+export function newPartInLayer(
+  target: WritableLayerKind,
+): Promise<ComponentViewerSnapshot> {
+  return invoke("new_part_in_layer", { target });
 }
 export function newComponentDraft(): Promise<ComponentViewerSnapshot | null> {
   return invoke("new_component_draft");

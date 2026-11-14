@@ -15,7 +15,7 @@ use std::{
 };
 
 use perfboard_core::{ComponentDefinition, DiagnosticSeverity};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub use template::{
     DEFAULT_PROJECT_LAYER, FolderTemplateError, LayerRoot, PROJECT_DIR, PROJECT_STEM, PathTemplate,
@@ -63,7 +63,7 @@ pub struct ResolveContext<'a> {
     pub user_components: Option<&'a Path>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayerKind {
     Project,

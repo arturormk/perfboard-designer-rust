@@ -167,6 +167,14 @@ save procedure (revision check, backup, atomic replace) applies unchanged.
 The editor's authorized root (`AuthorizedComponent`) becomes the layer
 being written to.
 
+The Part designer opens on a parts browser: the project's layers in search
+order, with project and user parts opening for editing, standard parts
+offering the two copy actions, and a "New part here" action on the first
+project and first user layer. The explicit folder picker stays: choosing a
+folder is the user authorizing it, so library authors can edit any folder of
+parts. A picked folder that holds part folders rather than a
+`component.toml` lists its parts instead of failing.
+
 ### Identifiers
 
 The `dev.perfboard.` prefix is reserved for the standard library. Outside it:

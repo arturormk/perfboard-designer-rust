@@ -142,3 +142,61 @@ export function libraryValidation(
     ],
   }));
 }
+
+export interface BrowserPart {
+  id: string;
+  name: string;
+  /** The part folder; absent for parts built into the application. */
+  directory?: string;
+  pinCount?: number;
+  /** The layer whose part with the same id is used instead of this one. */
+  hiddenBy?: number;
+}
+
+export interface BrowserSection {
+  layerIndex: number;
+  layer: LibraryLayer;
+  parts: BrowserPart[];
+}
+
+/** Every layer with its parts, shadowed ones included, in search order. */
+export function browserSections(
+  details: ComponentLibrary | null,
+): BrowserSection[] {
+  if (!details) return [];
+  const sections = details.layers.map((layer, layerIndex): BrowserSection => ({
+    layerIndex,
+    layer,
+    parts: [],
+  }));
+  for (const component of details.components) {
+    const { definition } = component;
+    sections[component.layer]?.parts.push({
+      id: definition.id,
+      name: definition.name,
+      directory: component.directory,
+      pinCount: definition.pins?.length,
+    });
+    for (const shadow of component.shadows ?? [])
+      sections[shadow.layer]?.parts.push({
+        id: definition.id,
+        name: definition.name,
+        directory: shadow.directory,
+        hiddenBy: component.layer,
+      });
+  }
+  for (const section of sections)
+    section.parts.sort((a, b) => a.name.localeCompare(b.name));
+  return sections;
+}
+
+export function layerTitle(layer: LibraryLayer): string {
+  switch (layer.kind) {
+    case "project":
+      return "Project";
+    case "user":
+      return "User library";
+    case "standard":
+      return "Standard library";
+  }
+}

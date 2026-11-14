@@ -491,10 +491,12 @@ Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
      validation.
   6. Component editor save targets: writable project or granted user layers
      only, with "Copy to project" and "Copy to user library" for standard
-     parts.
+     parts. The Part designer opens on a parts browser that lists the
+     project's layers in search order, creates new parts in a writable layer,
+     and lists the parts of a picked folder that holds several.
   7. Component-authoring documentation for layers, grants and identifiers.
 
-  Progress: steps 1–5 are done.
+  Progress: steps 1–6 are done.
 
 Exit criteria:
 
