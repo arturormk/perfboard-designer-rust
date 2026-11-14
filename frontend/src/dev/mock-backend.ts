@@ -776,7 +776,21 @@ export async function installMockBackend(): Promise<void> {
     get_project: () => clone(doc),
     get_project_revision: () => doc.revision,
     get_net_connectivity: () => islands(doc.design),
-    get_component_library: () => clone(library),
+    get_component_library: () => ({
+      layers: [
+        {
+          kind: "standard",
+          version: "browser preview",
+          status: "loaded",
+          component_count: library.length,
+        },
+      ],
+      components: library.map((definition) => ({
+        definition: clone(definition),
+        layer: 0,
+      })),
+      diagnostics: [],
+    }),
     get_commit_design: ({ commitId }) =>
       clone(commits.find((commit) => commit.id === commitId)!.design),
     get_undo_history_bytes: () => JSON.stringify(undoStack).length,

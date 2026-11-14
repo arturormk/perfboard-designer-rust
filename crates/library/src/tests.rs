@@ -564,6 +564,17 @@ fn serializes_kinds_and_statuses_in_snake_case() {
     assert_eq!(json["layers"][0]["status"], "not_granted");
     assert_eq!(json["layers"][1]["kind"], "standard");
     assert_eq!(json["diagnostics"][0]["severity"], "error");
+
+    let with_docs = resolve(
+        Some(&[]),
+        &ResolveContext::default(),
+        &embedded(&[("bridge", "dev.perfboard.bridge")]),
+    );
+    let json = serde_json::to_value(&with_docs).unwrap();
+    assert!(
+        json["components"][0].get("documentation").is_none(),
+        "documentation is served on request, not with the library"
+    );
 }
 
 #[cfg(unix)]

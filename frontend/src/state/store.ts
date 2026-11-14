@@ -8,6 +8,7 @@
 import { computed, signal } from "@preact/signals";
 import type {
   ComponentDefinition,
+  ComponentLibrary,
   Diagnostic,
   NetConnectivity,
   RecentProject,
@@ -70,6 +71,8 @@ export const appVersion = signal("");
 export const engine = signal<EngineState>({ kind: "connecting" });
 export const view = signal<ProjectView | null>(null);
 export const library = signal<ComponentDefinition[]>([]);
+/** Layers, provenance and diagnostics behind `library`. */
+export const libraryDetails = signal<ComponentLibrary | null>(null);
 export const connectivity = signal<NetConnectivity[]>([]);
 /** Design compared against the working copy (head commit unless chosen). */
 export const compareCommitId = signal<string | undefined>(undefined);

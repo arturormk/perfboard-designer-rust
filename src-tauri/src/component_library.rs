@@ -1,4 +1,5 @@
-//! Where the standard component library comes from (ADR 0014).
+//! The component library offered for new placements (ADR 0014): the open
+//! project's layers, then the standard library.
 //!
 //! Release builds use the copy compiled into the binary, so packages and
 //! hand-copied executables need nothing installed beside them. Debug builds
@@ -13,6 +14,7 @@ use std::{
 use perfboard_library::{
     ResolveContext, ResolvedLibrary, StandardComponentSource, StandardLibrary, resolve,
 };
+use perfboard_project::ProjectSession;
 
 /// The environment variable that replaces the standard library with a folder.
 pub const OVERRIDE_VARIABLE: &str = "PERFBOARD_STANDARD_COMPONENTS";
@@ -62,12 +64,36 @@ pub fn standard_library() -> StandardLibrary {
     )
 }
 
-/// The library offered for new placements.
+/// What resolution needs from the session, copied out so that no folder is
+/// read while the session is locked.
+pub struct LibraryInputs {
+    component_paths: Option<Vec<String>>,
+    project_file: Option<PathBuf>,
+}
+
+impl LibraryInputs {
+    pub fn of(session: &ProjectSession) -> Self {
+        Self {
+            component_paths: session.document().component_paths.clone(),
+            project_file: session.file_path().map(Path::to_path_buf),
+        }
+    }
+}
+
+/// The library offered for new placements in the open project.
 ///
-/// Project layers are not wired in yet, so this is the standard library alone.
-/// Diagnostics are logged; the definitions that loaded are still offered.
-pub fn current_library() -> ResolvedLibrary {
-    let library = resolve(Some(&[]), &ResolveContext::default(), &standard_library());
+/// No user library is granted yet (step 5 of the plan), so `${USER_COMPONENTS}`
+/// layers report "not granted". Diagnostics are also logged; the definitions
+/// that loaded are offered either way.
+pub fn current_library(inputs: &LibraryInputs) -> ResolvedLibrary {
+    let library = resolve(
+        inputs.component_paths.as_deref(),
+        &ResolveContext {
+            project_file: inputs.project_file.as_deref(),
+            user_components: None,
+        },
+        &standard_library(),
+    );
     for diagnostic in &library.diagnostics {
         eprintln!(
             "Component library: {} ({}){}",
@@ -87,9 +113,69 @@ pub fn current_library() -> ResolvedLibrary {
 mod tests {
     use std::fs;
 
-    use perfboard_library::LayerStatus;
+    use perfboard_core::{BoardSize, ProjectId};
+    use perfboard_library::{LayerKind, LayerStatus};
+    use perfboard_project::{Board, ProjectDocument};
 
     use super::*;
+
+    fn session(paths: Option<Vec<String>>, file: Option<PathBuf>) -> ProjectSession {
+        let mut document = ProjectDocument::new(
+            ProjectId::new(),
+            "Library",
+            Board::new("board", BoardSize::new(10, 10).unwrap(), 2.54),
+        );
+        document.component_paths = paths;
+        let mut session = ProjectSession::new(document);
+        if let Some(file) = file {
+            session.set_file_path(file);
+        }
+        session
+    }
+
+    #[test]
+    fn a_saved_project_puts_its_own_folder_before_the_standard_library() {
+        let dir =
+            std::env::temp_dir().join(format!("perfboard-desktop-library-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let part = dir.join("board.perfboard/bridge");
+        fs::create_dir_all(&part).unwrap();
+        let bridge = fs::read_to_string(checkout_components().join("bridge/component.toml"))
+            .unwrap()
+            .replace(
+                "definition_version = \"1.0.0\"",
+                "definition_version = \"7.0.0\"",
+            );
+        fs::write(part.join("component.toml"), bridge).unwrap();
+
+        let unsaved = current_library(&LibraryInputs::of(&session(None, None)));
+        assert_eq!(unsaved.layers[0].status, LayerStatus::Inactive);
+        assert_eq!(unsaved.get("dev.perfboard.bridge").unwrap().layer, 1);
+
+        let saved = current_library(&LibraryInputs::of(&session(
+            None,
+            Some(dir.join("board.perfboard.json")),
+        )));
+        let _ = fs::remove_dir_all(&dir);
+        assert_eq!(saved.layers[0].kind, LayerKind::Project);
+        assert_eq!(saved.layers[0].status, LayerStatus::Loaded);
+        let winner = saved.get("dev.perfboard.bridge").unwrap();
+        assert_eq!(winner.layer, 0);
+        assert_eq!(winner.definition.definition_version, "7.0.0");
+        assert_eq!(winner.shadows.len(), 1);
+        assert_eq!(winner.shadows[0].layer, 1);
+    }
+
+    #[test]
+    fn user_layers_are_not_granted_yet() {
+        let library = current_library(&LibraryInputs::of(&session(
+            Some(vec!["${USER_COMPONENTS}".into()]),
+            None,
+        )));
+        assert_eq!(library.layers[0].status, LayerStatus::NotGranted);
+        assert_eq!(library.layers[1].kind, LayerKind::Standard);
+        assert!(library.get("dev.perfboard.bridge").is_some());
+    }
 
     #[test]
     fn embeds_every_checkout_component_without_diagnostics() {

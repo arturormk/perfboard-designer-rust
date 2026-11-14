@@ -45,6 +45,35 @@ Validation reports for the snapshots are not stored; readers recompute them.
 uncommitted document). It is absent when there is no working base and an
 empty array when the working copy is unchanged.
 
+## Component paths
+
+The optional top-level `component_paths` is an array of strings naming the
+folders that new placements take components from, in priority order
+([ADR 0014](../adr/0014-component-library-layers.md)). It sits beside `name`,
+outside `design`, so it is not part of revision history.
+
+```json
+"component_paths": [
+  "${PROJECT_DIR}/${PROJECT_STEM}.perfboard",
+  "${USER_COMPONENTS}/rs485"
+]
+```
+
+- Each entry starts with `${PROJECT_DIR}` (the folder holding the project
+  file) or `${USER_COMPONENTS}` (the user library granted to the project on
+  this machine), optionally followed by `/`-separated segments.
+  `${PROJECT_STEM}`, the file name without `.perfboard.json`, may appear in
+  those segments. `..`, `.`, empty segments, backslashes and other variables
+  are not allowed.
+- Absent means `["${PROJECT_DIR}/${PROJECT_STEM}.perfboard"]`. An empty array
+  means no project layers. The standard library always follows the listed
+  layers.
+- Readers load a document with malformed entries and report them as library
+  diagnostics; a bad entry never makes a project unopenable.
+
+The field was added after version 2 was introduced and needs no version
+change: readers that predate it ignore it, and drop it when they save.
+
 ## Upgrading version 1
 
 A version 1 document is read with its full snapshots, its undo/redo

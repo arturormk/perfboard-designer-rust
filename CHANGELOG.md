@@ -26,6 +26,12 @@ Development line `v0.1.x`: the first public development builds.
   (before, MCP saw three of them). Debug builds read `components/` from the
   checkout, and `PERFBOARD_STANDARD_COMPONENTS` points any build at another
   folder ([ADR 0014](docs/adr/0014-component-library-layers.md)).
+- Project components: a saved project also offers the parts in the folder
+  named after it (`board.perfboard/` beside `board.perfboard.json`), ahead of
+  the standard library, to both the palette and MCP. The optional
+  `component_paths` project field lists other folders under the project's
+  folder. The palette labels project parts and flags those that override a
+  standard part, and reports library problems below the list.
 - Graphical perfboard editor with component and solder side views, parts,
   nets, wires, bridges, and rails.
 - Saddles: net-free wire ties that hold wires and bundles to the board through

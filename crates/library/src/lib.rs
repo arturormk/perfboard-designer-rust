@@ -124,7 +124,8 @@ pub struct ShadowedComponent {
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct ResolvedComponent {
     pub definition: ComponentDefinition,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Untrusted Markdown, served on request rather than with the library.
+    #[serde(skip)]
     pub documentation: Option<String>,
     /// Index into [`ResolvedLibrary::layers`] of the layer that won.
     pub layer: usize,

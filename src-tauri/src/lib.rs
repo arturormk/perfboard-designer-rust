@@ -27,12 +27,15 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 mod assembly_progress;
+mod component_library;
 mod component_viewer;
 mod recent_projects;
-mod standard_library;
 
 use assembly_progress::{AssemblyProgress, Checkmarks};
 use recent_projects::{RecentProject, RecentProjects};
+
+use component_library::LibraryInputs;
+use perfboard_library::ResolvedLibrary;
 
 use component_viewer::{
     AuthorizedComponent, COMPONENT_VIEWER_EVENT, ComponentViewerSnapshot, ComponentWatch,
@@ -135,8 +138,8 @@ fn session_api_error(error: &SessionError) -> SessionApiError {
 }
 
 /// The definitions offered for new placements, in library order.
-fn component_definitions() -> Vec<ComponentDefinition> {
-    standard_library::current_library()
+fn component_definitions(inputs: &LibraryInputs) -> Vec<ComponentDefinition> {
+    component_library::current_library(inputs)
         .components
         .into_iter()
         .map(|component| component.definition)
@@ -300,10 +303,12 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 }))
             }
             SessionRequest::GetComponentLibrary => {
-                Ok(SessionResponse::Components(component_definitions()))
+                let inputs = LibraryInputs::of(&*self.lock()?);
+                Ok(SessionResponse::Components(component_definitions(&inputs)))
             }
             SessionRequest::GetComponentDocumentation { definition_id } => {
-                let Some(markdown) = standard_library::current_library()
+                let inputs = LibraryInputs::of(&*self.lock()?);
+                let Some(markdown) = component_library::current_library(&inputs)
                     .components
                     .into_iter()
                     .find(|component| component.definition.id == definition_id)
@@ -652,9 +657,13 @@ fn evaluate_project_route(
     ))
 }
 
+/// The open project's library: its layers, the definitions that won and
+/// what they shadow, and diagnostics. Documentation is fetched separately.
 #[tauri::command]
-fn get_component_library() -> Vec<ComponentDefinition> {
-    component_definitions()
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_component_library(state: tauri::State<'_, SessionState>) -> Result<ResolvedLibrary, String> {
+    let inputs = LibraryInputs::of(&*state.0.lock().map_err(|error| error.to_string())?);
+    Ok(component_library::current_library(&inputs))
 }
 
 #[tauri::command]
@@ -1131,8 +1140,10 @@ fn save_project(
     recent: tauri::State<'_, RecentProjects>,
     path: PathBuf,
 ) -> Result<(), String> {
-    let session = state.0.lock().map_err(|error| error.to_string())?;
+    let mut session = state.0.lock().map_err(|error| error.to_string())?;
     save_project_atomic(session.document(), &path).map_err(|error| error.to_string())?;
+    session.set_file_path(path.clone());
+    drop(session);
     remember_recent(&recent, &path);
     Ok(())
 }
@@ -1189,7 +1200,7 @@ fn open_project(
         .0
         .lock()
         .map_err(|error| error.to_string())?
-        .replace(document.clone());
+        .replace_with_file(document.clone(), Some(path));
     publish(&app, &event);
     Ok(document)
 }
@@ -1303,8 +1314,9 @@ mod tests {
     }
 
     #[test]
-    fn the_session_and_the_palette_offer_the_same_library() {
-        let definitions = component_definitions();
+    fn an_unsaved_project_is_offered_the_standard_library() {
+        let session = ProjectSession::new(initial_document());
+        let definitions = component_definitions(&LibraryInputs::of(&session));
         for id in [
             "dev.perfboard.bridge",
             "dev.perfboard.dupont-jumper",

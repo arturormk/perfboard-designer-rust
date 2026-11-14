@@ -74,6 +74,7 @@ import {
   recentProjects,
   focusRequest,
   library,
+  libraryDetails,
   pendingRoute,
   rightTab,
   savedRevision,
@@ -284,7 +285,13 @@ export function refresh(): Promise<void> {
 
 export async function refreshLibrary(announce = false): Promise<void> {
   try {
-    library.value = await getComponentLibrary();
+    const details = await getComponentLibrary();
+    batch(() => {
+      libraryDetails.value = details;
+      library.value = details.components.map(
+        (component) => component.definition,
+      );
+    });
     if (announce)
       toast(
         "success",
@@ -453,6 +460,8 @@ export async function saveAs(): Promise<void> {
     savedRevision.value = revision();
     rememberPath(view.peek()!, path);
     toast("success", "Project saved", { detail: path });
+    // The project's own component folder sits next to its file.
+    void refreshLibrary();
   } catch (error) {
     toast("error", "Could not save the project", {
       detail: errorMessage(error),
@@ -493,7 +502,7 @@ export async function openPath(path: string): Promise<void> {
     busy.value = "Opening project…";
     await openProject(path);
     resetWorkspace();
-    await refresh();
+    await Promise.all([refresh(), refreshLibrary()]);
     filePath.value = path;
     savedRevision.value = revision();
     rememberPath(view.peek()!, path);
@@ -530,7 +539,7 @@ export async function newBoard(
     await createProject(name, holesX, holesY);
     resetWorkspace();
     filePath.value = null;
-    await refresh();
+    await Promise.all([refresh(), refreshLibrary()]);
     savedRevision.value = null;
     focusBoard();
     toast("success", `Created a ${holesX} × ${holesY} board`);

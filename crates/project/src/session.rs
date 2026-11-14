@@ -1,4 +1,7 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use perfboard_core::{CommitId, OperationId};
 use schemars::JsonSchema;
@@ -51,13 +54,30 @@ pub enum SessionError {
 #[derive(Clone, Debug)]
 pub struct ProjectSession {
     document: ProjectDocument,
+    /// The file the project was last opened from or saved to; `None` for a
+    /// project that has never been saved.
+    file_path: Option<PathBuf>,
 }
 
 #[allow(clippy::missing_errors_doc)] // The session consistently wraps typed operation/revision errors.
 impl ProjectSession {
     #[must_use]
     pub const fn new(document: ProjectDocument) -> Self {
-        Self { document }
+        Self {
+            document,
+            file_path: None,
+        }
+    }
+
+    /// The file the project was last opened from or saved to.
+    #[must_use]
+    pub fn file_path(&self) -> Option<&Path> {
+        self.file_path.as_deref()
+    }
+
+    /// Records the file the project was just saved to.
+    pub fn set_file_path(&mut self, path: PathBuf) {
+        self.file_path = Some(path);
     }
 
     #[must_use]
@@ -65,8 +85,19 @@ impl ProjectSession {
         &self.document
     }
 
+    /// Replaces the project with one that has no file yet.
     pub fn replace(&mut self, document: ProjectDocument) -> SessionChangeEvent {
+        self.replace_with_file(document, None)
+    }
+
+    /// Replaces the project with one opened from `file_path`.
+    pub fn replace_with_file(
+        &mut self,
+        document: ProjectDocument,
+        file_path: Option<PathBuf>,
+    ) -> SessionChangeEvent {
         self.document = document;
+        self.file_path = file_path;
         self.event("project_replaced", "Replaced active project".into())
     }
 

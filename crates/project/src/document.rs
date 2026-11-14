@@ -34,6 +34,10 @@ pub struct ProjectDocument {
     pub schema_version: SchemaVersion,
     pub project_id: ProjectId,
     pub name: String,
+    /// Where new placements find components (ADR 0014). `None` means the
+    /// default project layer. A project setting: outside the design and its
+    /// history, like the name.
+    pub component_paths: Option<Vec<String>>,
     pub revision: DocumentRevision,
     pub design: Design,
     pub validation: Vec<Diagnostic>,
@@ -151,6 +155,7 @@ impl ProjectDocument {
             schema_version: PROJECT_SCHEMA_VERSION,
             project_id,
             name: name.into(),
+            component_paths: None,
             revision: DocumentRevision::default(),
             working_base: None,
             design,
@@ -303,6 +308,7 @@ impl ProjectDocument {
                 schema_version: self.schema_version,
                 project_id: self.project_id,
                 name: self.name.clone(),
+                component_paths: None,
                 revision: self.revision,
                 design: design.clone(),
                 validation: Vec::new(),

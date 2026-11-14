@@ -5,6 +5,7 @@ import {
   design,
   hover,
   library,
+  libraryDetails,
   placing,
   selection,
   tool,
@@ -12,6 +13,7 @@ import {
   showChanges,
 } from "../state/store";
 import { groupPlacedParts } from "../model/naming";
+import { libraryProblems, partProvenance } from "../model/library";
 import { Icon } from "../ui/Icon";
 
 export function PartThumb({
@@ -90,6 +92,8 @@ export function PartsPanel() {
       definition.description.toLowerCase().includes(needle) ||
       definition.id.toLowerCase().includes(needle),
   );
+  const details = libraryDetails.value;
+  const problems = libraryProblems(details);
   const groups = current ? groupPlacedParts(current) : [];
   const selectedId =
     selection.value?.kind === "component" ? selection.value.id : undefined;
@@ -122,6 +126,7 @@ export function PartsPanel() {
         <ul class="library-list">
           {definitions.map((definition) => {
             const bridge = definition.kind === "bridge";
+            const provenance = partProvenance(details, definition.id);
             const active =
               placing.value?.id === definition.id ||
               (bridge && tool.value === "bridge");
@@ -129,7 +134,9 @@ export function PartsPanel() {
               <li key={definition.id}>
                 <button
                   class={`library-item${active ? " on" : ""}`}
-                  title={definition.description}
+                  title={[definition.description, provenance?.detail]
+                    .filter(Boolean)
+                    .join("\n\n")}
                   onClick={() => {
                     if (bridge) {
                       placing.value = null;
@@ -143,7 +150,16 @@ export function PartsPanel() {
                 >
                   <PartThumb definition={definition} />
                   <span class="library-text">
-                    <strong>{definition.name}</strong>
+                    <span class="library-name">
+                      <strong>{definition.name}</strong>
+                      {provenance?.badge && (
+                        <span
+                          class={`badge${provenance.overrides ? " warn" : ""}`}
+                        >
+                          {provenance.badge}
+                        </span>
+                      )}
+                    </span>
                     <small>
                       {bridge
                         ? "Use the bridge tool (B)"
@@ -162,6 +178,27 @@ export function PartsPanel() {
             </li>
           )}
         </ul>
+        {problems.length > 0 && (
+          <p
+            class="library-problems"
+            title={problems
+              .map((problem) =>
+                problem.path
+                  ? `${problem.message}\n  ${problem.path}`
+                  : problem.message,
+              )
+              .join("\n")}
+          >
+            <span
+              class={`pill ${problems.some((problem) => problem.severity === "error") ? "error" : "warn"}`}
+            >
+              {problems.length === 1
+                ? "1 library problem"
+                : `${problems.length} library problems`}
+            </span>
+            <span>{problems[0]?.message}</span>
+          </p>
+        )}
       </section>
 
       <section class="panel-section grow">

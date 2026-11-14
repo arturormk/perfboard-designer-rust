@@ -261,6 +261,8 @@ export interface ProjectDocument {
   schema_version?: number;
   project_id: string;
   name: string;
+  /** Library layers for new placements (ADR 0014); absent means the default. */
+  component_paths?: string[];
   revision: number;
   design: {
     board: {
@@ -445,7 +447,48 @@ export function getProject(): Promise<ProjectDocument> {
 export function getProjectRevision(): Promise<number> {
   return invoke("get_project_revision");
 }
-export function getComponentLibrary(): Promise<ComponentDefinition[]> {
+/** Where a library layer's parts come from (ADR 0014). */
+export type LibraryLayerKind = "project" | "user" | "standard";
+export type LibraryLayerStatus =
+  "loaded" | "missing" | "not_granted" | "inactive" | "duplicate" | "invalid";
+export interface LibraryLayer {
+  kind: LibraryLayerKind;
+  /** The `component_paths` entry; absent for the standard library. */
+  template?: string;
+  path?: string;
+  /** The standard library's version when it is the built-in copy. */
+  version?: string;
+  status: LibraryLayerStatus;
+  component_count: number;
+}
+export interface LibraryDiagnostic {
+  code: string;
+  severity: "error" | "warning" | "advisory";
+  message: string;
+  /** Index into `ComponentLibrary.layers`. */
+  layer: number;
+  path?: string;
+}
+export interface ShadowedComponent {
+  layer: number;
+  directory?: string;
+  definition_version: string;
+}
+export interface LibraryComponent {
+  definition: ComponentDefinition;
+  /** Index into `ComponentLibrary.layers` of the layer that won. */
+  layer: number;
+  directory?: string;
+  /** Same-ID definitions in later layers that this one hides. */
+  shadows?: ShadowedComponent[];
+}
+/** The open project's component library, layer by layer. */
+export interface ComponentLibrary {
+  layers: LibraryLayer[];
+  components: LibraryComponent[];
+  diagnostics: LibraryDiagnostic[];
+}
+export function getComponentLibrary(): Promise<ComponentLibrary> {
   return invoke("get_component_library");
 }
 export function selectRuntimeComponent(): Promise<ComponentViewerSnapshot | null> {
