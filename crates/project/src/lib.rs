@@ -22,7 +22,10 @@ pub use document::{
     Board, Design, DocumentError, DocumentRevision, PROJECT_SCHEMA_VERSION, ProjectDocument,
     SchemaVersion,
 };
-pub use notes::{NewReviewNote, ReviewNote, ReviewNoteError, ReviewNoteSeverity};
+pub use notes::{
+    NewReviewNote, ReviewNote, ReviewNoteError, ReviewNoteSeverity, ReviewNoteStatus,
+    ReviewNoteUpdate,
+};
 pub use operations::{
     OperationError, OperationOrigin, OperationPayload, OperationRequest, OperationResult,
     WireEndpoint, apply_operation,

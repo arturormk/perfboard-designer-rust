@@ -2,8 +2,8 @@ use std::str::FromStr;
 
 use perfboard_core::{CommitId, NetId, OperationId, ReviewNoteId, RoutePos, Side};
 use perfboard_project::{
-    DocumentRevision, NewReviewNote, OperationOrigin, OperationPayload, RouteRequest,
-    TransactionRequest,
+    DocumentRevision, NewReviewNote, OperationOrigin, OperationPayload, ReviewNoteSeverity,
+    ReviewNoteStatus, ReviewNoteUpdate, RouteRequest, TransactionRequest,
 };
 use perfboard_session_ipc::{IpcError, SessionClient, SessionRequest, SessionResponse};
 use rmcp::{
@@ -134,6 +134,36 @@ struct AddReviewNotesInput {
 struct RemoveReviewNotesInput {
     /// IDs of the notes to remove, from `get_review_notes`.
     note_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct GetReviewNotesInput {
+    /// Only notes with this status: `open` (not answered yet, or answered
+    /// by you), `acknowledged` (the human accepts it) or `review_requested`
+    /// (the human replied and wants you to look again). Omit for all notes.
+    #[serde(default)]
+    status: Option<ReviewNoteStatus>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct UpdateReviewNoteInput {
+    /// ID of the note, from `get_review_notes`.
+    note_id: String,
+    /// Your answer to the human's `reply`, after reviewing the note again
+    /// against the current design: whether you agree and why. Plain text,
+    /// up to 2000 characters. Writing a response sets the note's status back
+    /// to `open`.
+    #[serde(default)]
+    response: Option<String>,
+    /// New severity, when the review changes how much the finding matters.
+    #[serde(default)]
+    severity: Option<ReviewNoteSeverity>,
+    /// Revised one-line summary.
+    #[serde(default)]
+    title: Option<String>,
+    /// Revised explanation and suggested fix.
+    #[serde(default)]
+    detail: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -574,6 +604,10 @@ impl PerfboardMcp {
     }
 
     /// Return the project's review notes, in the order the user keeps them.
+    /// Each has a `status`: `open` when absent, `acknowledged` when the human
+    /// accepts it, or `review_requested` when the human wrote a `reply` and
+    /// wants you to review the note again; answer those with
+    /// `update_review_note`. Your earlier answer is in `response`.
     #[tool(annotations(
         title = "Get review notes",
         read_only_hint = true,
@@ -581,11 +615,21 @@ impl PerfboardMcp {
         idempotent_hint = true,
         open_world_hint = false
     ))]
-    async fn get_review_notes(&self) -> CallToolResult {
+    async fn get_review_notes(
+        &self,
+        Parameters(input): Parameters<GetReviewNotesInput>,
+    ) -> CallToolResult {
         match self.client.call(SessionRequest::GetProjectView).await {
-            Ok(SessionResponse::ProjectView(project)) => CallToolResult::structured(json!({
-                "ok": true, "revision": project.revision, "review_notes": project.review_notes
-            })),
+            Ok(SessionResponse::ProjectView(project)) => {
+                let notes: Vec<_> = project
+                    .review_notes
+                    .into_iter()
+                    .filter(|note| input.status.is_none_or(|status| note.status == status))
+                    .collect();
+                CallToolResult::structured(json!({
+                    "ok": true, "revision": project.revision, "review_notes": notes
+                }))
+            }
             Ok(other) => unexpected(&other),
             Err(error) => ipc_error(error),
         }
@@ -641,6 +685,46 @@ impl PerfboardMcp {
             Err(_) => return tool_error("request.invalid", "note IDs must be UUIDs"),
         };
         self.request(SessionRequest::RemoveReviewNotes { note_ids })
+            .await
+    }
+
+    /// Answer a review note the human sent back (status `review_requested`):
+    /// review it again against the current design and the human's `reply`,
+    /// then write a `response` saying whether you agree and why, revising the
+    /// severity, title or detail if the finding changed. The note returns to
+    /// `open` and records the current revision. If the human is right and
+    /// nothing is left to fix, say so in the response; ask before removing
+    /// the note. Leave `acknowledged` notes alone unless asked. Needs no
+    /// `expected_revision`.
+    #[tool(annotations(
+        title = "Update review note",
+        read_only_hint = false,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    async fn update_review_note(
+        &self,
+        Parameters(input): Parameters<UpdateReviewNoteInput>,
+    ) -> CallToolResult {
+        let Ok(note_id) = ReviewNoteId::from_str(&input.note_id) else {
+            return tool_error("request.invalid", "note IDs must be UUIDs");
+        };
+        let update = ReviewNoteUpdate {
+            status: input.response.as_ref().map(|_| ReviewNoteStatus::Open),
+            response: input.response,
+            severity: input.severity,
+            title: input.title,
+            detail: input.detail,
+            reply: None,
+        };
+        if update == ReviewNoteUpdate::default() {
+            return tool_error(
+                "request.empty",
+                "give a response or a new severity, title or detail",
+            );
+        }
+        self.request(SessionRequest::UpdateReviewNote { note_id, update })
             .await
     }
 
@@ -780,7 +864,7 @@ mod tests {
     #[test]
     fn tool_catalog_is_codex_and_claude_friendly() {
         let tools = PerfboardMcp::tool_router().list_all();
-        assert_eq!(tools.len(), 23);
+        assert_eq!(tools.len(), 24);
         assert!(tools.iter().all(|tool| {
             tool.annotations
                 .as_ref()
@@ -845,6 +929,14 @@ mod tests {
         assert!(!schema.contains("expected_revision"));
         let remove = PerfboardMcp::remove_review_notes_tool_attr();
         assert_eq!(remove.annotations.unwrap().destructive_hint, Some(true));
+        let update = PerfboardMcp::update_review_note_tool_attr();
+        let schema = serde_json::to_string(&update.input_schema).unwrap();
+        assert!(schema.contains("response"));
+        assert!(!schema.contains("\"reply\""), "the reply is the human's");
+        assert!(!schema.contains("expected_revision"));
+        let get = PerfboardMcp::get_review_notes_tool_attr();
+        let schema = serde_json::to_string(&get.input_schema).unwrap();
+        assert!(schema.contains("review_requested"));
         let moved = PerfboardMcp::move_review_note_tool_attr();
         assert_eq!(moved.annotations.unwrap().destructive_hint, Some(false));
         let schema = serde_json::to_string(&moved.input_schema).unwrap();

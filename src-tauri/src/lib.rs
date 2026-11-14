@@ -14,10 +14,10 @@ use perfboard_core::{
 use perfboard_project::{
     AssemblyPlan, Board, ChangeMarker, Commit, DocumentRevision, HistoryActionResult,
     OperationError, OperationOrigin, OperationRequest, OperationResult, ProjectDocument,
-    ProjectSession, ReviewNote, RevisionError, RouteAlternative, RouteError, RouteRequest,
-    RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError, TransactionRequest,
-    TransactionResult, assembly_plan, evaluate_route, load_project, render_design_svg,
-    save_project_atomic, suggest_route, suggest_route_alternatives,
+    ProjectSession, ReviewNote, ReviewNoteUpdate, RevisionError, RouteAlternative, RouteError,
+    RouteRequest, RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError,
+    TransactionRequest, TransactionResult, assembly_plan, evaluate_route, load_project,
+    render_design_svg, save_project_atomic, suggest_route, suggest_route_alternatives,
 };
 use perfboard_session_ipc::{
     ComponentDocumentation, DocumentationTrust, ProjectRenamed, RenderedDesign, ReviewNotesChanged,
@@ -314,6 +314,19 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 Ok(SessionResponse::ReviewNotes(ReviewNotesChanged {
                     revision: event.revision,
                     notes,
+                    summary: event.summary,
+                }))
+            }
+            SessionRequest::UpdateReviewNote { note_id, update } => {
+                let mut session = self.lock()?;
+                let (note, event) = session
+                    .update_review_note(note_id, update)
+                    .map_err(|error| session_api_error(&error))?;
+                drop(session);
+                self.publish(&event);
+                Ok(SessionResponse::ReviewNotes(ReviewNotesChanged {
+                    revision: event.revision,
+                    notes: vec![note],
                     summary: event.summary,
                 }))
             }
@@ -748,6 +761,24 @@ fn move_review_note(
     drop(session);
     publish(&app, &event);
     Ok(())
+}
+
+/// Sets a review note's status or the user's reply.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn update_review_note(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    note_id: ReviewNoteId,
+    update: ReviewNoteUpdate,
+) -> Result<ReviewNote, CommandError> {
+    let mut session = lock_session(&state)?;
+    let (note, event) = session
+        .update_review_note(note_id, update)
+        .map_err(CommandError::from)?;
+    drop(session);
+    publish(&app, &event);
+    Ok(note)
 }
 
 /// Puts a deleted review note back at `index`.
@@ -1822,6 +1853,7 @@ pub fn run() {
             rename_project,
             remove_review_note,
             move_review_note,
+            update_review_note,
             insert_review_note,
             restore_project_commit,
             compare_project_revisions,

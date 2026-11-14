@@ -1,14 +1,23 @@
 /**
  * Review notes (ADR 0015): findings an agent added over MCP, which the user
  * deletes as they address them and drags into the order they want to work in.
+ * The user can also acknowledge a note, or reply and send it back to the
+ * agent for another look; the agent's answer shows under the reply (ADR 0016).
  */
 import { useEffect, useRef, useState } from "preact/hooks";
-import type {
-  ObjectReference,
-  ReviewNote,
-  ReviewNoteSeverity,
+import {
+  MAX_NOTE_REPLY_CHARS,
+  type ObjectReference,
+  type ReviewNote,
+  type ReviewNoteSeverity,
 } from "../api/project";
-import { deleteReviewNote, locateObject, moveNote } from "../state/actions";
+import {
+  answerNote,
+  deleteReviewNote,
+  locateObject,
+  moveNote,
+} from "../state/actions";
+import { toast } from "../state/toasts";
 import {
   design,
   railLabelMap,
@@ -128,6 +137,233 @@ function NoteRevision({ revision }: { revision?: number }) {
   );
 }
 
+/** What to paste into the agent chat to get the sent-back notes reviewed. */
+const REVIEW_PROMPT =
+  "Please look again at the review notes I sent back (status review_requested): read my replies, check the current design, and answer each with update_review_note.";
+
+async function copyReviewPrompt(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(REVIEW_PROMPT);
+    toast("info", "Copied a request for your agent", {
+      detail: "Paste it into the agent's chat.",
+    });
+  } catch {
+    toast("info", "Ask your agent:", {
+      detail: REVIEW_PROMPT,
+      durationMs: 20000,
+    });
+  }
+}
+
+/** Badge for where the note stands, or nothing for a fresh open note. */
+function NoteStatus({ note }: { note: ReviewNote }) {
+  if (note.status === "acknowledged")
+    return (
+      <span class="note-status acknowledged" title="You accepted this note">
+        <Icon name="check" size={12} />
+        Acknowledged
+      </span>
+    );
+  if (note.status === "review_requested")
+    return (
+      <span
+        class="note-status requested"
+        title="Waiting for the agent to look at your reply"
+      >
+        <Icon name="refresh" size={12} />
+        Review requested
+      </span>
+    );
+  if (note.response)
+    return (
+      <span class="note-status answered" title="The agent answered your reply">
+        <Icon name="agent" size={12} />
+        Answered
+      </span>
+    );
+  return null;
+}
+
+/** The user's reply and the agent's response, oldest first. */
+function NoteExchange({
+  note,
+  onEdit,
+}: {
+  note: ReviewNote;
+  onEdit: () => void;
+}) {
+  if (!note.reply && !note.response) return null;
+  return (
+    <div class="note-exchange">
+      {note.reply && (
+        <div class="note-message user">
+          <span class="note-message-head">
+            <Icon name="user" size={12} />
+            You
+            <button class="note-message-edit" onClick={onEdit}>
+              Edit
+            </button>
+          </span>
+          <p>{note.reply}</p>
+        </div>
+      )}
+      {note.response && (
+        <div class="note-message agent">
+          <span class="note-message-head">
+            <Icon name="agent" size={12} />
+            Agent
+          </span>
+          <p>{note.response}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Edits the reply; submitting with "Request review" also sends it back. */
+function ReplyEditor({
+  note,
+  onDone,
+}: {
+  note: ReviewNote;
+  onDone: () => void;
+}) {
+  const [text, setText] = useState(note.reply ?? "");
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => ref.current?.focus(), []);
+  const length = [...text.trim()].length;
+  const tooLong = length > MAX_NOTE_REPLY_CHARS;
+  const unchanged = text.trim() === (note.reply ?? "");
+
+  const submit = async (requestReview: boolean) => {
+    if (tooLong || busy) return;
+    if (!requestReview && unchanged) return onDone();
+    setBusy(true);
+    const saved = await answerNote(note.id, {
+      reply: text.trim(),
+      ...(requestReview ? { status: "review_requested" as const } : {}),
+    });
+    setBusy(false);
+    if (saved) onDone();
+  };
+
+  return (
+    <div class="note-reply-editor">
+      <textarea
+        ref={ref}
+        rows={3}
+        value={text}
+        placeholder="Why you disagree, what you checked, or a question for the agent…"
+        aria-label={`Reply to “${note.title}”`}
+        onInput={(event) =>
+          setText((event.target as HTMLTextAreaElement).value)
+        }
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            onDone();
+          } else if (
+            event.key === "Enter" &&
+            (event.ctrlKey || event.metaKey)
+          ) {
+            event.preventDefault();
+            void submit(true);
+          }
+        }}
+      />
+      <div class="note-reply-actions">
+        <span class={`note-reply-count${tooLong ? " over" : ""}`}>
+          {length > MAX_NOTE_REPLY_CHARS * 0.8 &&
+            `${length} / ${MAX_NOTE_REPLY_CHARS}`}
+        </span>
+        <button class="btn small ghost" onClick={onDone} disabled={busy}>
+          Cancel
+        </button>
+        <button
+          class="btn small"
+          onClick={() => void submit(false)}
+          disabled={busy || tooLong}
+        >
+          Save
+        </button>
+        <button
+          class="btn small primary"
+          title="Save the reply and ask the agent to look again (Ctrl+Enter)"
+          onClick={() => void submit(true)}
+          disabled={busy || tooLong || !text.trim()}
+        >
+          Request review
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Acknowledge, request a review, and reply. */
+function NoteActions({
+  note,
+  onReply,
+}: {
+  note: ReviewNote;
+  onReply: () => void;
+}) {
+  const acknowledged = note.status === "acknowledged";
+  const requested = note.status === "review_requested";
+  return (
+    <div class="note-actions">
+      <button
+        class={`note-action${acknowledged ? " on" : ""}`}
+        aria-pressed={acknowledged}
+        title={
+          acknowledged
+            ? "Mark as not acknowledged"
+            : "Accept the finding; the agent leaves acknowledged notes alone"
+        }
+        onClick={() =>
+          void answerNote(note.id, {
+            status: acknowledged ? "open" : "acknowledged",
+          })
+        }
+      >
+        <Icon name="check" size={12} />
+        Acknowledge
+      </button>
+      <button
+        class={`note-action${requested ? " on" : ""}`}
+        aria-pressed={requested}
+        title={
+          requested
+            ? "Withdraw the review request"
+            : note.reply
+              ? "Ask the agent to look again, with your reply"
+              : "Write a reply and ask the agent to look again"
+        }
+        onClick={() => {
+          if (requested) void answerNote(note.id, { status: "open" });
+          else if (note.reply)
+            void answerNote(note.id, { status: "review_requested" });
+          else onReply();
+        }}
+      >
+        <Icon name="refresh" size={12} />
+        Request review
+      </button>
+      {!note.reply && (
+        <button
+          class="note-action note-reply"
+          title="Reply without sending the note back"
+          aria-label={`Reply to “${note.title}”`}
+          onClick={onReply}
+        >
+          <Icon name="reply" size={13} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function NoteCard({
   note,
   style,
@@ -142,9 +378,11 @@ function NoteCard({
   onGripKey: (event: KeyboardEvent) => void;
 }) {
   const severity = SEVERITY[note.severity];
+  const [replying, setReplying] = useState(false);
+  const status = note.status ?? "open";
   return (
     <li
-      class={`note ${note.severity}${dragging ? " dragging" : ""}`}
+      class={`note ${note.severity} status-${status}${dragging ? " dragging" : ""}`}
       style={style}
       data-note-id={note.id}
     >
@@ -165,6 +403,7 @@ function NoteCard({
             {severity.label}
           </span>
           <NoteRevision revision={note.revision} />
+          <NoteStatus note={note} />
           <button
             class="icon-btn small note-delete"
             title="Delete note"
@@ -177,6 +416,14 @@ function NoteCard({
         <strong class="note-title">{note.title}</strong>
         {note.detail && <p class="note-detail">{note.detail}</p>}
         {note.objects?.length ? <ObjectChips objects={note.objects} /> : null}
+        {!replying && (
+          <NoteExchange note={note} onEdit={() => setReplying(true)} />
+        )}
+        {replying ? (
+          <ReplyEditor note={note} onDone={() => setReplying(false)} />
+        ) : (
+          <NoteActions note={note} onReply={() => setReplying(true)} />
+        )}
       </div>
     </li>
   );
@@ -192,6 +439,12 @@ export function NotesPanel() {
   const counts = new Map<ReviewNoteSeverity, number>();
   for (const note of notes)
     counts.set(note.severity, (counts.get(note.severity) ?? 0) + 1);
+  const requested = notes.filter(
+    (note) => note.status === "review_requested",
+  ).length;
+  const acknowledged = notes.filter(
+    (note) => note.status === "acknowledged",
+  ).length;
 
   const listTop = () => listRef.current?.getBoundingClientRect().top ?? 0;
 
@@ -344,6 +597,16 @@ export function NotesPanel() {
                 </span>
               ),
             )}
+            {(acknowledged > 0 || requested > 0) && (
+              <span class="note-progress">
+                {[
+                  acknowledged && `${acknowledged} acknowledged`,
+                  requested && `${requested} sent back`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </span>
+            )}
           </div>
         ) : (
           <div class="all-clear notes-empty">
@@ -353,6 +616,19 @@ export function NotesPanel() {
               Ask your agent to review the project. Its findings appear here,
               saved with the project, for you to delete as you address them.
             </p>
+          </div>
+        )}
+        {requested > 0 && (
+          <div class="note-review-hint">
+            <span>
+              {requested === 1
+                ? "1 note is waiting for the agent."
+                : `${requested} notes are waiting for the agent.`}{" "}
+              Ask it to look at them again.
+            </span>
+            <button class="btn small" onClick={() => void copyReviewPrompt()}>
+              Copy request
+            </button>
           </div>
         )}
         <ul class="note-list" ref={listRef}>

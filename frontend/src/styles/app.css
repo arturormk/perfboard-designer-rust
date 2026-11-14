@@ -2121,6 +2121,14 @@ textarea::placeholder {
   color: var(--text-3);
 }
 
+/* With a status badge the head gets crowded; the revision gives way. */
+.note-revision {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .note-delete {
   color: var(--text-4);
 }
@@ -2179,6 +2187,197 @@ textarea::placeholder {
   color: var(--text-4);
   text-decoration: line-through;
   cursor: default;
+}
+
+.note-progress {
+  color: var(--text-3);
+}
+
+.note.status-acknowledged {
+  border-left-color: color-mix(in srgb, var(--note-tone) 45%, var(--line-2));
+}
+
+.note.status-acknowledged .note-title,
+.note.status-acknowledged .note-detail {
+  color: var(--text-3);
+}
+
+.note-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 17px;
+  white-space: nowrap;
+}
+
+/* The badge sits after the revision, which pushes everything right. */
+.note-revision + .note-status {
+  margin-left: -4px;
+}
+
+.note-status.acknowledged {
+  background: var(--bg-3);
+  color: var(--text-2);
+}
+
+.note-status.requested,
+.note-status.answered {
+  background: color-mix(in srgb, var(--agent) 14%, transparent);
+  color: var(--agent);
+}
+
+.note-exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 5px;
+}
+
+.note-message {
+  padding: 5px 8px 6px;
+  border-radius: var(--radius-s);
+  background: var(--bg-1);
+  border-left: 2px solid var(--line-3);
+}
+
+.note-message.agent {
+  border-left-color: var(--agent);
+}
+
+.note-message-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.note-message.agent .note-message-head {
+  color: var(--agent);
+}
+
+.note-message p {
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-message-edit {
+  margin-left: auto;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--text-4);
+  font: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.note-message-edit:hover,
+.note-message-edit:focus-visible {
+  color: var(--text-1);
+  background: var(--bg-3);
+}
+
+.note-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: 5px 0 -3px -5px;
+}
+
+.note-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-4);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.note:hover .note-action,
+.note-action:focus-visible {
+  color: var(--text-3);
+}
+
+.note-action:hover {
+  background: var(--bg-3);
+  color: var(--text-1) !important;
+}
+
+.note-action.note-reply {
+  margin-left: auto;
+}
+
+.note-action.on {
+  border-color: var(--line-2);
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.note-reply-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.note-reply-editor textarea {
+  font-size: 12px;
+}
+
+.note-reply-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.note-reply-count {
+  margin-right: auto;
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.note-reply-count.over {
+  color: var(--error);
+}
+
+.note-review-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 7px 8px 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--agent) 35%, transparent);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--agent) 8%, transparent);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.note-review-hint span {
+  flex: 1;
 }
 
 /* ── History ──────────────────────────────────────────────────────────── */

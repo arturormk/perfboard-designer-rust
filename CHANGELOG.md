@@ -9,6 +9,16 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Answer review notes in the editor. Each note has Acknowledge and Request
+  review buttons and room for a short reply, so you can accept findings,
+  dispute others, and then ask the agent to look again at the ones you sent
+  back (the Notes tab has a request ready to copy into the agent's chat).
+  Agents find those with `get_review_notes` filtered by
+  `status: review_requested` and answer with the new `update_review_note`
+  tool. The answer shows under your reply, and the tool can also revise the
+  note. A toast tells you when the agent has answered
+  ([ADR 0016](docs/adr/0016-review-note-replies.md)).
+
 - Notes on wires, rails, nets and saddles can now be edited, in the
   inspector and by agents through the new `set_wire_notes`, `set_rail_notes`
   and `set_net_notes` operations (saddles use `update_saddle`). Agents can

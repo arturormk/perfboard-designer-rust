@@ -9,6 +9,7 @@ const PATHS = {
   bridge: "M6 12h12 M6 12a2.5 2.5 0 1 1 0 .01 M18 12a2.5 2.5 0 1 1 0 .01",
   resize: "M4 9V4h5 M20 15v5h-5 M4 4l6 6 M20 20l-6-6",
   undo: "M9 14L4 9l5-5 M4 9h10a6 6 0 0 1 0 12h-3",
+  reply: "M9 7l-5 5 5 5 M4 12h10a6 6 0 0 1 6 6v1",
   redo: "M15 14l5-5-5-5 M20 9H10a6 6 0 0 0 0 12h3",
   flip: "M12 3v18 M8 7L4 12l4 5 M16 7l4 5-4 5",
   fit: "M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5",

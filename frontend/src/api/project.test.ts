@@ -3,7 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { applyOperation, applyTransaction, getChangeMarker } from "./project";
+import {
+  applyOperation,
+  applyTransaction,
+  getChangeMarker,
+  updateReviewNote,
+} from "./project";
 
 describe("project operation boundary", () => {
   beforeEach(() => vi.mocked(invoke).mockReset());
@@ -62,5 +67,17 @@ describe("project operation boundary", () => {
 
     await expect(getChangeMarker()).resolves.toEqual(marker);
     expect(invoke).toHaveBeenCalledWith("get_change_marker");
+  });
+
+  it("sends review-note updates by note ID, without a revision", async () => {
+    vi.mocked(invoke).mockResolvedValue({ id: "n1" });
+    await updateReviewNote("n1", {
+      status: "review_requested",
+      reply: "It has one.",
+    });
+    expect(invoke).toHaveBeenCalledWith("update_review_note", {
+      noteId: "n1",
+      update: { status: "review_requested", reply: "It has one." },
+    });
   });
 });

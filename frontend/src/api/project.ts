@@ -17,6 +17,8 @@ export interface Diagnostic {
   objects?: ObjectReference[];
 }
 export type ReviewNoteSeverity = "critical" | "warning" | "suggestion" | "info";
+/** Where a note stands between the user and the agent (ADR 0016). */
+export type ReviewNoteStatus = "open" | "acknowledged" | "review_requested";
 /** A finding about the project, usually from an agent (ADR 0015). */
 export interface ReviewNote {
   id: string;
@@ -27,7 +29,15 @@ export interface ReviewNote {
   created_ms: number;
   /** The revision the note describes; absent in older notes. */
   revision?: number;
+  /** Absent means `open`. */
+  status?: ReviewNoteStatus;
+  /** The user's answer to the note. */
+  reply?: string;
+  /** The agent's answer to the reply. */
+  response?: string;
 }
+/** Longest reply, in characters; the backend enforces it too. */
+export const MAX_NOTE_REPLY_CHARS = 2000;
 export interface NetConnectivity {
   net_id: string;
   islands: PinRef[][];
@@ -829,6 +839,13 @@ export function moveReviewNote(
   before: string | null,
 ): Promise<void> {
   return invoke("move_review_note", { noteId, before });
+}
+/** Sets a note's status and/or the user's reply (empty clears it). */
+export function updateReviewNote(
+  noteId: string,
+  update: { status?: ReviewNoteStatus; reply?: string },
+): Promise<ReviewNote> {
+  return invoke("update_review_note", { noteId, update });
 }
 export function insertReviewNote(
   note: ReviewNote,

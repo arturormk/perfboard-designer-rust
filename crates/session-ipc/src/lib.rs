@@ -12,7 +12,7 @@ use directories::{BaseDirs, ProjectDirs};
 use perfboard_core::{CommitId, ComponentDefinition, ReviewNoteId, RoutePos, RouteProposal, Side};
 use perfboard_project::{
     Commit, DocumentRevision, HistoryActionResult, NewReviewNote, ProjectDocument, ProjectView,
-    ReviewNote, RouteAlternative, RouteRequest, SemanticDiff, TransactionRequest,
+    ReviewNote, ReviewNoteUpdate, RouteAlternative, RouteRequest, SemanticDiff, TransactionRequest,
     TransactionResult,
 };
 use serde::{Deserialize, Serialize};
@@ -68,6 +68,12 @@ pub enum SessionRequest {
     /// Removes review notes by ID. Needs no expected revision.
     RemoveReviewNotes {
         note_ids: Vec<ReviewNoteId>,
+    },
+    /// Changes a review note's text, severity, status, reply or response.
+    /// Needs no expected revision.
+    UpdateReviewNote {
+        note_id: ReviewNoteId,
+        update: ReviewNoteUpdate,
     },
     /// Moves a review note in front of `before`, or to the end when `before`
     /// is absent. Needs no expected revision.
@@ -133,7 +139,7 @@ pub struct ProjectRenamed {
     pub summary: String,
 }
 
-/// The notes a review-note request added, removed or moved.
+/// The notes a review-note request added, removed, moved or updated.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ReviewNotesChanged {
     pub revision: DocumentRevision,

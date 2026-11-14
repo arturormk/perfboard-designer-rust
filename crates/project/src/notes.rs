@@ -1,6 +1,10 @@
 //! Review notes: findings about a project, usually written by an agent
 //! through MCP, that the user deletes as they address them (ADR 0015).
 //!
+//! The user can also answer a note: acknowledge it, or reply and request a
+//! review, which the agent answers with a response the next time it is asked
+//! to look at the notes (ADR 0016).
+//!
 //! Notes are project metadata, like the name: they live outside the design,
 //! so they are neither undo steps nor part of commits. Writes act on note IDs
 //! rather than on a revision, because notes cannot conflict with design
@@ -23,6 +27,8 @@ pub const MAX_NOTE_TITLE_CHARS: usize = 300;
 pub const MAX_NOTE_DETAIL_CHARS: usize = 8000;
 /// Most object references on one note.
 pub const MAX_NOTE_OBJECTS: usize = 32;
+/// Longest reply or response, in characters.
+pub const MAX_NOTE_REPLY_CHARS: usize = 2000;
 
 /// How much a note matters, most severe first.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -51,6 +57,28 @@ impl ReviewNoteSeverity {
     }
 }
 
+/// Where a note stands in the exchange between the user and the agent.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewNoteStatus {
+    /// Not yet answered by the user, or answered again by the agent.
+    #[default]
+    Open,
+    /// The user accepts the finding and will deal with it.
+    Acknowledged,
+    /// The user disagrees or has a question (see `reply`) and wants the
+    /// agent to review the note again.
+    ReviewRequested,
+}
+
+impl ReviewNoteStatus {
+    // serde's `skip_serializing_if` passes a reference.
+    #[allow(clippy::trivially_copy_pass_by_ref)]
+    fn is_open(&self) -> bool {
+        *self == Self::Open
+    }
+}
+
 /// A stored review note.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ReviewNote {
@@ -67,6 +95,38 @@ pub struct ReviewNote {
     /// it describes. Absent in notes from builds that did not record it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<DocumentRevision>,
+    #[serde(default, skip_serializing_if = "ReviewNoteStatus::is_open")]
+    pub status: ReviewNoteStatus,
+    /// The user's answer to the note; plain text.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reply: String,
+    /// The agent's answer to the reply, after reviewing the note again.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub response: String,
+}
+
+/// Changes to a stored note. Absent fields are left as they are; an empty
+/// `reply` or `response` clears it.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct ReviewNoteUpdate {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub severity: Option<ReviewNoteSeverity>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<ReviewNoteStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response: Option<String>,
+}
+
+impl ReviewNoteUpdate {
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
 }
 
 /// A note as an author submits it; the session assigns its ID and time.
@@ -103,6 +163,10 @@ pub enum ReviewNoteError {
     DuplicateId(ReviewNoteId),
     #[error("at least one review note is required")]
     Empty,
+    #[error("review note replies and responses are limited to {MAX_NOTE_REPLY_CHARS} characters")]
+    ReplyTooLong,
+    #[error("a review note update must change at least one field")]
+    EmptyUpdate,
 }
 
 impl NewReviewNote {
@@ -119,6 +183,9 @@ impl NewReviewNote {
             objects: self.objects,
             created_ms,
             revision: Some(revision),
+            status: ReviewNoteStatus::Open,
+            reply: String::new(),
+            response: String::new(),
         };
         note.normalized()
     }
@@ -129,6 +196,8 @@ impl ReviewNote {
     fn normalized(mut self) -> Result<Self, ReviewNoteError> {
         self.title = self.title.trim().to_owned();
         self.detail = self.detail.trim().to_owned();
+        self.reply = self.reply.trim().to_owned();
+        self.response = self.response.trim().to_owned();
         if self.title.is_empty() {
             return Err(ReviewNoteError::BlankTitle);
         }
@@ -140,6 +209,11 @@ impl ReviewNote {
         }
         if self.objects.len() > MAX_NOTE_OBJECTS {
             return Err(ReviewNoteError::TooManyObjects);
+        }
+        if self.reply.chars().count() > MAX_NOTE_REPLY_CHARS
+            || self.response.chars().count() > MAX_NOTE_REPLY_CHARS
+        {
+            return Err(ReviewNoteError::ReplyTooLong);
         }
         Ok(self)
     }
@@ -260,6 +334,59 @@ impl ProjectDocument {
         let index = index.min(self.review_notes.len());
         self.review_notes.insert(index, note);
         Ok(())
+    }
+
+    /// Applies `update` to a note and returns the note as it now is, plus
+    /// whether anything changed. The note is left alone when the result
+    /// would be invalid.
+    ///
+    /// Changing the severity, title, detail or response is the author
+    /// reviewing the note against the current design, so the note then
+    /// records the current revision. The user's status and reply leave it.
+    ///
+    /// # Errors
+    /// Returns [`ReviewNoteError`] when the note is missing, the update is
+    /// empty or the result breaks a limit.
+    pub fn update_review_note(
+        &mut self,
+        id: ReviewNoteId,
+        update: ReviewNoteUpdate,
+    ) -> Result<(ReviewNote, bool), ReviewNoteError> {
+        if update.is_empty() {
+            return Err(ReviewNoteError::EmptyUpdate);
+        }
+        let index = self.note_index(id)?;
+        let current = &self.review_notes[index];
+        let mut next = current.clone();
+        let reviewed = update.severity.is_some()
+            || update.title.is_some()
+            || update.detail.is_some()
+            || update.response.is_some();
+        if let Some(severity) = update.severity {
+            next.severity = severity;
+        }
+        if let Some(title) = update.title {
+            next.title = title;
+        }
+        if let Some(detail) = update.detail {
+            next.detail = detail;
+        }
+        if let Some(status) = update.status {
+            next.status = status;
+        }
+        if let Some(reply) = update.reply {
+            next.reply = reply;
+        }
+        if let Some(response) = update.response {
+            next.response = response;
+        }
+        let mut next = next.normalized()?;
+        if reviewed && next != *current {
+            next.revision = Some(self.revision);
+        }
+        let changed = next != *current;
+        self.review_notes[index] = next.clone();
+        Ok((next, changed))
     }
 
     fn note_index(&self, id: ReviewNoteId) -> Result<usize, ReviewNoteError> {
@@ -408,6 +535,115 @@ mod tests {
             Err(ReviewNoteError::NotFound(unknown))
         );
         assert_eq!(titles(&document), ["a", "b", "c"]);
+    }
+
+    #[test]
+    fn notes_take_a_status_reply_and_response() {
+        let mut document = document();
+        let id = document
+            .add_review_notes(vec![new_note(ReviewNoteSeverity::Warning, "Bulk cap")], 0)
+            .unwrap()[0]
+            .id;
+        let (note, changed) = document
+            .update_review_note(
+                id,
+                ReviewNoteUpdate {
+                    status: Some(ReviewNoteStatus::ReviewRequested),
+                    reply: Some("  The module has one already. ".into()),
+                    ..ReviewNoteUpdate::default()
+                },
+            )
+            .unwrap();
+        assert!(changed);
+        assert_eq!(note.status, ReviewNoteStatus::ReviewRequested);
+        assert_eq!(note.reply, "The module has one already.");
+        assert_eq!(note.title, "Bulk cap", "absent fields are kept");
+
+        let (note, _) = document
+            .update_review_note(
+                id,
+                ReviewNoteUpdate {
+                    severity: Some(ReviewNoteSeverity::Info),
+                    status: Some(ReviewNoteStatus::Open),
+                    response: Some("Agreed; the module's 10 µF is enough.".into()),
+                    ..ReviewNoteUpdate::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(note.severity, ReviewNoteSeverity::Info);
+        assert_eq!(note.reply, "The module has one already.");
+        assert_eq!(document.review_notes[0], note);
+
+        let (_, changed) = document
+            .update_review_note(
+                id,
+                ReviewNoteUpdate {
+                    status: Some(ReviewNoteStatus::Open),
+                    ..ReviewNoteUpdate::default()
+                },
+            )
+            .unwrap();
+        assert!(!changed);
+    }
+
+    #[test]
+    fn invalid_updates_leave_the_note_alone() {
+        let mut document = document();
+        let id = document
+            .add_review_notes(vec![new_note(ReviewNoteSeverity::Warning, "Keep")], 0)
+            .unwrap()[0]
+            .id;
+        let before = document.review_notes.clone();
+        assert_eq!(
+            document.update_review_note(id, ReviewNoteUpdate::default()),
+            Err(ReviewNoteError::EmptyUpdate)
+        );
+        assert_eq!(
+            document.update_review_note(
+                id,
+                ReviewNoteUpdate {
+                    status: Some(ReviewNoteStatus::Acknowledged),
+                    reply: Some("x".repeat(MAX_NOTE_REPLY_CHARS + 1)),
+                    ..ReviewNoteUpdate::default()
+                }
+            ),
+            Err(ReviewNoteError::ReplyTooLong)
+        );
+        assert_eq!(
+            document.update_review_note(
+                id,
+                ReviewNoteUpdate {
+                    title: Some(" ".into()),
+                    ..ReviewNoteUpdate::default()
+                }
+            ),
+            Err(ReviewNoteError::BlankTitle)
+        );
+        assert_eq!(document.review_notes, before);
+    }
+
+    #[test]
+    fn open_notes_serialize_without_status_reply_or_response() {
+        let mut document = document();
+        document
+            .add_review_notes(vec![new_note(ReviewNoteSeverity::Info, "Plain")], 0)
+            .unwrap();
+        let json = serde_json::to_value(&document.review_notes[0]).unwrap();
+        assert!(json.get("status").is_none());
+        assert!(json.get("reply").is_none());
+        assert!(json.get("response").is_none());
+        let id = document.review_notes[0].id;
+        document
+            .update_review_note(
+                id,
+                ReviewNoteUpdate {
+                    status: Some(ReviewNoteStatus::ReviewRequested),
+                    ..ReviewNoteUpdate::default()
+                },
+            )
+            .unwrap();
+        let json = serde_json::to_value(&document.review_notes[0]).unwrap();
+        assert_eq!(json["status"], "review_requested");
     }
 
     #[test]

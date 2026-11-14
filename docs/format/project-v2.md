@@ -91,7 +91,9 @@ omitted when empty.
     "detail": "Swap the wires on pins 4 and 5.",
     "objects": [{ "kind": "component", "id": "…" }],
     "created_ms": 1794614400000,
-    "revision": 41
+    "revision": 41,
+    "status": "review_requested",
+    "reply": "Both ends use pin 4 for B; see the bus drawing."
   }
 ]
 ```
@@ -103,6 +105,10 @@ omitted when empty.
 - `revision` is the document `revision` when the note was added: the design
   it describes. Adding, removing or reordering notes does not change the
   document revision. It is optional, for notes written before it was recorded.
+- `status` is `acknowledged` or `review_requested`, and is omitted while the
+  note is `open`. `reply` is the user's answer and `response` the agent's,
+  each plain text up to 2000 characters and omitted when empty
+  ([ADR 0016](../adr/0016-review-note-replies.md)).
 - `detail` and `objects` are optional. `objects` uses the diagnostics'
   `{ kind, id }` references; a reference to an object that no longer exists
   is kept and shown as missing.

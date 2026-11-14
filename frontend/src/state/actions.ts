@@ -26,6 +26,7 @@ import {
   pickProjectPath,
   redoProject,
   removeReviewNote,
+  updateReviewNote,
   restoreProjectCommit,
   saveProject,
   suggestProjectRoute,
@@ -40,6 +41,7 @@ import {
   type PinRef,
   type ProjectView,
   type RecentProject,
+  type ReviewNoteStatus,
   type Rotation,
   type RouteProposal,
   type Side,
@@ -106,6 +108,8 @@ let refreshQueued = false;
 let knownOperationIds: Set<string> | undefined;
 /** Every review note seen in the open project, so restores are not news. */
 let knownNoteIds: Set<string> | undefined;
+/** The agent's last seen response per note, to notice new answers. */
+let knownResponses = new Map<string, string>();
 
 function rememberPath(project: ProjectView, path: string | null): void {
   if (path) {
@@ -240,10 +244,30 @@ function announceNewNotes(
   next: ProjectView,
 ): void {
   const notes = next.review_notes ?? [];
+  const responses = new Map(
+    notes.map((note) => [note.id, note.response ?? ""]),
+  );
   if (!knownNoteIds || !previous || previous.project_id !== next.project_id) {
     knownNoteIds = new Set(notes.map((note) => note.id));
+    knownResponses = responses;
     return;
   }
+  // Only agents write responses, so a new one is the agent answering.
+  const answered = notes.filter(
+    (note) =>
+      knownNoteIds!.has(note.id) &&
+      note.response &&
+      note.response !== knownResponses.get(note.id),
+  );
+  knownResponses = responses;
+  if (answered.length)
+    toast(
+      "agent",
+      answered.length === 1
+        ? `The agent answered “${answered[0]!.title}”`
+        : `The agent answered ${answered.length} review notes`,
+      { actions: [{ label: "Show", run: showNotes }] },
+    );
   // Only agents add notes; the editor only removes, moves and restores them.
   const fresh = notes.filter((note) => !knownNoteIds!.has(note.id));
   for (const note of fresh) knownNoteIds.add(note.id);
@@ -425,6 +449,35 @@ export async function deleteReviewNote(noteId: string): Promise<void> {
     });
     await refresh();
   }
+}
+
+/**
+ * Sets a note's status and/or reply (ADR 0016). The card shows the change at
+ * once; the refresh that follows confirms it. Returns whether it was saved.
+ */
+export async function answerNote(
+  noteId: string,
+  update: { status?: ReviewNoteStatus; reply?: string },
+): Promise<boolean> {
+  const current = view.peek();
+  if (current?.review_notes)
+    view.value = {
+      ...current,
+      review_notes: current.review_notes.map((note) =>
+        note.id === noteId ? { ...note, ...update } : note,
+      ),
+    };
+  let saved = true;
+  try {
+    await updateReviewNote(noteId, update);
+  } catch (error) {
+    saved = false;
+    toast("error", "Could not update the note", {
+      detail: errorMessage(error),
+    });
+  }
+  await refresh();
+  return saved;
 }
 
 /**

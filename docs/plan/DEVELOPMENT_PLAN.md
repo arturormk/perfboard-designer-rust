@@ -384,7 +384,8 @@ Implementation note: `get_assembly_plan` arrived with Milestone 6, once the
 authoritative derived plan was defined. `rename_project` was added later; like
 the inspector rename, it is revision-checked but not an undo step, because the
 project name is document metadata outside the design snapshots.
-`add_review_notes`, `get_review_notes`, `move_review_note` and `remove_review_notes` came later
+`add_review_notes`, `get_review_notes`, `update_review_note`, `move_review_note`
+and `remove_review_notes` came later
 still: notes are project metadata too, and their writes need no expected
 revision because they act on note IDs
 ([ADR 0015](../adr/0015-review-notes.md)).

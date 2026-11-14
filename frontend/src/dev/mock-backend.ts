@@ -803,6 +803,18 @@ export async function installMockBackend(): Promise<void> {
     );
     noteChanged();
   };
+  // `__perfboardRespond(id, text)` plays the agent answering a reply.
+  (window as unknown as Record<string, unknown>).__perfboardRespond = (
+    id: string,
+    response: string,
+  ) => {
+    const note = doc.review_notes?.find((item) => item.id === id);
+    if (!note) return;
+    note.response = response;
+    delete note.status;
+    note.revision = doc.revision;
+    noteChanged();
+  };
   const view = (): ProjectView => ({
     schema_version: 2,
     project_id: doc.project_id,
@@ -1059,6 +1071,24 @@ export async function installMockBackend(): Promise<void> {
       doc.review_notes = rest;
       noteChanged();
     },
+    update_review_note: ({ noteId, update }) => {
+      const notes = doc.review_notes ?? [];
+      const index = notes.findIndex((note) => note.id === noteId);
+      if (index < 0) throw new Error(`review note ${noteId} was not found`);
+      const changes = update as Partial<ReviewNote>;
+      if ((changes.reply?.trim().length ?? 0) > 2000)
+        throw new Error("review note replies are limited to 2000 characters");
+      const note: ReviewNote = {
+        ...notes[index]!,
+        ...changes,
+        reply: changes.reply?.trim() ?? notes[index]!.reply,
+      };
+      if (note.status === "open") delete note.status;
+      if (!note.reply) delete note.reply;
+      notes[index] = note;
+      noteChanged();
+      return note;
+    },
     insert_review_note: ({ note, index }) => {
       const notes = doc.review_notes ?? [];
       notes.splice(index as number, 0, note as ReviewNote);
@@ -1301,14 +1331,24 @@ function demoNotes(design: Design, revision: number): ReviewNote[] {
       title: "No bulk capacitor on the 5 V rail",
       detail:
         "Add 10 µF near where power enters the board to absorb transceiver switching current.",
+      status: "acknowledged",
     },
     {
       severity: "suggestion",
       title: "Leave room to probe the bus",
       detail: "A two-pin header on A/B makes scope access easy.",
       objects: ref("component", components[1]?.id),
+      reply: "The RJ45 already breaks out A/B; I probe there.",
+      response:
+        "Agreed: the jack's pins 1 and 2 are reachable from the top, so a header adds little. Delete this note if you agree.",
     },
-    { severity: "info", title: "Termination is assumed off-board" },
+    {
+      severity: "info",
+      title: "Termination is assumed off-board",
+      status: "review_requested",
+      reply:
+        "Only the two end units have the 120 Ω fitted; the others had it removed.",
+    },
     {
       severity: "warning",
       title: "Reference to a part that was removed",

@@ -4,7 +4,7 @@
 use perfboard_core::{BoardSize, ObjectReference, ProjectId};
 use perfboard_project::{
     Board, NewReviewNote, OperationRequest, ProjectDocument, ProjectSession, ProjectView,
-    ReviewNoteSeverity,
+    ReviewNoteSeverity, ReviewNoteStatus, ReviewNoteUpdate,
 };
 
 fn document() -> ProjectDocument {
@@ -141,4 +141,58 @@ fn design_edits_count_as_unsaved_and_opening_resets_the_baseline() {
     assert!(session.has_unsaved_changes());
     session.replace_with_file(document(), Some("/tmp/other.perfboard.json".into()));
     assert!(!session.has_unsaved_changes());
+}
+
+#[test]
+fn a_reply_keeps_the_revision_and_a_response_records_the_current_one() {
+    let mut session = ProjectSession::new(document());
+    let (added, _) = session
+        .add_review_notes(vec![note(ReviewNoteSeverity::Warning, "Add a bulk cap")])
+        .unwrap();
+    let id = added[0].id;
+    let request: OperationRequest = serde_json::from_value(serde_json::json!({
+        "operation_id": uuid::Uuid::new_v4(),
+        "expected_revision": 0,
+        "origin": "user",
+        "type": "resize_board",
+        "holes_x": 12,
+        "holes_y": 10,
+        "offset_x": 0,
+        "offset_y": 0
+    }))
+    .unwrap();
+    session.apply(request).unwrap();
+    session.mark_saved("/tmp/notes.perfboard.json".into());
+
+    let (note, event) = session
+        .update_review_note(
+            id,
+            ReviewNoteUpdate {
+                status: Some(ReviewNoteStatus::ReviewRequested),
+                reply: Some("I added one at the regulator.".into()),
+                ..ReviewNoteUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(event.summary, "Updated review note “Add a bulk cap”");
+    assert_eq!(note.revision, added[0].revision, "a reply is not a review");
+    assert!(session.has_unsaved_changes());
+    assert!(session.document().undo_stack.len() == 1, "not an undo step");
+
+    let (note, _) = session
+        .update_review_note(
+            id,
+            ReviewNoteUpdate {
+                status: Some(ReviewNoteStatus::Open),
+                response: Some("Confirmed; it covers this.".into()),
+                ..ReviewNoteUpdate::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(note.revision, Some(session.document().revision));
+    assert_eq!(note.reply, "I added one at the regulator.");
+
+    let json = serde_json::to_value(session.document()).unwrap();
+    let read: ProjectDocument = serde_json::from_value(json).unwrap();
+    assert_eq!(read.review_notes[0], note);
 }

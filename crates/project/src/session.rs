@@ -11,7 +11,7 @@ use thiserror::Error;
 use crate::{
     Commit, Design, DocumentRevision, HistoryActionResult, NewReviewNote, OperationError,
     OperationOrigin, OperationPayload, OperationRequest, OperationResult, ProjectDocument,
-    ReviewNote, ReviewNoteError, RevisionError, SemanticDiff, WorkingChange,
+    ReviewNote, ReviewNoteError, ReviewNoteUpdate, RevisionError, SemanticDiff, WorkingChange,
     operations::apply_operation_untracked,
 };
 
@@ -342,6 +342,22 @@ impl ProjectSession {
             "Review note order is unchanged"
         };
         Ok(self.event("review_notes", summary.into()))
+    }
+
+    /// Changes a note's text, severity, status, reply or response.
+    pub fn update_review_note(
+        &mut self,
+        id: ReviewNoteId,
+        update: ReviewNoteUpdate,
+    ) -> Result<(ReviewNote, SessionChangeEvent), SessionError> {
+        let (note, changed) = self.document.update_review_note(id, update)?;
+        let summary = if changed {
+            self.notes_generation += 1;
+            format!("Updated review note “{}”", note.title)
+        } else {
+            format!("Review note “{}” is unchanged", note.title)
+        };
+        Ok((note, self.event("review_notes", summary)))
     }
 
     pub fn insert_review_note(
