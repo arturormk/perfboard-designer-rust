@@ -1486,12 +1486,15 @@ struct CheckStep {
     probes: Vec<Probe>,
 }
 
-/// A net's component pins (bridges excluded), as display names and holes.
+/// A net's component pins (bridges excluded), as display names and holes, in
+/// designator order: pins are keyed by random component IDs, so their set
+/// order means nothing to the reader.
 fn net_test_points(
     context: &Context<'_>,
     net: &perfboard_core::ElectricalNet,
 ) -> Vec<(String, RoutePos)> {
-    net.pins
+    let mut points: Vec<(String, RoutePos)> = net
+        .pins
         .iter()
         .filter(|pin| {
             context
@@ -1501,7 +1504,48 @@ fn net_test_points(
         .filter_map(|pin| {
             pin_position(context.design, pin).map(|hole| (context.pin_display(pin), hole))
         })
-        .collect()
+        .collect();
+    points.sort_by(|left, right| natural_cmp(&left.0, &right.0).then(left.1.cmp(&right.1)));
+    points
+}
+
+/// Orders text with embedded numbers by value, so `R2` comes before `R10`.
+fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
+    fn runs(text: &str) -> impl Iterator<Item = &str> {
+        let mut rest = text;
+        std::iter::from_fn(move || {
+            let first = rest.chars().next()?;
+            let digit = first.is_ascii_digit();
+            let end = rest
+                .find(|c: char| c.is_ascii_digit() != digit)
+                .unwrap_or(rest.len());
+            let (run, tail) = rest.split_at(end);
+            rest = tail;
+            Some(run)
+        })
+    }
+    let mut left_runs = runs(left);
+    let mut right_runs = runs(right);
+    loop {
+        match (left_runs.next(), right_runs.next()) {
+            (None, None) => return left.cmp(right),
+            (None, Some(_)) => return std::cmp::Ordering::Less,
+            (Some(_), None) => return std::cmp::Ordering::Greater,
+            (Some(a), Some(b)) => {
+                let numeric = a.starts_with(|c: char| c.is_ascii_digit())
+                    && b.starts_with(|c: char| c.is_ascii_digit());
+                let order = if numeric {
+                    let (a, b) = (a.trim_start_matches('0'), b.trim_start_matches('0'));
+                    a.len().cmp(&b.len()).then_with(|| a.cmp(b))
+                } else {
+                    a.cmp(b)
+                };
+                if order != std::cmp::Ordering::Equal {
+                    return order;
+                }
+            }
+        }
+    }
 }
 
 fn check_steps(context: &Context<'_>) -> Vec<CheckStep> {
@@ -1516,12 +1560,15 @@ fn check_steps(context: &Context<'_>) -> Vec<CheckStep> {
         ],
         probes: Vec::new(),
     }];
-    let accepted: Vec<&perfboard_core::ElectricalNet> = context
+    // Nets are keyed by random IDs; list them by name.
+    let mut accepted: Vec<&perfboard_core::ElectricalNet> = context
         .design
         .nets
         .values()
         .filter(|net| net.state == ConnectionState::Accepted)
         .collect();
+    accepted
+        .sort_by(|left, right| natural_cmp(&left.name, &right.name).then(left.id.cmp(&right.id)));
     let continuity: Vec<Probe> = accepted
         .iter()
         .filter_map(|net| {
@@ -1604,6 +1651,20 @@ fn check_steps(context: &Context<'_>) -> Vec<CheckStep> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn natural_order_compares_numbers_by_value() {
+        let mut names = vec![
+            "R10 · 1", "R2 · 10", "R2 · 2", "C1", "R1 · 1", "R01 · 1", "r1",
+        ];
+        names.sort_by(|left, right| super::natural_cmp(left, right));
+        assert_eq!(
+            names,
+            [
+                "C1", "R01 · 1", "R1 · 1", "R2 · 2", "R2 · 10", "R10 · 1", "r1"
+            ]
+        );
+    }
 
     const fn p(x2: i64, y2: i64) -> RoutePos {
         RoutePos::new(x2, y2)
