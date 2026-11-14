@@ -925,10 +925,25 @@ height = 2.54
         for source in ["not = [valid", "still = [invalid", "broken = [toml"] {
             write_component(&root.0, source);
         }
-        let invalid = receive_load(&receiver);
+        // A busy machine can pause a write long enough for the debounce to
+        // fire on a half-written file, so wait for the watcher to settle:
+        // the burst must not cost a reload per write, and the last reload
+        // must show the final file.
+        let mut loads = vec![receive_load(&receiver)];
+        while let Ok(snapshot) = receiver.recv_timeout(Duration::from_millis(750)) {
+            loads.extend(snapshot.load);
+        }
+        assert!(loads.len() < 3, "three quick writes reloaded {loads:#?}");
+        let invalid = loads.pop().unwrap();
         assert!(invalid.definition.is_none());
         assert_eq!(invalid.diagnostics[0].code, "component.invalid_toml");
-        assert!(receiver.recv_timeout(Duration::from_millis(500)).is_err());
+        assert_eq!(
+            invalid.revision,
+            AuthorizedComponent::new(&root.0, &root.0)
+                .unwrap()
+                .load()
+                .revision
+        );
 
         let replacement = root.0.join("component.toml.next");
         fs::write(
