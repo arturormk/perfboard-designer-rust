@@ -9,6 +9,13 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Much smaller project files. Undo and redo history is now saved as JSON
+  patches between neighbouring designs instead of full copies, and commits no
+  longer copy the undo stack with its snapshots. A 40.7 MB project with three
+  commits now saves as 778 KB. This is project format v2
+  ([ADR 0013](docs/adr/0013-patch-encoded-history.md)): v1 files open and are
+  upgraded on the next save, but builds from before this change cannot open
+  v2 files.
 - `quickstart.sh` builds the executable or `.deb`, `.rpm` and AppImage
   bundles, and the release workflow uses it. Bundles include the component
   library, which installed builds now load from their resources (before, a

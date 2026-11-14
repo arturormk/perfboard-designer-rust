@@ -646,7 +646,7 @@ function draftCommands(
     select_runtime_component: () => open(largest()),
     new_component_draft: () =>
       open({
-        schema_version: 1,
+        schema_version: 2,
         id: "",
         definition_version: "1.0.0",
         name: "New part",
@@ -722,7 +722,7 @@ export async function installMockBackend(): Promise<void> {
       });
   };
   const view = (): ProjectView => ({
-    schema_version: 1,
+    schema_version: 2,
     project_id: doc.project_id,
     name: doc.name,
     revision: doc.revision,
@@ -770,7 +770,7 @@ export async function installMockBackend(): Promise<void> {
     get_bootstrap_info: () => ({
       app_name: "Perfboard Designer",
       version: "browser preview",
-      schema_version: 1,
+      schema_version: 2,
     }),
     get_project_view: () => view(),
     get_project: () => clone(doc),
@@ -902,7 +902,7 @@ export async function installMockBackend(): Promise<void> {
     }),
     create_project: ({ name, holesX, holesY, pitchMm }) => {
       doc = {
-        schema_version: 1,
+        schema_version: 2,
         project_id: crypto.randomUUID(),
         name: name as string,
         revision: 1,

@@ -287,8 +287,8 @@ function HistoryDialog() {
               use about <strong>{formatBytes(bytes.value)}</strong>
             </>
           )}
-          . Each step keeps a full snapshot of the design, and all of it is
-          saved in the project file.
+          in the project file. Each step is saved as the changes it made, not as
+          a copy of the whole design.
         </p>
         <p class="field-note">
           Trimming keeps the newest steps. Commits and the current design are

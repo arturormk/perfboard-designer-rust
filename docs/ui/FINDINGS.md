@@ -84,3 +84,6 @@ helpers (`editor/*`, `component-designer/*`) and the typed command layer
 - **Undo snapshots dominate file size.** Each undo entry stores two full
   designs. The History dialog shows the size and can trim it, but a delta
   representation in Rust would fix the cause.
+  *Resolved in project format v2 ([ADR 0013](../adr/0013-patch-encoded-history.md)):
+  the file stores undo/redo snapshots as JSON patches and commits no longer
+  copy them; a 40.7 MB project now saves as 778 KB.*

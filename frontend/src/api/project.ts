@@ -303,9 +303,10 @@ export interface ProjectDocument {
   commits?: Record<string, Commit>;
   commit_order?: string[];
   head_commit?: string;
-  working_base?: ProjectDocument["design"];
-  undo_stack?: WorkingChange[];
-  redo_stack?: WorkingChange[];
+  /** JSON patch from `design` to the design at the last commit (ADR 0013). */
+  working_base_patch?: JsonPatchOperation[];
+  undo_stack?: StoredChange[];
+  redo_stack?: StoredChange[];
 }
 
 export interface Commit {
@@ -317,16 +318,29 @@ export interface Commit {
   source_revision: number;
   design: ProjectDocument["design"];
   validation?: Diagnostic[];
-  changes?: WorkingChange[];
+  changes?: CommittedChange[];
 }
-export interface WorkingChange {
+export interface CommittedChange {
   operation_id: string;
   origin: "user" | "mcp" | "import" | "system_derived";
   rationale?: string;
   summary: string;
   payloads: OperationPayload[];
-  before: ProjectDocument["design"];
-  after: ProjectDocument["design"];
+}
+/** One RFC 6902 operation, as produced by the backend's history encoding. */
+export interface JsonPatchOperation {
+  op: "add" | "remove" | "replace" | "move" | "copy" | "test";
+  path: string;
+  from?: string;
+  value?: unknown;
+}
+/**
+ * An undo/redo entry as serialized: its snapshots are JSON patches chained
+ * from the current design (see ADR 0013 for the order).
+ */
+export interface StoredChange extends CommittedChange {
+  before_patch?: JsonPatchOperation[];
+  after_patch?: JsonPatchOperation[];
 }
 export type ChangeKind =
   "added" | "removed" | "modified" | "moved" | "rotated" | "route_changed";
@@ -685,7 +699,7 @@ export function pickProjectPath(
 /** Undo/redo entry without design snapshots (see `get_project_view`). */
 export interface ChangeSummary {
   operation_id: string;
-  origin: WorkingChange["origin"];
+  origin: CommittedChange["origin"];
   rationale?: string;
   summary: string;
   diff: SemanticDiff;
@@ -698,7 +712,7 @@ export interface CommitSummary {
   timestamp_ms: number;
   source_revision: number;
   change_count: number;
-  origins: WorkingChange["origin"][];
+  origins: CommittedChange["origin"][];
   rationales: string[];
 }
 /** Lightweight read model used by the editor after every change. */

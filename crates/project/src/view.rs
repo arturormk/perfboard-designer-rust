@@ -1,9 +1,11 @@
 //! Lightweight read model of a project for interactive clients.
 //!
-//! A saved [`ProjectDocument`] embeds a full design snapshot in every undo and
-//! redo entry and in every commit. Shipping all of that to the editor after
-//! each edit is wasteful once a project has some history, so the editor reads
-//! this view instead: the current design plus compact summaries of history.
+//! A [`ProjectDocument`] carries its whole history: a design snapshot per
+//! commit and the undo and redo stacks (patch-encoded when serialized, but
+//! still far larger than the current design). Shipping all of that to the
+//! editor after each edit is wasteful once a project has some history, so the
+//! editor reads this view instead: the current design plus compact summaries
+//! of history.
 
 use perfboard_core::{CommitId, Diagnostic, ProjectId};
 use serde::{Deserialize, Serialize};
@@ -127,16 +129,11 @@ impl ProjectView {
     }
 }
 
-/// Approximate serialized size of the undo and redo stacks in bytes.
+/// Size in bytes of the undo and redo stacks as they are saved (compact JSON,
+/// patch-encoded per ADR 0013).
 #[must_use]
 pub fn undo_history_bytes(document: &ProjectDocument) -> usize {
-    let count = |stack: &[WorkingChange]| {
-        stack
-            .iter()
-            .map(|change| serde_json::to_vec(change).map_or(0, |bytes| bytes.len()))
-            .sum::<usize>()
-    };
-    count(&document.undo_stack) + count(&document.redo_stack)
+    crate::stored::encoded_history_bytes(document)
 }
 
 #[cfg(test)]

@@ -19,9 +19,25 @@ pub struct Commit {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub validation: Vec<Diagnostic>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub changes: Vec<WorkingChange>,
+    pub changes: Vec<CommittedChange>,
 }
 
+/// What a commit records about each working-copy change it absorbed: the
+/// operations and their provenance, without design snapshots. The commit's
+/// own `design` is the result of all of them.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct CommittedChange {
+    pub operation_id: OperationId,
+    pub origin: OperationOrigin,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rationale: Option<String>,
+    pub summary: String,
+    pub payloads: Vec<OperationPayload>,
+}
+
+/// One atomic working-copy change. In memory it holds full before/after
+/// snapshots (ADR 0005); the persisted form stores them as JSON patches and
+/// recomputes the validation reports on load (ADR 0013).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct WorkingChange {
     pub operation_id: OperationId,
@@ -36,6 +52,20 @@ pub struct WorkingChange {
     pub before_validation: Vec<Diagnostic>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub after_validation: Vec<Diagnostic>,
+}
+
+impl WorkingChange {
+    /// The snapshot-free record of this change kept by a commit.
+    #[must_use]
+    pub fn record(&self) -> CommittedChange {
+        CommittedChange {
+            operation_id: self.operation_id,
+            origin: self.origin,
+            rationale: self.rationale.clone(),
+            summary: self.summary.clone(),
+            payloads: self.payloads.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -208,7 +238,7 @@ impl ProjectDocument {
             source_revision: self.revision,
             design: self.design.clone(),
             validation: self.validation.clone(),
-            changes: self.undo_stack.clone(),
+            changes: self.undo_stack.iter().map(WorkingChange::record).collect(),
         };
         self.commits.insert(id, commit.clone());
         self.commit_order.push(id);

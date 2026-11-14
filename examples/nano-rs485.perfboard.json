@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "project_id": "018f1000-0000-7000-8000-000000000100",
   "name": "Nano RS-485 controller",
   "revision": 14,

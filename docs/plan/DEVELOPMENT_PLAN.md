@@ -55,7 +55,7 @@ These choices should be recorded as short ADRs if implementation experience requ
 | Async boundary | Session actor serializing commands | Gives UI and MCP one ordering point and makes expected-revision conflicts explicit. |
 | Routing | Deterministic A* with fixed neighbor ordering and integer costs | Reproducible suggestions and tests. |
 | Persistence | Schema-versioned project document with atomic replace and backup | Human-inspectable, portable, and resilient to interrupted writes. |
-| Revisions | Full snapshots initially | Projects are small; simplicity and recoverability are more valuable than storage optimization. |
+| Revisions | Full snapshots in memory, patch-encoded in the file (ADR 0013) | Snapshots keep undo and restore simple; storing them as patches keeps files close to the size of the design. |
 | Errors | Stable error/warning codes plus human-readable messages | UI and MCP can behave consistently without parsing prose. |
 
 Do not commit to a frontend framework, IPC implementation, or exact routing weights without a small proof of concept. Those are replaceable adapters or policy values; the serialized domain model and operation semantics are harder to change.
@@ -535,7 +535,7 @@ Prefer small vertical pull requests. Avoid landing a large domain model with no 
 | Router state space grows unexpectedly | Fixed half-grid resolution, intended small-board limits, bounded search, profiling fixture, and clear no-route diagnostics. |
 | Routing weights produce surprising paths | Centralized named costs, deterministic cost breakdowns, regression fixtures, and manual override. |
 | Library changes break old projects | Embed immutable component snapshots and make upgrades explicit. |
-| Undo/history semantics become inconsistent | All changes are operations; transaction tests; full revision snapshots for version 1. |
+| Undo/history semantics become inconsistent | All changes are operations; transaction tests; full revision snapshots in memory (ADR 0005), patch-encoded on disk (ADR 0013). |
 | UI and MCP race | Single session actor plus expected-revision compare-and-swap semantics. |
 | Local MCP endpoint is exposed too broadly | Local-only IPC, per-session endpoint/token, narrow operation protocol, no general filesystem API. |
 | Assembly planner overstates certainty | Label lengths as estimates, distinguish required dependencies from heuristics, and explain warnings. |

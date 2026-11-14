@@ -109,7 +109,7 @@ src/
 | `get_net_connectivity` | Per-net islands of electrically joined pins |
 | `get_commit_design` | One commit's design, for comparison |
 | `rename_project` | Rename the project (revision-checked, not an undo step; also an MCP tool) |
-| `get_undo_history_bytes` | Size of stored undo snapshots |
+| `get_undo_history_bytes` | Saved size of the undo/redo stacks (patch-encoded, ADR 0013) |
 | `pick_project_path` | Native open/save dialog (`tauri-plugin-dialog`) |
 | `export_pdf` | Save page SVGs as a true-scale PDF and open it (`tauri-plugin-opener`) |
 

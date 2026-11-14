@@ -10,7 +10,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-pub const PROJECT_SCHEMA_VERSION: SchemaVersion = SchemaVersion(1);
+pub const PROJECT_SCHEMA_VERSION: SchemaVersion = SchemaVersion(2);
+
+/// Oldest schema version this build still reads (and upgrades on load).
+pub const OLDEST_READABLE_SCHEMA_VERSION: SchemaVersion = SchemaVersion(1);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(transparent)]
@@ -20,26 +23,25 @@ pub struct SchemaVersion(pub u32);
 #[serde(transparent)]
 pub struct DocumentRevision(pub u64);
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+/// The in-memory project document.
+///
+/// History is held as full design snapshots so undo, redo and restore stay
+/// trivial (ADR 0005). Its serialized form, used for files and for the session
+/// transport alike, stores those snapshots as JSON patches instead (ADR 0013);
+/// see `stored.rs` for the `Serialize`/`Deserialize` implementations.
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProjectDocument {
     pub schema_version: SchemaVersion,
     pub project_id: ProjectId,
     pub name: String,
     pub revision: DocumentRevision,
     pub design: Design,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub validation: Vec<Diagnostic>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub commits: BTreeMap<CommitId, crate::Commit>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub commit_order: Vec<CommitId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub head_commit: Option<CommitId>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_base: Option<Design>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub undo_stack: Vec<crate::WorkingChange>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub redo_stack: Vec<crate::WorkingChange>,
 }
 
@@ -341,8 +343,8 @@ impl ProjectDocument {
         Ok(document)
     }
 
-    /// Version 1 stores deterministic validation as a cache, including inside
-    /// revision history. Endpoint half-grid segments used to emit
+    /// Projects store deterministic validation as a cache for the current design
+    /// and each commit. Endpoint half-grid segments used to emit
     /// `route.short_segment`, and component bodies/placement keepouts used to
     /// emit `route.component_clearance`. After those rules changed, otherwise
     /// valid projects could no longer pass the cache consistency check on load.
@@ -352,19 +354,13 @@ impl ProjectDocument {
         remove_retired_route_warnings(&self.design, &mut self.validation);
         for commit in self.commits.values_mut() {
             remove_retired_route_warnings(&commit.design, &mut commit.validation);
-            for change in &mut commit.changes {
-                remove_retired_route_warnings(&change.before, &mut change.before_validation);
-                remove_retired_route_warnings(&change.after, &mut change.after_validation);
-            }
         }
-        for change in self.undo_stack.iter_mut().chain(&mut self.redo_stack) {
-            remove_retired_route_warnings(&change.before, &mut change.before_validation);
-            remove_retired_route_warnings(&change.after, &mut change.after_validation);
-        }
+        // Undo/redo validation reports are recomputed while decoding, so they
+        // never carry retired warnings.
     }
 }
 
-fn calculate_design_validation(design: &Design) -> Vec<Diagnostic> {
+pub(crate) fn calculate_design_validation(design: &Design) -> Vec<Diagnostic> {
     let mut diagnostics = validate_design_placements(
         design.board.size,
         &design.board.features,
@@ -468,9 +464,31 @@ mod tests {
 
     #[test]
     fn permanent_empty_fixture_matches_canonical_snapshot() {
-        let fixture = include_str!("../../../tests/fixtures/project-v1/empty-1x1.perfboard.json");
+        let fixture = include_str!("../../../tests/fixtures/project-v2/empty-1x1.perfboard.json");
         let decoded = ProjectDocument::from_json(fixture).unwrap();
         assert_eq!(to_snapshot_json(&decoded).unwrap(), fixture);
+    }
+
+    #[test]
+    fn version_1_fixture_is_upgraded_on_load() {
+        let v1 = include_str!("../../../tests/fixtures/project-v1/empty-1x1.perfboard.json");
+        let v2 = include_str!("../../../tests/fixtures/project-v2/empty-1x1.perfboard.json");
+        let decoded = ProjectDocument::from_json(v1).unwrap();
+        assert_eq!(decoded.schema_version, PROJECT_SCHEMA_VERSION);
+        assert_eq!(to_snapshot_json(&decoded).unwrap(), v2);
+    }
+
+    #[test]
+    fn unknown_schema_version_is_rejected() {
+        let mut value = serde_json::to_value(empty_project()).unwrap();
+        value["schema_version"] = serde_json::json!(99);
+        assert!(matches!(
+            ProjectDocument::from_json(&value.to_string()),
+            Err(DocumentError::UnsupportedSchema {
+                actual: 99,
+                supported: 2
+            })
+        ));
     }
 
     #[test]

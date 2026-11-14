@@ -1,6 +1,6 @@
 # ADR 0005: Snapshot-based working-copy history
 
-Status: accepted
+Status: accepted; persistence amended by [ADR 0013](0013-patch-encoded-history.md)
 Date: 2026-10-23
 
 ## Context

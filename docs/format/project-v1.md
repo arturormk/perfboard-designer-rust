@@ -1,6 +1,8 @@
 # Project format v1
 
-Status: implemented through Milestone 4
+Status: implemented through Milestone 4. Superseded by
+[version 2](project-v2.md), which changes only how revision history is
+stored; version 1 files are still read and upgraded on load.
 
 Perfboard Designer project files are UTF-8 JSON. The suggested suffix is
 `.perfboard.json`. Writers emit two-space-indented JSON with one trailing

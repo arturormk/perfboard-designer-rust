@@ -9,6 +9,7 @@ pub mod rendering;
 pub mod revisions;
 pub mod routing;
 pub mod session;
+mod stored;
 pub mod view;
 
 pub use assembly::{
@@ -26,7 +27,7 @@ pub use operations::{
 };
 pub use persistence::{PersistenceError, load_project, save_project_atomic};
 pub use rendering::render_design_svg;
-pub use revisions::{Commit, HistoryActionResult, RevisionError, WorkingChange};
+pub use revisions::{Commit, CommittedChange, HistoryActionResult, RevisionError, WorkingChange};
 pub use routing::{RouteError, RouteRequest, RoutingCostConfig, evaluate_route, suggest_route};
 pub use session::{
     ProjectSession, SessionChangeEvent, SessionError, TransactionRequest, TransactionResult,
