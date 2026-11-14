@@ -494,6 +494,8 @@ Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
      parts.
   7. Component-authoring documentation for layers, grants and identifiers.
 
+  Progress: steps 1–4 are done.
+
 Exit criteria:
 
 - All 18 version 1 acceptance criteria in the blueprint have an automated test, a documented manual test, or both.

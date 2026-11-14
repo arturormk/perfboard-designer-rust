@@ -1321,7 +1321,7 @@ mod tests {
             "dev.perfboard.bridge",
             "dev.perfboard.dupont-jumper",
             "dev.perfboard.resistor_3_holes",
-            "dev.perfboard.rj45-connector",
+            "dev.perfboard.dupont-pin",
         ] {
             assert!(
                 definitions.iter().any(|definition| definition.id == id),

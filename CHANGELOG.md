@@ -32,6 +32,12 @@ Development line `v0.1.x`: the first public development builds.
   `component_paths` project field lists other folders under the project's
   folder. The palette labels project parts and flags those that override a
   standard part, and reports library problems below the list.
+- The bundled library now holds only general-purpose parts (bridge, Dupont
+  jumper and pin, two resistors). The sample project's Nano, RS-485 breakouts
+  and RJ45 connector moved to `examples/nano-rs485.perfboard/` and were
+  renamed from `dev.perfboard.*` to `local.*`, a prefix the library now warns
+  about outside the standard library. Projects that placed them keep working
+  from their embedded snapshots.
 - Graphical perfboard editor with component and solder side views, parts,
   nets, wires, bridges, and rails.
 - Saddles: net-free wire ties that hold wires and bundles to the board through

@@ -1,5 +1,5 @@
 schema_version = 1
-id = "dev.perfboard.rj45-connector"
+id = "local.rj45-connector"
 definition_version = "1.0.0"
 name = "RJ45 Connector"
 description = "Eight-pin RJ45-style board connector"
@@ -95,9 +95,15 @@ x = 7
 y = 6
 
 [[wire_keepouts]]
-label = "Connector body"
-min = { x = 0, y = 0 }
-max = { x = 7, y = 6 }
+label = "Pin row"
+
+[wire_keepouts.min]
+x = 0
+y = 6
+
+[wire_keepouts.max]
+x = 7
+y = 6
 
 [[access]]
 direction = "north"

@@ -167,6 +167,34 @@ mod tests {
     }
 
     #[test]
+    fn the_example_project_finds_its_own_parts() {
+        let file = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../examples/nano-rs485.perfboard.json")
+            .canonicalize()
+            .unwrap();
+        let document = perfboard_project::load_project(&file).unwrap();
+        let mut session = ProjectSession::new(document);
+        session.set_file_path(file);
+        let library = current_library(&LibraryInputs::of(&session));
+        assert!(library.diagnostics.is_empty(), "{:?}", library.diagnostics);
+        assert_eq!(library.layers[0].kind, LayerKind::Project);
+        assert_eq!(library.layers[0].component_count, 4);
+        for instance in session.document().design.components.values() {
+            let component = library
+                .get(&instance.definition_id)
+                .unwrap_or_else(|| panic!("{} is not in the library", instance.definition_id));
+            assert!(
+                instance.definition_id.starts_with("local.")
+                    || library.layers[component.layer].kind == LayerKind::Standard,
+                "{} comes from the wrong layer",
+                instance.definition_id
+            );
+        }
+        assert!(library.get("local.rj45-connector").is_some());
+        assert!(library.get("dev.perfboard.bridge").is_some());
+    }
+
+    #[test]
     fn user_layers_are_not_granted_yet() {
         let library = current_library(&LibraryInputs::of(&session(
             Some(vec!["${USER_COMPONENTS}".into()]),

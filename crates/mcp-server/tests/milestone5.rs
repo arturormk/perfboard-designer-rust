@@ -96,7 +96,7 @@ async fn real_stdio_server_reads_and_mutates_the_shared_session() {
         Board::new("board", BoardSize::new(24, 8).unwrap(), 2.54),
     );
     let definition = ComponentDefinition::from_toml(include_str!(
-        "../../../components/rs485-breakout/component.toml"
+        "../../../examples/nano-rs485.perfboard/rs485-breakout/component.toml"
     ))
     .unwrap();
     let handler = Arc::new(TestHandler {
@@ -139,7 +139,7 @@ async fn real_stdio_server_reads_and_mutates_the_shared_session() {
             "definition": definition,
             "instance": {
                 "id": component_id,
-                "definition_id": "dev.perfboard.rs485-breakout",
+                "definition_id": "local.rs485-breakout",
                 "name": "MCP smoke-test RS-485 breakout",
                 "position": { "x": 1, "y": 1 },
                 "rotation": "deg0",

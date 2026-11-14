@@ -47,8 +47,8 @@ fn place_move_rotate_save_and_reopen_example_components() {
     let snapshot = |id: &str| -> ComponentDefinition {
         milestone2_example.design.component_definitions[id].clone()
     };
-    let nano = snapshot("dev.perfboard.nano-like");
-    let rs485 = snapshot("dev.perfboard.rs485-breakout");
+    let nano = snapshot("local.nano-like");
+    let rs485 = snapshot("local.rs485-breakout");
     let nano_id = ComponentInstanceId::from_uuid(
         Uuid::parse_str("018f1000-0000-7000-8000-000000000101").unwrap(),
     );
@@ -71,7 +71,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
             definition: nano,
             instance: ComponentInstance {
                 id: nano_id,
-                definition_id: "dev.perfboard.nano-like".into(),
+                definition_id: "local.nano-like".into(),
                 name: "Controller".into(),
                 position: HolePos::new(2, 2),
                 rotation: Rotation::Deg0,
@@ -107,7 +107,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
             definition: rs485,
             instance: ComponentInstance {
                 id: rs485_id,
-                definition_id: "dev.perfboard.rs485-breakout".into(),
+                definition_id: "local.rs485-breakout".into(),
                 name: "RS-485 transceiver".into(),
                 position: HolePos::new(16, 12),
                 rotation: Rotation::Deg0,

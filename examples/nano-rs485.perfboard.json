@@ -11,9 +11,9 @@
       "pitch_mm": 2.54
     },
     "component_definitions": {
-      "dev.perfboard.nano-like": {
+      "local.nano-like": {
         "schema_version": 1,
-        "id": "dev.perfboard.nano-like",
+        "id": "local.nano-like",
         "definition_version": "1.2.1",
         "name": "Nano",
         "description": "Generic 30-pin Nano-compatible controller module",
@@ -57,9 +57,9 @@
         "access": [{ "min": { "x": 1, "y": -2 }, "max": { "x": 5, "y": -1 }, "direction": "north", "label": "USB connector", "required": true, "allow_board_overhang": true }],
         "documentation": ""
       },
-      "dev.perfboard.rs485-breakout": {
+      "local.rs485-breakout": {
         "schema_version": 1,
-        "id": "dev.perfboard.rs485-breakout",
+        "id": "local.rs485-breakout",
         "definition_version": "1.2.1",
         "name": "RS-485",
         "description": "Small MAX485-style transceiver breakout",
@@ -85,7 +85,7 @@
     "components": {
       "018f1000-0000-7000-8000-000000000101": {
         "id": "018f1000-0000-7000-8000-000000000101",
-        "definition_id": "dev.perfboard.nano-like",
+        "definition_id": "local.nano-like",
         "name": "Controller",
         "position": { "x": 17, "y": 2 },
         "rotation": "deg90",
@@ -94,7 +94,7 @@
       },
       "018f1000-0000-7000-8000-000000000102": {
         "id": "018f1000-0000-7000-8000-000000000102",
-        "definition_id": "dev.perfboard.rs485-breakout",
+        "definition_id": "local.rs485-breakout",
         "name": "RS-485 transceiver",
         "position": { "x": 16, "y": 14 },
         "rotation": "deg180",

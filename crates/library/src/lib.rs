@@ -27,6 +27,9 @@ use scan::{LoadedComponent, scan_directory};
 /// The file extension of project files, stripped to form `${PROJECT_STEM}`.
 pub const PROJECT_FILE_SUFFIX: &str = ".perfboard.json";
 
+/// The `id` prefix reserved for the standard library.
+pub const STANDARD_ID_PREFIX: &str = "dev.perfboard.";
+
 /// One standard-library component supplied in memory, for example compiled
 /// into the binary.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -566,7 +569,48 @@ impl Resolver {
         self.loaded.push((layer, components));
     }
 
-    fn finish(self) -> ResolvedLibrary {
+    /// Warns about project and user parts that take a reserved `id` without
+    /// overriding a standard part: a later standard part could claim it.
+    fn check_reserved_ids(&mut self) {
+        let standard_ids = self
+            .loaded
+            .iter()
+            .filter(|(layer, _)| self.layers[*layer].kind == LayerKind::Standard)
+            .flat_map(|(_, components)| components)
+            .map(|component| component.definition.id.clone())
+            .collect::<HashSet<_>>();
+        let mut warnings = Vec::new();
+        for (layer, components) in &self.loaded {
+            if self.layers[*layer].kind == LayerKind::Standard {
+                continue;
+            }
+            for component in components {
+                let id = &component.definition.id;
+                if id.starts_with(STANDARD_ID_PREFIX) && !standard_ids.contains(id) {
+                    warnings.push((
+                        *layer,
+                        format!(
+                            "component id `{id}` uses the `{STANDARD_ID_PREFIX}` prefix, which is \
+                             reserved for the standard library; use your own prefix or `local.`"
+                        ),
+                        component.directory.clone(),
+                    ));
+                }
+            }
+        }
+        for (layer, message, path) in warnings {
+            self.report(
+                layer,
+                DiagnosticSeverity::Warning,
+                "library.reserved_id",
+                message,
+                path,
+            );
+        }
+    }
+
+    fn finish(mut self) -> ResolvedLibrary {
+        self.check_reserved_ids();
         let mut components: Vec<ResolvedComponent> = Vec::new();
         let mut index: BTreeMap<String, usize> = BTreeMap::new();
         for (layer, loaded) in self.loaded {

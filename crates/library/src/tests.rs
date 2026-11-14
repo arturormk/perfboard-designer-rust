@@ -355,6 +355,32 @@ fn the_first_layer_defining_an_id_wins_and_records_shadows() {
 }
 
 #[test]
+fn reserved_ids_warn_unless_they_override_a_standard_part() {
+    let dir = TestDir::new("reserved");
+    let project = dir.path("p.perfboard.json");
+    let layer = dir.path("p.perfboard");
+    write_component(&layer, "bridge", "dev.perfboard.bridge", "2.0.0");
+    write_component(&layer, "squatter", "dev.perfboard.future-part", "1.0.0");
+    write_component(&layer, "mine", "local.mine", "1.0.0");
+    let library = resolve(
+        None,
+        &ResolveContext {
+            project_file: Some(&project),
+            user_components: None,
+        },
+        &embedded(&[("bridge", "dev.perfboard.bridge")]),
+    );
+    assert_eq!(codes(&library), ["library.reserved_id"]);
+    let warning = &library.diagnostics[0];
+    assert_eq!(warning.severity, DiagnosticSeverity::Warning);
+    assert_eq!(warning.layer, 0);
+    assert_eq!(warning.path, Some(layer.join("squatter")));
+    assert!(warning.message.contains("dev.perfboard.future-part"));
+    // The warning does not stop the part from loading.
+    assert!(library.get("dev.perfboard.future-part").is_some());
+}
+
+#[test]
 fn duplicate_ids_in_one_layer_load_neither() {
     let dir = TestDir::new("duplicate-id");
     let project = dir.path("p.perfboard.json");
