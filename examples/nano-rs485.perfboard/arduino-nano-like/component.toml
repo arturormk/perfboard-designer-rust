@@ -1,6 +1,6 @@
 schema_version = 1
 id = "local.nano-like"
-definition_version = "1.3.0"
+definition_version = "1.4.0"
 name = "Nano"
 designator = "U"
 description = "Generic 30-pin Nano-compatible controller module"

@@ -496,7 +496,8 @@ Required before 1.0 (noted 2026-11-13, with 1.0 now in sight):
      and lists the parts of a picked folder that holds several.
   7. Component-authoring documentation for layers, grants and identifiers.
 
-  Progress: steps 1–6 are done.
+  Progress: all seven steps are done. The authoring guide is
+  `docs/component-libraries.md`.
 
 Exit criteria:
 

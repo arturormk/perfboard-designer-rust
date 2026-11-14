@@ -61,6 +61,9 @@ Development line `v0.1.x`: the first public development builds.
   library definition changed only in name, designator, description,
   documentation or version now refreshes the project's copy instead of
   failing.
+- [Component libraries](docs/component-libraries.md): a guide to where parts
+  live, user-library grants, making and changing parts, identifiers and
+  designators, and library problems.
 - Delete a part from the project's folder or the user library with the trash
   button in the Part designer's list. The folder goes to the system trash, so
   it can be restored. Placed parts keep working from the definition stored

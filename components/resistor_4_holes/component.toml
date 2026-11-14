@@ -1,6 +1,6 @@
 schema_version = 1
 id = "dev.perfboard.resistor_4_holes"
-definition_version = "1.0.0"
+definition_version = "1.1.0"
 name = "1 Watt"
 designator = "R"
 description = "Generic 1 Watt axial resistor with a four-hole body and one terminal hole at each end"

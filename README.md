@@ -159,8 +159,12 @@ wires is at `examples/nano-rs485.perfboard.json`.
 
 ## Component Designer
 
-Switch to Part designer to open an existing component directory or start
-a draft in an empty directory. Metadata, body geometry, rotations, pins,
+Switch to Part designer to see the open project's parts, library by library:
+its own folder (`board.perfboard/` beside `board.perfboard.json`), a user
+library you grant it, and the built-in standard library. Open a part to edit
+it, start a new one, copy a standard part to change it, or open any part
+folder. [Component libraries](docs/component-libraries.md) explains where
+parts live, user-library grants and how to choose identifiers. Metadata, body geometry, rotations, pins,
 occupied holes, keepouts, access regions, and Markdown documentation are edited
 as a separate Rust-validated draft with undo and redo. Pins can be moved on the
 preview and always snap to the integer 2.54 mm grid; the form provides the same

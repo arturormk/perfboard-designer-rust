@@ -163,7 +163,7 @@ mod tests {
         let bridge = fs::read_to_string(checkout_components().join("bridge/component.toml"))
             .unwrap()
             .replace(
-                "definition_version = \"1.0.0\"",
+                "definition_version = \"1.1.0\"",
                 "definition_version = \"7.0.0\"",
             );
         fs::write(part.join("component.toml"), bridge).unwrap();
