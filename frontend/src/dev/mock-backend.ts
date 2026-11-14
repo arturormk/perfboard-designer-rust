@@ -655,6 +655,9 @@ function draftCommands(
         "Save the project first: its own folders sit next to its file.",
       );
     },
+    delete_library_part: () => {
+      throw new Error("The browser preview has no part folders to delete.");
+    },
     new_part_in_layer: () => {
       throw new Error(
         "Save the project first: its own folders sit next to its file.",

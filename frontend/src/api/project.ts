@@ -572,6 +572,10 @@ export function newPartInLayer(
 ): Promise<ComponentViewerSnapshot> {
   return invoke("new_part_in_layer", { target });
 }
+/** Moves a project or user-library part folder to the system trash. */
+export function deleteLibraryPart(directory: string): Promise<void> {
+  return invoke("delete_library_part", { directory });
+}
 export function newComponentDraft(): Promise<ComponentViewerSnapshot | null> {
   return invoke("new_component_draft");
 }

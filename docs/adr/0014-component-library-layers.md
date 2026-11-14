@@ -175,6 +175,14 @@ folder is the user authorizing it, so library authors can edit any folder of
 parts. A picked folder that holds part folders rather than a
 `component.toml` lists its parts instead of failing.
 
+Project and user parts can be deleted from the browser. Deleting moves the
+part folder to the system trash rather than removing it, after a
+confirmation that says how many placed parts in the open project use the
+`id` (they keep their snapshots) and which layer's part with the same `id`
+is offered instead. Only a real folder holding `component.toml` directly
+inside a loaded project or user layer can be deleted; links and standard
+parts cannot.
+
 ### Identifiers
 
 The `dev.perfboard.` prefix is reserved for the standard library. Outside it:

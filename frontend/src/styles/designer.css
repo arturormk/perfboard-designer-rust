@@ -604,3 +604,16 @@ button.browser-open:hover {
   display: flex;
   gap: 8px;
 }
+
+.browser-part .icon-btn.danger {
+  opacity: 0;
+}
+
+.browser-part:hover .icon-btn.danger,
+.browser-part .icon-btn.danger:focus-visible {
+  opacity: 1;
+}
+
+.browser-part .icon-btn.danger:hover:not(:disabled) {
+  color: var(--error);
+}

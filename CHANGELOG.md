@@ -53,6 +53,11 @@ Development line `v0.1.x`: the first public development builds.
   creates a part in the project's folder or user library, and opening a
   folder that holds several parts lists them instead of reporting an error.
   The designer asks before discarding unsaved changes.
+- Delete a part from the project's folder or the user library with the trash
+  button in the Part designer's list. The folder goes to the system trash, so
+  it can be restored. Placed parts keep working from the definition stored
+  in the project, and a standard part the deleted one overrode is offered
+  again.
 - Graphical perfboard editor with component and solder side views, parts,
   nets, wires, bridges, and rails.
 - Saddles: net-free wire ties that hold wires and bundles to the board through

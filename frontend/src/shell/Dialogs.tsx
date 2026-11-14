@@ -350,7 +350,7 @@ function ConfirmDialog() {
   return (
     <Modal title={request.title} onClose={() => request.resolve(false)}>
       <div class="modal-body">
-        <p>{request.message}</p>
+        <p class="confirm-message">{request.message}</p>
         <footer class="modal-foot">
           <button class="btn ghost" onClick={() => request.resolve(false)}>
             Cancel

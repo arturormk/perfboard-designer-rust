@@ -1082,6 +1082,37 @@ fn copy_part_to_layer(
     library_parts::copy_part(component, &layer)
 }
 
+/// Moves a part of the project's folder or user library to the system
+/// trash, closing it first if it is open. Placed parts keep the definition
+/// stored in the project, so no project changes.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn delete_library_part(
+    session: tauri::State<'_, SessionState>,
+    grants: tauri::State<'_, Arc<LibraryGrants>>,
+    state: tauri::State<'_, ComponentViewerState>,
+    app: tauri::AppHandle,
+    directory: PathBuf,
+) -> Result<(), String> {
+    let library = component_library::current_library(&library_inputs(&session, &grants)?);
+    let directory = library_parts::deletable_part(&library, &directory)?;
+    let open = state
+        .active
+        .lock()
+        .map_err(|error| error.to_string())?
+        .as_ref()
+        .is_some_and(|active| active.component.directory().starts_with(&directory));
+    if open {
+        close_runtime_component(state, app)?;
+    }
+    trash::delete(&directory).map_err(|error| {
+        format!(
+            "Could not move {} to the trash: {error}",
+            directory.display()
+        )
+    })
+}
+
 /// Starts a new part in a fresh folder of the project's folder or its user
 /// library.
 #[tauri::command]
@@ -1567,6 +1598,7 @@ pub fn run() {
             new_component_draft,
             reload_runtime_component,
             close_runtime_component,
+            delete_library_part,
             get_component_draft,
             apply_component_draft_operation,
             undo_component_draft,

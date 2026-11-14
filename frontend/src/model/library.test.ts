@@ -6,12 +6,15 @@ import type {
 } from "../api/project";
 import {
   browserSections,
+  deletionEffect,
   layerStatusLabel,
   libraryProblems,
   movedLayer,
   partProvenance,
   withLayer,
   withoutLayer,
+  type BrowserPart,
+  type BrowserSection,
 } from "./library";
 
 const definition = (id: string) => ({ id }) as ComponentDefinition;
@@ -179,5 +182,50 @@ describe("part browser", () => {
       ["Bridge", 0],
     ]);
     expect(browserSections(null)).toEqual([]);
+  });
+});
+
+describe("deletionEffect", () => {
+  const layer = (kind: LibraryLayer["kind"]) =>
+    ({ kind, status: "loaded", component_count: 1 }) as LibraryLayer;
+  const led: BrowserPart = {
+    id: "local.led",
+    name: "LED",
+    directory: "/p/led",
+  };
+  const bridge: BrowserPart = {
+    id: "dev.perfboard.bridge",
+    name: "Bridge",
+    directory: "/p/bridge",
+  };
+  const standard = layer("standard");
+  const sections: BrowserSection[] = [
+    {
+      layerIndex: 0,
+      layer: layer("project"),
+      parts: [led, bridge],
+    },
+    {
+      layerIndex: 1,
+      layer: standard,
+      parts: [{ id: "dev.perfboard.bridge", name: "Bridge", hiddenBy: 0 }],
+    },
+  ];
+
+  it("counts placed copies and names the part offered instead", () => {
+    const placed = ["local.led", "dev.perfboard.bridge", "local.led"];
+    expect(deletionEffect(sections, led, placed)).toEqual({
+      placed: 2,
+      fallback: undefined,
+    });
+    expect(deletionEffect(sections, bridge, placed)).toEqual({
+      placed: 1,
+      fallback: standard,
+    });
+  });
+
+  it("changes nothing offered when the deleted part was already hidden", () => {
+    const hidden = { id: "x", name: "X", directory: "/u/x", hiddenBy: 0 };
+    expect(deletionEffect(sections, hidden, [])).toEqual({ placed: 0 });
   });
 });

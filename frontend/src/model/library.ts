@@ -190,6 +190,29 @@ export function browserSections(
   return sections;
 }
 
+/**
+ * What deleting a part changes, for its confirmation: how many placed parts
+ * use its id (they keep their stored copy) and which layer's part with the
+ * same id is offered instead.
+ */
+export function deletionEffect(
+  sections: BrowserSection[],
+  part: BrowserPart,
+  placedIds: readonly string[],
+): { placed: number; fallback?: LibraryLayer } {
+  const placed = placedIds.filter((id) => id === part.id).length;
+  if (part.hiddenBy !== undefined) return { placed };
+  const fallback = sections.find((section) =>
+    section.parts.some(
+      (other) =>
+        other.id === part.id &&
+        other.directory !== part.directory &&
+        other.hiddenBy !== undefined,
+    ),
+  )?.layer;
+  return { placed, fallback };
+}
+
 export function layerTitle(layer: LibraryLayer): string {
   switch (layer.kind) {
     case "project":

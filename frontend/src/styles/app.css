@@ -2969,3 +2969,7 @@ textarea::placeholder {
 .welcome-recent .recent-list {
   margin: 0 -9px;
 }
+
+.confirm-message {
+  white-space: pre-line;
+}

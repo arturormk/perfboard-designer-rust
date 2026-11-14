@@ -110,6 +110,11 @@ impl AuthorizedComponent {
         Ok(Self { root, directory })
     }
 
+    /// The part's folder, canonical.
+    pub fn directory(&self) -> &Path {
+        &self.directory
+    }
+
     pub fn load(&self) -> RuntimeComponentLoad {
         load_component(&self.root, &self.directory)
     }

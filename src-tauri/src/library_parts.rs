@@ -87,6 +87,33 @@ pub fn authorized_parent(
     }
 }
 
+/// Checks that `directory` is a part that may be deleted: a real folder
+/// holding `component.toml`, directly inside one of the project's loaded
+/// project or user layers. Returns its canonical path.
+///
+/// # Errors
+/// Explains why the folder may not be deleted.
+pub fn deletable_part(library: &ResolvedLibrary, directory: &Path) -> Result<PathBuf, String> {
+    let metadata = fs::symlink_metadata(directory)
+        .map_err(|error| format!("{} is unavailable: {error}", directory.display()))?;
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "{} is a link; remove it in your file manager",
+            directory.display()
+        ));
+    }
+    authorized_parent(library, None, directory)?;
+    let directory = fs::canonicalize(directory)
+        .map_err(|error| format!("{} is unavailable: {error}", directory.display()))?;
+    if !directory.join(DEFINITION_FILE).is_file() {
+        return Err(format!(
+            "{} holds no {DEFINITION_FILE}, so it is not a part",
+            directory.display()
+        ));
+    }
+    Ok(directory)
+}
+
 /// A project or user layer that parts can be written to.
 #[derive(Debug, PartialEq, Eq)]
 pub struct WritableLayer {
@@ -426,6 +453,32 @@ mod tests {
         );
         // Only direct children: not the layer itself, nor deeper folders.
         assert!(authorized_parent(&library, None, &dir.0.join("board.perfboard")).is_err());
+    }
+
+    #[test]
+    fn only_parts_in_editable_layers_can_be_deleted() {
+        let dir = TestDir::new("delete");
+        let project = dir.0.join("board.perfboard.json");
+        write_part(&dir.0.join("board.perfboard/led"), "local.led");
+        fs::create_dir_all(dir.0.join("board.perfboard/notes")).unwrap();
+        write_part(&dir.0.join("elsewhere/other"), "local.other");
+        let library = library(&inputs(None, Some(project), None));
+
+        assert_eq!(
+            deletable_part(&library, &dir.0.join("board.perfboard/led")),
+            Ok(dir.0.join("board.perfboard/led"))
+        );
+        assert!(deletable_part(&library, &dir.0.join("board.perfboard/notes")).is_err());
+        assert!(deletable_part(&library, &dir.0.join("board.perfboard")).is_err());
+        assert!(deletable_part(&library, &dir.0.join("elsewhere/other")).is_err());
+        assert!(deletable_part(&library, &dir.0.join("board.perfboard/gone")).is_err());
+        #[cfg(unix)]
+        {
+            let link = dir.0.join("board.perfboard/link");
+            std::os::unix::fs::symlink(dir.0.join("board.perfboard/led"), &link).unwrap();
+            let error = deletable_part(&library, &link).unwrap_err();
+            assert!(error.contains("is a link"), "{error}");
+        }
     }
 
     #[test]

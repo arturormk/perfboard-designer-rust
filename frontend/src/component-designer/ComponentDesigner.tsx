@@ -17,6 +17,7 @@ import {
   reloadRuntimeComponent,
   saveComponentDraft,
   copyPartToLayer,
+  deleteLibraryPart,
   newPartInLayer,
   openLibraryPart,
   pickComponentFolder,
@@ -37,6 +38,13 @@ import { errorMessage } from "../error-message";
 import { refreshLibrary } from "../state/actions";
 import { confirmAction } from "../shell/dialogs";
 import { PartBrowser, type PartBrowserActions } from "./PartBrowser";
+import {
+  deletionEffect,
+  layerTitle,
+  type BrowserPart,
+  type BrowserSection,
+} from "../model/library";
+import { design } from "../state/store";
 import { toast } from "../state/toasts";
 import { Icon } from "../ui/Icon";
 import { movePinOperation, splitList } from "./editor";
@@ -199,7 +207,56 @@ async function copyToLayer(
   }
 }
 
+async function removePart(
+  part: BrowserPart,
+  sections: BrowserSection[],
+): Promise<void> {
+  const directory = part.directory;
+  if (!directory) return;
+  const placedIds = Object.values(design.value?.components ?? {}).map(
+    (instance) => instance.definition_id,
+  );
+  const { placed, fallback } = deletionEffect(sections, part, placedIds);
+  const state = viewerState.value;
+  const open =
+    state.kind !== "no_component" &&
+    state.kind !== "loading" &&
+    displayedLoad(state)?.component_path === directory;
+  const lines = [
+    `${directory} goes to the trash, so you can restore it from there.`,
+    placed
+      ? `This project has ${placed} placed ${placed === 1 ? "copy" : "copies"} of it. ${placed === 1 ? "It keeps" : "They keep"} the definition stored in the project.`
+      : "This project has none of it placed. Other projects that placed it keep their stored copy.",
+    fallback
+      ? `New placements of ${part.id} will use the ${layerTitle(fallback).toLowerCase()}'s part instead.`
+      : "",
+    open && draft.value?.dirty
+      ? "It is open with unsaved changes, which are lost."
+      : "",
+  ];
+  if (
+    !(await confirmAction(
+      `Delete ${part.name}?`,
+      lines.filter(Boolean).join("\n\n"),
+      "Move to trash",
+      true,
+    ))
+  )
+    return;
+  try {
+    await deleteLibraryPart(directory);
+    if (open) await closePart();
+    await refreshLibrary();
+    toast("success", `Moved ${part.name} to the trash`, { detail: directory });
+  } catch (error) {
+    toast("error", "Could not delete the part", {
+      detail: errorMessage(error),
+    });
+  }
+}
+
 const browserActions: PartBrowserActions = {
+  remove: (part, sections) => void removePart(part, sections),
   open: (directory) => void openFromLibrary(directory),
   copy: (definitionId, target) => void copyToLayer(definitionId, target),
   newIn: (target) => void newInLayer(target),

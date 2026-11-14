@@ -21,6 +21,7 @@ export interface PartBrowserActions {
   open: (directory: string) => void;
   copy: (definitionId: string, target: WritableLayerKind) => void;
   newIn: (target: WritableLayerKind) => void;
+  remove: (part: BrowserPart, sections: BrowserSection[]) => void;
   pickFolder: () => void;
   newInFolder: () => void;
 }
@@ -63,6 +64,16 @@ function PartRow({
           <strong>{part.name}</strong>
           <small class="mono">{detail}</small>
         </span>
+      )}
+      {editable && part.directory && (
+        <button
+          class="icon-btn danger"
+          title={`Move ${part.directory} to the trash`}
+          aria-label={`Delete ${part.name}`}
+          onClick={() => actions.remove(part, sections)}
+        >
+          <Icon name="trash" size={15} />
+        </button>
       )}
       {!editable && !hiddenBy && (
         <span class="browser-copy">
