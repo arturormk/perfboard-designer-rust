@@ -1,0 +1,18 @@
+[package]
+name = "perfboard-library"
+description = "Layered component library resolution for Perfboard Designer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+perfboard-core.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true
