@@ -113,6 +113,11 @@ export const showKeepouts = signal(false);
 export const splitCompare = signal(false);
 
 export const leftTab = signal<"parts" | "nets" | "history">("parts");
+/**
+ * The Welcome card stays hidden once the user closes it or creates or opens a
+ * project: an empty board after a deliberate choice is not a first visit.
+ */
+export const welcomeDismissed = signal(false);
 export const rightTab = signal<"inspect" | "problems" | "notes">("inspect");
 export const leftOpen = signal(true);
 export const rightOpen = signal(true);

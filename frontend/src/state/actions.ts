@@ -89,6 +89,7 @@ import {
   tool,
   view,
   wireColorChoice,
+  welcomeDismissed,
   type Selection,
 } from "./store";
 import { toast } from "./toasts";
@@ -730,6 +731,7 @@ function resetWorkspace(): void {
     tool.value = "select";
     side.value = "component";
     knownOperationIds = undefined;
+    welcomeDismissed.value = true;
   });
   commitDesignCache.clear();
 }

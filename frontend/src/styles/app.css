@@ -3078,6 +3078,12 @@ textarea::placeholder {
   backdrop-filter: blur(8px);
 }
 
+.welcome-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
 .welcome h2 {
   font-size: 16px;
   font-weight: 650;

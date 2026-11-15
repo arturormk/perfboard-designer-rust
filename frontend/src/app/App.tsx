@@ -40,6 +40,7 @@ import {
   selection,
   side,
   view,
+  welcomeDismissed,
   zoomRequest,
 } from "../state/store";
 import { definitionOf, nextRotation } from "../model/geometry";
@@ -306,6 +307,7 @@ export function App() {
     );
 
   const empty =
+    !welcomeDismissed.value &&
     view.value &&
     !Object.keys(view.value.design.components ?? {}).length &&
     !view.value.commits.length;

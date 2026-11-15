@@ -9,6 +9,10 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- The Welcome card over an empty board closes once you create or open a
+  project, and has a close button. Before, it stayed over every empty
+  board, including one you had just made.
+
 - Answer review notes in the editor. Each note has Acknowledge and Request
   review buttons and room for a short reply, so you can accept findings,
   dispute others, and then ask the agent to look again at the ones you sent
