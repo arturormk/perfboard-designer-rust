@@ -113,6 +113,13 @@ pub enum GeometryError {
 }
 
 impl BoardSize {
+    /// How far, in half-grid steps, a wire may run past the outermost holes.
+    ///
+    /// Real boards have a margin: the edge sits where a ring of holes one
+    /// pitch outside the grid would touch it. A wire can bend through that
+    /// margin, so its vertices may lie up to one pitch past the edge holes.
+    pub const WIRE_OVERHANG_X2: i64 = 2;
+
     /// Creates rectangular board extents from hole counts.
     ///
     /// # Errors
@@ -181,6 +188,14 @@ impl BoardSize {
         Ok(RoutePos::new(horizontal_limit - position.x2, position.y2))
     }
 
+    /// Whether a wire vertex lies on the board, including its margin.
+    #[must_use]
+    pub fn reaches_wire_vertex(self, position: RoutePos) -> bool {
+        let reach = Self::WIRE_OVERHANG_X2;
+        (-reach..=i64::from(self.intervals_x()) * 2 + reach).contains(&position.x2)
+            && (-reach..=i64::from(self.intervals_y()) * 2 + reach).contains(&position.y2)
+    }
+
     #[must_use]
     pub fn grid_span_mm(self, pitch_mm: f64) -> (f64, f64) {
         (
@@ -240,6 +255,15 @@ mod tests {
             board.mirror_route(board.mirror_route(position).unwrap()),
             Ok(position)
         );
+    }
+
+    #[test]
+    fn wire_vertices_reach_one_pitch_into_the_margin() {
+        let board = BoardSize::new(4, 3).expect("valid board");
+        assert!(board.reaches_wire_vertex(RoutePos::new(-2, -2)));
+        assert!(board.reaches_wire_vertex(RoutePos::new(8, 6)));
+        assert!(!board.reaches_wire_vertex(RoutePos::new(-3, 0)));
+        assert!(!board.reaches_wire_vertex(RoutePos::new(0, 7)));
     }
 
     #[test]

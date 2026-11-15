@@ -119,6 +119,11 @@ export const leftTab = signal<"parts" | "nets" | "history">("parts");
  */
 export const welcomeDismissed = signal(false);
 export const rightTab = signal<"inspect" | "problems" | "notes">("inspect");
+/**
+ * Batch edit: the user's edits skip design-rule checks, so a rework can go
+ * through intermediate states that break rules. Per session, off at start.
+ */
+export const batchEdit = signal(false);
 export const leftOpen = signal(true);
 export const rightOpen = signal(true);
 

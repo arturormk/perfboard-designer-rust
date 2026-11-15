@@ -49,6 +49,7 @@ fn request(revision: DocumentRevision, payload: OperationPayload) -> OperationRe
         origin: OperationOrigin::User,
         rationale: Some("Milestone 3 scenario".into()),
         allow_invalid_placement: false,
+        defer_checks: false,
         payload,
     }
 }
@@ -65,6 +66,7 @@ fn failed_transaction_leaves_serialized_and_memory_state_unchanged() {
         origin: OperationOrigin::Mcp,
         rationale: Some("Atomic pair".into()),
         allow_invalid_placement: false,
+        defer_checks: false,
         operations: vec![add_payload(id, "first", 1), add_payload(id, "duplicate", 3)],
     });
     assert!(result.is_err());

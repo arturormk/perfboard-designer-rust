@@ -794,7 +794,7 @@ fn heuristic(from: RoutePos, to: RoutePos, config: &RoutingCostConfig) -> u64 {
 }
 
 const fn is_board_edge(point: RoutePos, max_x: i64, max_y: i64) -> bool {
-    point.x2 == 0 || point.y2 == 0 || point.x2 == max_x || point.y2 == max_y
+    point.x2 <= 0 || point.y2 <= 0 || point.x2 >= max_x || point.y2 >= max_y
 }
 
 fn is_parallel(

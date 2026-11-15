@@ -35,6 +35,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) {
             origin: OperationOrigin::User,
             rationale: None,
             allow_invalid_placement: true,
+            defer_checks: false,
             payload,
         },
     )
@@ -355,6 +356,7 @@ fn routes_and_manual_edits_cannot_pass_through_an_unrelated_pin() {
             origin: OperationOrigin::User,
             rationale: None,
             allow_invalid_placement: true,
+            defer_checks: false,
             payload: OperationPayload::AddWire {
                 wire: Wire {
                     id: WireId::new(),
@@ -713,6 +715,7 @@ fn constraint_crud_is_revisioned_and_required_rules_survive_manual_override() {
             origin: OperationOrigin::User,
             rationale: Some("try override".into()),
             allow_invalid_placement: true,
+            defer_checks: false,
             payload: OperationPayload::MoveComponent {
                 instance_id: ids["a"],
                 position: HolePos::new(2, 1),
@@ -893,4 +896,60 @@ fn a_required_side_rules_out_the_other_side_alternative() {
             .iter()
             .all(|item| item.proposal.side == Side::Solder)
     );
+}
+
+#[test]
+fn wires_bend_through_the_board_margin_but_not_beyond_it() {
+    let (mut document, ids) = fixture(&[("a", 0, 1), ("b", 0, 4)]);
+    let (net_id, _) = routed_net(&mut document, &ids, &["a", "b"]);
+    let pin = |name: &str| TerminalRef::Pin {
+        component_id: ids[name],
+        pin_id: "p".into(),
+    };
+    let wire_id = WireId::new();
+    let around = |x2: i64| {
+        vec![
+            RoutePos::new(0, 2),
+            RoutePos::new(x2, 2),
+            RoutePos::new(x2, 8),
+            RoutePos::new(0, 8),
+        ]
+    };
+    apply(
+        &mut document,
+        OperationPayload::AddWire {
+            wire: Wire {
+                id: wire_id,
+                net_id,
+                start: pin("a"),
+                end: pin("b"),
+                side: Side::Solder,
+                color: WireColor::Green,
+                vertices: around(-2),
+                locked: false,
+                notes: String::new(),
+            },
+        },
+    );
+    let reopened = ProjectDocument::from_json(&to_snapshot_json(&document).unwrap()).unwrap();
+    assert_eq!(reopened.design.wires[&wire_id].vertices, around(-2));
+
+    let revision = document.revision;
+    let beyond = apply_operation(
+        &mut document,
+        OperationRequest {
+            operation_id: OperationId::new(),
+            expected_revision: revision,
+            origin: OperationOrigin::User,
+            rationale: None,
+            allow_invalid_placement: true,
+            defer_checks: false,
+            payload: OperationPayload::ModifyWirePath {
+                wire_id,
+                vertices: around(-3),
+            },
+        },
+    );
+    assert!(beyond.is_err());
+    assert_eq!(document.design.wires[&wire_id].vertices, around(-2));
 }

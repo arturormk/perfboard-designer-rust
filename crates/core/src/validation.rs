@@ -43,15 +43,24 @@ pub fn validate_design_placements(
                 *id,
             ));
         }
+        let pins: BTreeSet<_> = definition
+            .pins
+            .iter()
+            .map(|pin| LocalPos::new(pin.x, pin.y))
+            .collect();
         for local in definition.occupied_positions() {
             let point = transform(instance, local);
             if !inside(board, point) {
-                diagnostics.push(diagnostic(
-                    "placement.out_of_bounds",
-                    DiagnosticSeverity::Error,
-                    format!("{} occupies a hole outside the board", instance.name),
-                    *id,
-                ));
+                // A lead needs a real hole. A body hole only marks where the
+                // part sits over the board, and bodies may overhang the edge.
+                if pins.contains(&local) {
+                    diagnostics.push(diagnostic(
+                        "placement.out_of_bounds",
+                        DiagnosticSeverity::Error,
+                        format!("{} has a pin outside the board", instance.name),
+                        *id,
+                    ));
+                }
                 continue;
             }
             if features.forbidden_areas.iter().any(|area| {
@@ -298,6 +307,28 @@ mod tests {
                 .iter()
                 .any(|item| item.code.0 == "placement.out_of_bounds")
         );
+    }
+
+    #[test]
+    fn bodies_may_overhang_the_board_but_pins_may_not() {
+        // Pins at x=0 and x=2; body holes reach one column further each way.
+        let terminal = definition(
+            "schema_version=1\nid='terminal'\ndefinition_version='1'\nname='Terminal'\nallowed_rotations=['deg0']\noccupied_holes=[{x=-1,y=0},{x=1,y=0},{x=3,y=0}]\n[body]\nx=-3.81\ny=-1.27\nwidth=12.7\nheight=2.54\n[[pins]]\nid='a'\nnumber='1'\nname='A'\nx=0\ny=0\n[[pins]]\nid='b'\nnumber='2'\nname='B'\nx=2\ny=0",
+        );
+        let codes = |x| {
+            let placed = instance(&terminal.id, x, 0);
+            validate_design_placements(
+                BoardSize::new(3, 1).unwrap(),
+                &BoardFeatures::default(),
+                &BTreeMap::from([(terminal.id.clone(), terminal.clone())]),
+                &BTreeMap::from([(placed.id, placed)]),
+            )
+            .into_iter()
+            .map(|item| item.code.0)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(codes(0), [] as [String; 0]);
+        assert_eq!(codes(1), ["placement.out_of_bounds"]);
     }
 
     /// A one-pin connector whose required access region is the row south of

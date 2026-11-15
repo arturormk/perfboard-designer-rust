@@ -17,9 +17,11 @@ import type {
   Wire,
 } from "../api/project";
 import {
+  BOARD_MARGIN,
   bodyBounds,
   componentSide,
   isJumper,
+  PAD_RADIUS,
   pinBoardPosition,
   polylineMidpoint,
   rotationDegrees,
@@ -63,8 +65,6 @@ export interface SceneProps {
   /** Extra content in view space (readable text). */
   viewOverlay?: ComponentChildren;
 }
-
-const BOARD_MARGIN = 0.7;
 
 function points(vertices: Array<{ x2: number; y2: number }>): string {
   return vertices.map((point) => `${point.x2 / 2},${point.y2 / 2}`).join(" ");
@@ -561,7 +561,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
               class="pad-ring"
               cx="0.5"
               cy="0.5"
-              r={side === "solder" ? 0.36 : 0.27}
+              r={side === "solder" ? PAD_RADIUS : 0.27}
             />
             <circle class="hole" cx="0.5" cy="0.5" r="0.14" />
           </pattern>
@@ -1059,6 +1059,12 @@ export function WireLabel({
   );
 }
 
+/** Rulers sit just outside the board edge. */
+const RULER_OFFSET = BOARD_MARGIN + 0.6;
+
+/** Room around the hole grid in the default framing, rulers included. */
+export const BOARD_VIEW_PAD = RULER_OFFSET + 0.9;
+
 function Rulers({
   holesX,
   holesY,
@@ -1070,30 +1076,40 @@ function Rulers({
 }) {
   const columns = Array.from({ length: holesX }, (_, x) => x);
   const rows = Array.from({ length: holesY }, (_, y) => y);
+  // Numbered on all four sides, so a row or column can be read off the
+  // nearest edge. The board spans 0..holes-1 in view space on either face.
+  const above = -RULER_OFFSET;
+  const below = holesY - 1 + RULER_OFFSET;
+  const left = -RULER_OFFSET;
+  const right = holesX - 1 + RULER_OFFSET;
   return (
     <g class="rulers">
-      {columns.map((x) => (
-        <text
-          key={`c${x}`}
-          class={x % 5 === 0 ? "major" : undefined}
-          x={viewX(x, holesX, side)}
-          y={-1.25}
-          dy={TEXT_CENTER_DY}
-        >
-          {x}
-        </text>
-      ))}
-      {rows.map((y) => (
-        <text
-          key={`r${y}`}
-          class={y % 5 === 0 ? "major" : undefined}
-          x={-1.3}
-          y={y}
-          dy={TEXT_CENTER_DY}
-        >
-          {y}
-        </text>
-      ))}
+      {[above, below].map((y) =>
+        columns.map((x) => (
+          <text
+            key={`c${x}@${y}`}
+            class={x % 5 === 0 ? "major" : undefined}
+            x={viewX(x, holesX, side)}
+            y={y}
+            dy={TEXT_CENTER_DY}
+          >
+            {x}
+          </text>
+        )),
+      )}
+      {[left, right].map((x) =>
+        rows.map((y) => (
+          <text
+            key={`r${y}@${x}`}
+            class={y % 5 === 0 ? "major" : undefined}
+            x={x}
+            y={y}
+            dy={TEXT_CENTER_DY}
+          >
+            {y}
+          </text>
+        )),
+      )}
     </g>
   );
 }
@@ -1103,5 +1119,6 @@ export function defaultViewBox(
   design: Design,
 ): [number, number, number, number] {
   const { holes_x, holes_y } = design.board;
-  return [-2.2, -2.2, holes_x - 1 + 4.4, holes_y - 1 + 4.4];
+  const pad = BOARD_VIEW_PAD;
+  return [-pad, -pad, holes_x - 1 + pad * 2, holes_y - 1 + pad * 2];
 }

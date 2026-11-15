@@ -6,7 +6,8 @@ use perfboard_core::{
     TerminalRef, Wire, WireColor, WireId,
 };
 use perfboard_project::{
-    Board, OperationOrigin, OperationPayload, OperationRequest, ProjectDocument, apply_operation,
+    Board, OperationError, OperationOrigin, OperationPayload, OperationRequest, ProjectDocument,
+    ProjectSession, TransactionRequest, apply_operation, to_snapshot_json,
 };
 
 fn apply(document: &mut ProjectDocument, payload: OperationPayload) -> Result<(), String> {
@@ -18,6 +19,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) -> Result<()
             origin: OperationOrigin::User,
             rationale: None,
             allow_invalid_placement: false,
+            defer_checks: false,
             payload,
         },
     )
@@ -193,7 +195,7 @@ fn a_bridge_still_wired_to_another_net_is_a_short() {
         },
     )
     .unwrap_err();
-    assert!(error.contains("bridge"), "{error}");
+    assert!(error.to_lowercase().contains("short"), "{error}");
 }
 
 /// A wire from a pin on net N to the free end of a bridge (or a chain of
@@ -278,4 +280,151 @@ fn a_bridge_without_wires_can_be_removed_even_if_its_ends_joined_a_net() {
     .unwrap();
     assert!(!document.design.components.contains_key(&bridge));
     assert!(!document.design.nets[&x].pins.contains(&bridge_far));
+}
+
+fn run(
+    document: &mut ProjectDocument,
+    origin: OperationOrigin,
+    defer_checks: bool,
+    payload: OperationPayload,
+) -> Result<(), OperationError> {
+    let request = OperationRequest {
+        operation_id: OperationId::new(),
+        expected_revision: document.revision,
+        origin,
+        rationale: None,
+        allow_invalid_placement: true,
+        defer_checks,
+        payload,
+    };
+    apply_operation(document, request).map(|_| ())
+}
+
+fn codes(document: &ProjectDocument) -> Vec<&str> {
+    document
+        .validation
+        .iter()
+        .map(|item| item.code.0.as_str())
+        .collect()
+}
+
+/// Batch edit lets a person pass through a short; it stays listed as an error,
+/// the project still saves and opens, and live edits that add nothing new
+/// still go through.
+#[test]
+fn a_batch_edit_may_leave_a_short_that_is_reported_not_refused() {
+    let Fixture {
+        mut document,
+        near,
+        x,
+        y,
+        ..
+    } = fixture();
+    let short = OperationPayload::AssignPin {
+        net_id: y,
+        pin: near.clone(),
+    };
+    run(&mut document, OperationOrigin::User, true, short).unwrap();
+    assert!(codes(&document).contains(&"circuit.bridge_short"));
+
+    // An unrelated live edit: the short was already there, so it does not block.
+    run(
+        &mut document,
+        OperationOrigin::User,
+        false,
+        OperationPayload::SetNetNotes {
+            net_id: x,
+            notes: "rework in progress".into(),
+        },
+    )
+    .unwrap();
+
+    let reopened = ProjectDocument::from_json(&to_snapshot_json(&document).unwrap()).unwrap();
+    assert!(codes(&reopened).contains(&"circuit.bridge_short"));
+
+    // Repairing it live is fine too.
+    run(
+        &mut document,
+        OperationOrigin::User,
+        false,
+        OperationPayload::UnassignPin {
+            net_id: y,
+            pin: near,
+        },
+    )
+    .unwrap();
+    assert!(!codes(&document).contains(&"circuit.bridge_short"));
+}
+
+#[test]
+fn agents_may_not_defer_checks() {
+    let Fixture {
+        mut document, x, ..
+    } = fixture();
+    let notes = OperationPayload::SetNetNotes {
+        net_id: x,
+        notes: String::new(),
+    };
+    let error = run(&mut document, OperationOrigin::Mcp, true, notes).unwrap_err();
+    assert!(matches!(error, OperationError::DeferredChecksNotAllowed));
+
+    let mut session = ProjectSession::new(document);
+    let revision = session.document().revision;
+    let error = session
+        .apply_transaction(TransactionRequest {
+            operation_id: OperationId::new(),
+            expected_revision: revision,
+            origin: OperationOrigin::Mcp,
+            rationale: None,
+            allow_invalid_placement: false,
+            defer_checks: true,
+            operations: vec![OperationPayload::SetNetNotes {
+                net_id: x,
+                notes: String::new(),
+            }],
+        })
+        .unwrap_err();
+    assert!(error.to_string().contains("only available"), "{error}");
+}
+
+/// An agent's transaction is checked once, at the end: its steps may pass
+/// through a short as long as the result has none.
+#[test]
+fn a_transaction_is_checked_only_at_its_end() {
+    let Fixture {
+        document, near, y, ..
+    } = fixture();
+    let mut session = ProjectSession::new(document);
+    let transaction = |session: &ProjectSession, operations| TransactionRequest {
+        operation_id: OperationId::new(),
+        expected_revision: session.document().revision,
+        origin: OperationOrigin::Mcp,
+        rationale: None,
+        allow_invalid_placement: false,
+        defer_checks: false,
+        operations,
+    };
+    let through_a_short = vec![
+        OperationPayload::AssignPin {
+            net_id: y,
+            pin: near.clone(),
+        },
+        OperationPayload::UnassignPin {
+            net_id: y,
+            pin: near.clone(),
+        },
+    ];
+    let request = transaction(&session, through_a_short);
+    session.apply_transaction(request).unwrap();
+
+    let ending_in_a_short = vec![OperationPayload::AssignPin {
+        net_id: y,
+        pin: near,
+    }];
+    let request = transaction(&session, ending_in_a_short);
+    let error = session.apply_transaction(request).unwrap_err();
+    assert!(
+        error.to_string().to_lowercase().contains("short"),
+        "{error}"
+    );
 }

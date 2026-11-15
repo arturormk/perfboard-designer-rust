@@ -17,6 +17,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) {
         origin: OperationOrigin::User,
         rationale: Some("Milestone 1 demonstration".into()),
         allow_invalid_placement: false,
+        defer_checks: false,
         payload,
     };
     apply_operation(document, request).expect("valid demonstration operation");
@@ -32,6 +33,7 @@ fn apply_allowing_invalid(
         origin: OperationOrigin::User,
         rationale: Some("Temporary placement state".into()),
         allow_invalid_placement: true,
+        defer_checks: false,
         payload,
     };
     apply_operation(document, request).expect("structurally valid manual placement operation")
@@ -152,6 +154,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
         origin: OperationOrigin::User,
         rationale: None,
         allow_invalid_placement: false,
+        defer_checks: false,
         payload: OperationPayload::MoveComponent {
             instance_id: nano_id,
             position: HolePos::new(0, 0),
@@ -174,6 +177,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
         origin: OperationOrigin::User,
         rationale: Some("Temporary state before repositioning".into()),
         allow_invalid_placement: true,
+        defer_checks: false,
         payload: OperationPayload::MoveComponent {
             instance_id: nano_id,
             position: HolePos::new(0, 0),

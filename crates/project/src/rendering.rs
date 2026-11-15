@@ -6,6 +6,11 @@ use perfboard_core::{
 
 use crate::ProjectDocument;
 
+/// Distance from the outermost holes to the board edge, in pitches: one pitch
+/// for the wire margin plus the pad radius, so the edge is tangent to a ring
+/// of holes one pitch outside the grid. Matches `BOARD_MARGIN` in the frontend.
+const BOARD_MARGIN: f64 = 1.36;
+
 /// Renders a deterministic, self-contained overview of the authoritative design.
 #[must_use]
 pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
@@ -27,9 +32,9 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
     };
     let _ = write!(
         svg,
-        r#"<rect class="board" x="-.5" y="-.5" width="{}" height="{}" rx=".5"/><g transform="{}">"#,
-        board.size.holes_x(),
-        board.size.holes_y(),
+        r#"<rect class="board" x="-{BOARD_MARGIN}" y="-{BOARD_MARGIN}" width="{}" height="{}" rx=".45"/><g transform="{}">"#,
+        f64::from(board.size.intervals_x()) + BOARD_MARGIN * 2.0,
+        f64::from(board.size.intervals_y()) + BOARD_MARGIN * 2.0,
         mirror
     );
     for y in 0..board.size.holes_y() {

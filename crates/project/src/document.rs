@@ -349,25 +349,21 @@ impl ProjectDocument {
     /// Returns a JSON/domain error or an invariant error.
     pub fn from_json(json: &str) -> Result<Self, DocumentError> {
         let mut document: Self = serde_json::from_str(json)?;
-        document.remove_retired_route_warnings();
+        document.refresh_cached_validation();
         document.validate()?;
         Ok(document)
     }
 
     /// Projects store deterministic validation as a cache for the current design
-    /// and each commit. Endpoint half-grid segments used to emit
-    /// `route.short_segment`, and component bodies/placement keepouts used to
-    /// emit `route.component_clearance`. After those rules changed, otherwise
-    /// valid projects could no longer pass the cache consistency check on load.
-    /// Remove only instances that the current validator no longer produces so
-    /// unrelated stale or tampered diagnostics are still rejected.
-    fn remove_retired_route_warnings(&mut self) {
-        remove_retired_route_warnings(&self.design, &mut self.validation);
+    /// and each commit. A cache from an older validator (rules added, removed
+    /// or reworded) must not lock the user out of their project, so it is
+    /// recomputed on load, as the undo/redo reports already are (ADR 0013).
+    /// The design itself is still checked in full by `validate`.
+    fn refresh_cached_validation(&mut self) {
+        self.validation = self.calculate_validation();
         for commit in self.commits.values_mut() {
-            remove_retired_route_warnings(&commit.design, &mut commit.validation);
+            commit.validation = calculate_design_validation(&commit.design);
         }
-        // Undo/redo validation reports are recomputed while decoding, so they
-        // never carry retired warnings.
     }
 }
 
@@ -387,16 +383,6 @@ pub(crate) fn calculate_design_validation(design: &Design) -> Vec<Diagnostic> {
             .then(left.message.cmp(&right.message))
     });
     diagnostics
-}
-
-fn remove_retired_route_warnings(design: &Design, cached: &mut Vec<Diagnostic>) {
-    let current = crate::connectivity::diagnostics(design);
-    cached.retain(|diagnostic| {
-        !matches!(
-            diagnostic.code.0.as_str(),
-            "route.short_segment" | "route.component_clearance"
-        ) || current.contains(diagnostic)
-    });
 }
 
 impl Board {
@@ -551,18 +537,19 @@ mod tests {
     }
 
     #[test]
-    fn unrelated_stale_validation_is_still_rejected() {
+    fn stale_validation_is_recomputed_on_load() {
         let mut document = empty_project();
         document.validation.push(Diagnostic {
-            code: perfboard_core::DiagnosticCode("unrelated.stale".into()),
-            severity: perfboard_core::DiagnosticSeverity::Warning,
-            message: "This must not be silently migrated".into(),
+            code: perfboard_core::DiagnosticCode("retired.rule".into()),
+            severity: perfboard_core::DiagnosticSeverity::Error,
+            message: "A rule this version no longer has".into(),
             objects: Vec::new(),
         });
 
-        assert!(matches!(
-            ProjectDocument::from_json(&serde_json::to_string(&document).unwrap()),
-            Err(DocumentError::StaleValidation)
-        ));
+        let loaded =
+            ProjectDocument::from_json(&serde_json::to_string(&document).unwrap()).unwrap();
+
+        assert_eq!(loaded.validation, loaded.calculate_validation());
+        assert!(loaded.validate().is_ok());
     }
 }

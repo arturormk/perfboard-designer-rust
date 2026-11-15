@@ -500,6 +500,8 @@ impl PerfboardMcp {
     }
 
     /// Apply one or more existing domain operations atomically to the active working copy.
+    /// Design rules are checked once, on the result: intermediate steps may
+    /// break them, so put every step of a rework in one call.
     #[tool(annotations(
         title = "Apply operations",
         read_only_hint = false,
@@ -524,6 +526,7 @@ impl PerfboardMcp {
             origin: OperationOrigin::Mcp,
             rationale: Some(input.rationale),
             allow_invalid_placement: input.allow_invalid_placement,
+            defer_checks: false,
             operations,
         }))
         .await
@@ -562,6 +565,7 @@ impl PerfboardMcp {
             origin: OperationOrigin::Mcp,
             rationale: Some(input.rationale),
             allow_invalid_placement: false,
+            defer_checks: false,
             operations,
         }))
         .await

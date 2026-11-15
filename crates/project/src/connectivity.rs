@@ -7,6 +7,14 @@ use perfboard_core::{
 
 use crate::Design;
 
+/// Integrity checks: what the data model cannot represent. These refuse an
+/// edit or a file outright, because the board could not be drawn or reasoned
+/// about (dangling references, degenerate routes, a pin in two nets).
+///
+/// Design rules that a correct board must also meet (no shorts, routes on the
+/// board, wires on their own net) are reported by [`rule_diagnostics`]
+/// instead, so a project that breaks them still opens and can be repaired,
+/// and a batch edit can pass through them.
 pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
     let mut assigned = BTreeMap::<PinRef, NetId>::new();
     for (net_id, net) in &design.nets {
@@ -23,27 +31,9 @@ pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
             }
         }
     }
-    validate_bridge_net_conflicts(design)?;
     for junction in design.junctions.values() {
         if !design.nets.contains_key(&junction.net_id) {
             return Err("junction refers to a missing net".into());
-        }
-        let sides: BTreeSet<_> = design
-            .wires
-            .values()
-            .filter(|wire| {
-                matches!(&wire.start, TerminalRef::Junction { junction_id } if *junction_id == junction.id)
-                    || matches!(&wire.end, TerminalRef::Junction { junction_id } if *junction_id == junction.id)
-            })
-            .map(|wire| wire.side)
-            .collect();
-        if sides.len() > 1 && !junction.through_hole {
-            return Err("opposite-side wires require an explicit through-hole junction".into());
-        }
-        if junction.position.x >= design.board.size.holes_x()
-            || junction.position.y >= design.board.size.holes_y()
-        {
-            return Err("junction lies outside the board".into());
         }
     }
     for wire in design.wires.values() {
@@ -56,33 +46,10 @@ pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
         if wire.vertices.len() < 2 {
             return Err("wire must contain at least two vertices".into());
         }
-        terminal_position(design, wire.net_id, &wire.start)?;
-        terminal_position(design, wire.net_id, &wire.end)?;
-        // A rail node on a whole hole is soldered through that hole, so a
-        // wire on the other face can attach to it like a component pin. A
-        // node between holes is reachable only from the rail's own face.
-        for terminal in [&wire.start, &wire.end] {
-            if let TerminalRef::RailNode { rail_id, position } = terminal
-                && design
-                    .rails
-                    .get(rail_id)
-                    .is_some_and(|rail| rail.side != wire.side)
-                && !position.is_hole()
-            {
-                return Err(
-                    "a wire on the other side can only reach a rail node on a whole hole".into(),
-                );
-            }
-        }
-        for vertex in &wire.vertices {
-            if !route_inside(design.board.size, *vertex) {
-                return Err("wire vertex lies outside the board".into());
-            }
-        }
+        terminal_exists(design, &wire.start)?;
+        terminal_exists(design, &wire.end)?;
         for pair in wire.vertices.windows(2) {
-            let dx = (pair[1].x2 - pair[0].x2).abs();
-            let dy = (pair[1].y2 - pair[0].y2).abs();
-            if dx == 0 && dy == 0 {
+            if pair[0] == pair[1] {
                 return Err("wire segments must have non-zero length".into());
             }
         }
@@ -94,11 +61,6 @@ pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
         if rail.vertices.len() < 2 {
             return Err("rail must contain at least two vertices".into());
         }
-        for vertex in &rail.vertices {
-            if !route_inside(design.board.size, *vertex) {
-                return Err("rail vertex lies outside the board".into());
-            }
-        }
         if rail.vertices.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err("rail segments must have non-zero length".into());
         }
@@ -106,41 +68,291 @@ pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_bridge_net_conflicts(design: &Design) -> Result<(), String> {
-    for instance in design.components.values() {
-        let definition = &design.component_definitions[&instance.definition_id];
-        if definition.kind != ComponentKind::Bridge {
-            continue;
-        }
-        let endpoint_positions: BTreeSet<_> = definition
-            .pins
-            .iter()
-            .map(|pin| {
-                let (x, y) = instance.rotation.rotate_local((pin.x, pin.y));
-                RoutePos::new(
-                    (i64::from(instance.position.x) + i64::from(x)) * 2,
-                    (i64::from(instance.position.y) + i64::from(y)) * 2,
-                )
-            })
-            .collect();
-        let connected_nets: BTreeSet<_> = design
-            .nets
-            .iter()
-            .filter_map(|(net_id, net)| {
-                net.pins
-                    .iter()
-                    .any(|pin| {
-                        pin_position(design, pin)
-                            .is_some_and(|position| endpoint_positions.contains(&position))
-                    })
-                    .then_some(*net_id)
-            })
-            .collect();
-        if connected_nets.len() > 1 {
-            return Err("bridge connects pins assigned to conflicting nets".into());
+/// Where a wire end's terminal is, whatever net it belongs to.
+fn terminal_point(design: &Design, terminal: &TerminalRef) -> Option<RoutePos> {
+    match terminal {
+        TerminalRef::Pin {
+            component_id,
+            pin_id,
+        } => pin_position(
+            design,
+            &PinRef {
+                component_id: *component_id,
+                pin_id: pin_id.clone(),
+            },
+        ),
+        TerminalRef::Junction { junction_id } => design
+            .junctions
+            .get(junction_id)
+            .map(|junction| junction.position.as_route_pos()),
+        TerminalRef::RailNode { rail_id, position } => design
+            .rails
+            .get(rail_id)
+            .filter(|rail| rail.vertices.contains(position))
+            .map(|_| *position),
+    }
+}
+
+/// Whether the object a wire end refers to exists.
+fn terminal_exists(design: &Design, terminal: &TerminalRef) -> Result<(), String> {
+    match terminal {
+        TerminalRef::Pin {
+            component_id,
+            pin_id,
+        } => pin_position(
+            design,
+            &PinRef {
+                component_id: *component_id,
+                pin_id: pin_id.clone(),
+            },
+        )
+        .map(|_| ())
+        .ok_or_else(|| "wire refers to a missing pin".into()),
+        TerminalRef::Junction { junction_id } => design
+            .junctions
+            .contains_key(junction_id)
+            .then_some(())
+            .ok_or_else(|| "wire refers to a missing junction".into()),
+        TerminalRef::RailNode { rail_id, position } => {
+            let rail = design
+                .rails
+                .get(rail_id)
+                .ok_or("wire refers to a missing rail")?;
+            if rail.vertices.contains(position) {
+                Ok(())
+            } else {
+                Err("wire rail connection is not an explicit rail node".into())
+            }
         }
     }
-    Ok(())
+}
+
+/// Design-rule violations, as error diagnostics. A live edit may not add one;
+/// a batch edit, or a file saved mid-rework, may contain them.
+pub(crate) fn rule_diagnostics(design: &Design) -> Vec<Diagnostic> {
+    let mut result = bridge_shorts(design);
+    junction_rules(design, &mut result);
+    wire_rules(design, &mut result);
+    rail_rules(design, &mut result);
+    result
+}
+
+fn junction_rules(design: &Design, result: &mut Vec<Diagnostic>) {
+    let board = design.board.size;
+    for junction in design.junctions.values() {
+        let sides: BTreeSet<_> = design
+            .wires
+            .values()
+            .filter(|wire| {
+                matches!(&wire.start, TerminalRef::Junction { junction_id } if *junction_id == junction.id)
+                    || matches!(&wire.end, TerminalRef::Junction { junction_id } if *junction_id == junction.id)
+            })
+            .map(|wire| wire.side)
+            .collect();
+        if sides.len() > 1 && !junction.through_hole {
+            result.push(rule(
+                "route.junction_needs_through_hole",
+                "Wires on both faces meet at a junction that is not a through-hole".into(),
+                "junction",
+                junction.id.to_string(),
+            ));
+        }
+        if junction.position.x >= board.holes_x() || junction.position.y >= board.holes_y() {
+            result.push(rule(
+                "route.off_board",
+                "Junction lies outside the board".into(),
+                "junction",
+                junction.id.to_string(),
+            ));
+        }
+    }
+}
+
+fn wire_rules(design: &Design, result: &mut Vec<Diagnostic>) {
+    let board = design.board.size;
+    for wire in design.wires.values() {
+        let id = wire.id.to_string();
+        for terminal in [&wire.start, &wire.end] {
+            let mismatch = match terminal {
+                TerminalRef::Pin {
+                    component_id,
+                    pin_id,
+                } => design.nets.get(&wire.net_id).is_some_and(|net| {
+                    !net.pins.contains(&PinRef {
+                        component_id: *component_id,
+                        pin_id: pin_id.clone(),
+                    })
+                }),
+                TerminalRef::Junction { junction_id } => design
+                    .junctions
+                    .get(junction_id)
+                    .is_some_and(|junction| junction.net_id != wire.net_id),
+                TerminalRef::RailNode { rail_id, .. } => design
+                    .rails
+                    .get(rail_id)
+                    .is_some_and(|rail| rail.net_id != wire.net_id),
+            };
+            if mismatch {
+                result.push(rule(
+                    "route.terminal_net_mismatch",
+                    "Wire ends on a pin, junction or rail of another net".into(),
+                    "wire",
+                    id.clone(),
+                ));
+            }
+            // A rail node on a whole hole is soldered through that hole, so
+            // a wire on the other face can attach to it like a component pin.
+            // A node between holes is reachable only from the rail's own face.
+            if let TerminalRef::RailNode { rail_id, position } = terminal
+                && design
+                    .rails
+                    .get(rail_id)
+                    .is_some_and(|rail| rail.side != wire.side)
+                && !position.is_hole()
+            {
+                result.push(rule(
+                    "route.rail_node_other_side",
+                    "A wire on the other face can only reach a rail node on a whole hole".into(),
+                    "wire",
+                    id.clone(),
+                ));
+            }
+        }
+        if wire
+            .vertices
+            .iter()
+            .any(|vertex| !board.reaches_wire_vertex(*vertex))
+        {
+            result.push(rule(
+                "route.off_board",
+                "Wire runs beyond the board margin".into(),
+                "wire",
+                id.clone(),
+            ));
+        }
+        if route_crosses_unrelated_pin(design, wire) {
+            result.push(rule(
+                "route.crosses_pin",
+                "Wire passes through a pin it does not connect to".into(),
+                "wire",
+                id,
+            ));
+        }
+    }
+}
+
+fn rail_rules(design: &Design, result: &mut Vec<Diagnostic>) {
+    let board = design.board.size;
+    for rail in design.rails.values() {
+        if rail
+            .vertices
+            .iter()
+            .any(|vertex| !route_inside(board, *vertex))
+        {
+            result.push(rule(
+                "route.off_board",
+                "Rail runs outside the board".into(),
+                "rail",
+                rail.id.to_string(),
+            ));
+        }
+        if rail_crosses_pin(design, rail) {
+            result.push(rule(
+                "route.crosses_pin",
+                "Rail passes through a component pin".into(),
+                "rail",
+                rail.id.to_string(),
+            ));
+        }
+    }
+}
+
+fn rule(code: &str, message: String, kind: &str, id: String) -> Diagnostic {
+    diag(code, DiagnosticSeverity::Error, message, kind, id)
+}
+
+/// A run of touching bridges that joins pins of more than one net.
+fn bridge_shorts(design: &Design) -> Vec<Diagnostic> {
+    let groups = bridge_groups(design);
+    let mut nets_by_group = BTreeMap::<RoutePos, BTreeSet<NetId>>::new();
+    for (net_id, net) in &design.nets {
+        for pin in &net.pins {
+            if let Some(position) = pin_position(design, pin)
+                && let Some(group) = groups.get(&position)
+            {
+                nets_by_group.entry(*group).or_default().insert(*net_id);
+            }
+        }
+    }
+    let mut result = Vec::new();
+    for (group, nets) in nets_by_group {
+        if nets.len() < 2 {
+            continue;
+        }
+        let names = nets
+            .iter()
+            .map(|id| format!("`{}`", design.nets[id].name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let mut objects: Vec<ObjectReference> = bridges_in_group(design, &groups, group)
+            .into_iter()
+            .map(|id| ObjectReference {
+                kind: "component_instance".into(),
+                id: id.to_string(),
+            })
+            .collect();
+        objects.extend(nets.iter().map(|id| ObjectReference {
+            kind: "net".into(),
+            id: id.to_string(),
+        }));
+        result.push(Diagnostic {
+            code: DiagnosticCode("circuit.bridge_short".into()),
+            severity: DiagnosticSeverity::Error,
+            message: format!("Bridges short nets {names} together"),
+            objects,
+        });
+    }
+    result
+}
+
+fn bridge_ends(
+    instance: &perfboard_core::ComponentInstance,
+    definition: &perfboard_core::ComponentDefinition,
+) -> Vec<RoutePos> {
+    definition
+        .pins
+        .iter()
+        .map(|pin| {
+            let (x, y) = instance.rotation.rotate_local((pin.x, pin.y));
+            RoutePos::new(
+                (i64::from(instance.position.x) + i64::from(x)) * 2,
+                (i64::from(instance.position.y) + i64::from(y)) * 2,
+            )
+        })
+        .collect()
+}
+
+fn bridges_in_group(
+    design: &Design,
+    groups: &BTreeMap<RoutePos, RoutePos>,
+    group: RoutePos,
+) -> Vec<ComponentInstanceId> {
+    design
+        .components
+        .values()
+        .filter(|instance| {
+            design
+                .component_definitions
+                .get(&instance.definition_id)
+                .is_some_and(|definition| {
+                    definition.kind == ComponentKind::Bridge
+                        && bridge_ends(instance, definition)
+                            .first()
+                            .is_some_and(|end| groups.get(end) == Some(&group))
+                })
+        })
+        .map(|instance| instance.id)
+        .collect()
 }
 
 /// Every jumper whose shunt is fitted, with its two pins.
@@ -216,10 +428,11 @@ pub(crate) fn diagnostics(design: &Design) -> Vec<Diagnostic> {
         }
     }
     result.extend(shunt_join_advisories(design));
+    result.extend(rule_diagnostics(design));
     for wire in design.wires.values() {
-        let endpoints_match = terminal_position(design, wire.net_id, &wire.start)
-            .ok()
-            .zip(terminal_position(design, wire.net_id, &wire.end).ok())
+        // Position only: a terminal on the wrong net is its own rule error.
+        let endpoints_match = terminal_point(design, &wire.start)
+            .zip(terminal_point(design, &wire.end))
             .is_some_and(|(start, end)| {
                 wire.vertices.first() == Some(&start) && wire.vertices.last() == Some(&end)
             });
@@ -503,35 +716,16 @@ fn adjacency(design: &Design, net_id: NetId) -> BTreeMap<TerminalRef, BTreeSet<T
             }
         }
     }
-    for instance in design.components.values() {
-        let definition = &design.component_definitions[&instance.definition_id];
-        if definition.kind != ComponentKind::Bridge {
-            continue;
-        }
-        let endpoints = definition
-            .pins
-            .iter()
-            .map(|pin| {
-                let (x, y) = instance.rotation.rotate_local((pin.x, pin.y));
-                RoutePos::new(
-                    (i64::from(instance.position.x) + i64::from(x)) * 2,
-                    (i64::from(instance.position.y) + i64::from(y)) * 2,
-                )
-            })
-            .collect::<Vec<_>>();
-        let Some((first_position, second_position)) = endpoints.first().zip(endpoints.get(1))
-        else {
-            continue;
-        };
-        let first = terminals
-            .iter()
-            .filter(|(_, position)| position == first_position);
-        let second = terminals
-            .iter()
-            .filter(|(_, position)| position == second_position)
-            .collect::<Vec<_>>();
-        for (first, _) in first {
-            for (second, _) in &second {
+    // Bridges are bare copper: a run of touching bridges joins every pin at
+    // any of its ends, whether or not the bridge ends themselves are listed
+    // in the net.
+    let groups = bridge_groups(design);
+    let group_of = |position: &RoutePos| groups.get(position).copied().unwrap_or(*position);
+    for (index, (first, first_position)) in terminals.iter().enumerate() {
+        for (second, second_position) in terminals.iter().skip(index + 1) {
+            if first_position != second_position
+                && group_of(first_position) == group_of(second_position)
+            {
                 add_connection(&mut map, first, second);
             }
         }
@@ -544,6 +738,48 @@ fn adjacency(design: &Design, net_id: NetId) -> BTreeMap<TerminalRef, BTreeSet<T
         }
     }
     map
+}
+
+/// Maps each bridge end to a representative position shared by every end
+/// reachable from it through touching bridges.
+fn bridge_groups(design: &Design) -> BTreeMap<RoutePos, RoutePos> {
+    fn root(parent: &mut BTreeMap<RoutePos, RoutePos>, position: RoutePos) -> RoutePos {
+        let mut current = position;
+        while let Some(&next) = parent.get(&current) {
+            if next == current {
+                break;
+            }
+            current = next;
+        }
+        parent.insert(position, current);
+        current
+    }
+    let mut parent = BTreeMap::new();
+    for instance in design.components.values() {
+        let Some(definition) = design.component_definitions.get(&instance.definition_id) else {
+            continue;
+        };
+        if definition.kind != ComponentKind::Bridge {
+            continue;
+        }
+        let mut ends = bridge_ends(instance, definition).into_iter();
+        let Some(first) = ends.next() else {
+            continue;
+        };
+        parent.entry(first).or_insert(first);
+        for end in ends {
+            parent.entry(end).or_insert(end);
+            let (a, b) = (root(&mut parent, first), root(&mut parent, end));
+            if a != b {
+                parent.insert(a.max(b), a.min(b));
+            }
+        }
+    }
+    let positions: Vec<_> = parent.keys().copied().collect();
+    positions
+        .into_iter()
+        .map(|position| (position, root(&mut parent, position)))
+        .collect()
 }
 
 fn add_connection(
@@ -995,6 +1231,62 @@ mod tests {
     }
 
     #[test]
+    fn chained_bridges_complete_a_net_without_their_ends_in_it() {
+        // Pins at (0,0) and (2,0), joined by bridges (0,0)-(1,0) and
+        // (1,0)-(2,0). No bridge end is listed in the net.
+        let (mut design, first_id, second_id) = bridge_fixture();
+        design.components.get_mut(&second_id).unwrap().position = HolePos::new(2, 0);
+        let second_bridge = ComponentInstanceId::new();
+        design.components.insert(
+            second_bridge,
+            ComponentInstance {
+                id: second_bridge,
+                definition_id: "bridge".into(),
+                name: "bridge 2".into(),
+                position: HolePos::new(1, 0),
+                rotation: Rotation::Deg0,
+                properties: BTreeMap::new(),
+                notes: String::new(),
+                shunted: false,
+            },
+        );
+        let net_id = NetId::new();
+        design.nets.insert(
+            net_id,
+            ElectricalNet {
+                id: net_id,
+                name: "chained".into(),
+                state: ConnectionState::Accepted,
+                pins: BTreeSet::from([
+                    PinRef {
+                        component_id: first_id,
+                        pin_id: "p".into(),
+                    },
+                    PinRef {
+                        component_id: second_id,
+                        pin_id: "p".into(),
+                    },
+                ]),
+                notes: String::new(),
+            },
+        );
+
+        assert!(
+            diagnostics(&design)
+                .iter()
+                .all(|item| item.code.0 != "circuit.net_incomplete")
+        );
+        assert_eq!(net_connectivity(&design)[0].islands.len(), 1);
+
+        design.components.remove(&second_bridge);
+        assert!(
+            diagnostics(&design)
+                .iter()
+                .any(|item| item.code.0 == "circuit.net_incomplete")
+        );
+    }
+
+    #[test]
     fn net_connectivity_groups_pins_into_islands() {
         let (mut design, first_id, second_id) = bridge_fixture();
         let net_id = NetId::new();
@@ -1039,7 +1331,7 @@ mod tests {
     }
 
     #[test]
-    fn bridge_rejects_a_short_between_two_nets() {
+    fn bridge_short_between_two_nets_is_a_rule_error() {
         let (mut design, first_id, second_id) = bridge_fixture();
         for (name, component_id) in [("first", first_id), ("second", second_id)] {
             let net_id = NetId::new();
@@ -1058,9 +1350,13 @@ mod tests {
             );
         }
 
-        assert_eq!(
-            validate_structure(&design),
-            Err("bridge connects pins assigned to conflicting nets".into())
-        );
+        // Still a loadable design, so it can be opened and repaired.
+        assert_eq!(validate_structure(&design), Ok(()));
+        let shorts: Vec<_> = rule_diagnostics(&design)
+            .into_iter()
+            .filter(|item| item.code.0 == "circuit.bridge_short")
+            .collect();
+        assert_eq!(shorts.len(), 1);
+        assert_eq!(shorts[0].severity, DiagnosticSeverity::Error);
     }
 }

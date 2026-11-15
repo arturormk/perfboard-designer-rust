@@ -14,6 +14,7 @@ const PATHS = {
   flip: "M12 3v18 M8 7L4 12l4 5 M16 7l4 5-4 5",
   fit: "M4 9V4h5 M15 4h5v5 M20 15v5h-5 M9 20H4v-5",
   plus: "M12 5v14 M5 12h14",
+  pause: "M9 5v14 M15 5v14",
   minus: "M5 12h14",
   close: "M6 6l12 12 M18 6L6 18",
   check: "M5 12.5l4.5 4.5L19 7",

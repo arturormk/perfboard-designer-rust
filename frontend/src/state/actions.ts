@@ -65,6 +65,7 @@ import { planWireReroutes } from "../editor/net-routing";
 import {
   EMPTY_DIFF,
   activeNetId,
+  batchEdit,
   busy,
   compareCommitId,
   compareDesign,
@@ -83,6 +84,7 @@ import {
   libraryDetails,
   pendingRoute,
   rightOpen,
+  problemCounts,
   rightTab,
   selection,
   side,
@@ -412,7 +414,14 @@ async function guarded<T>(
           "Another client (probably the agent) updated it first. Your edit was not applied; please try again.",
       });
     } else {
-      toast("error", label, { detail: errorMessage(error) });
+      const message = errorMessage(error);
+      const breaksRule = /would break (a )?design rule/.test(message);
+      toast("error", label, {
+        detail:
+          breaksRule && !batchEdit.peek()
+            ? `${message}. To rework the board in steps, turn on Batch edit in the top bar.`
+            : message,
+      });
       await refresh();
     }
     return undefined;
@@ -545,12 +554,35 @@ export function mutate(
   options: { rationale?: string; failure?: string } = {},
 ): Promise<boolean> {
   const list = Array.isArray(operations) ? operations : [operations];
+  const defer = batchEdit.peek();
   return guarded(options.failure ?? "That change was rejected", async () => {
     if (list.length === 1 && !options.rationale)
-      await applyOperation(revision(), list[0]!);
-    else await applyTransaction(revision(), list, options.rationale);
+      await applyOperation(revision(), list[0]!, defer);
+    else await applyTransaction(revision(), list, options.rationale, defer);
     return true;
   }).then((result) => result ?? false);
+}
+
+/** Turns batch edit on or off. Turning it off reports what is left to fix. */
+export function setBatchEdit(on: boolean): void {
+  if (batchEdit.peek() === on) return;
+  batchEdit.value = on;
+  if (on) {
+    toast("info", "Batch edit on", {
+      detail:
+        "Rule checks are paused, so the board may break rules while you rework it. Turn it off when you are done.",
+    });
+    return;
+  }
+  const errors = problemCounts.peek().error;
+  if (!errors) {
+    toast("success", "Batch edit off", { detail: "No rule errors remain." });
+    return;
+  }
+  rightTab.value = "problems";
+  toast("info", "Batch edit off", {
+    detail: `${errors} error${errors === 1 ? "" : "s"} left; see Problems. Further edits may not add new ones.`,
+  });
 }
 
 // ── History ────────────────────────────────────────────────────────────────
@@ -1331,15 +1363,19 @@ export async function rerouteAll(): Promise<void> {
         preferred_side: wire.side,
         replace_wire_id: wire.id,
       });
-      await applyOperation(revision(), {
-        type: "accept_route_proposal",
-        proposal,
-        wire_id: wire.id,
-        color: wire.color,
-        notes: wire.notes ?? "",
-        replace_wire_id: wire.id,
-        new_route_over: proposal.crossings.length ? true : undefined,
-      });
+      await applyOperation(
+        revision(),
+        {
+          type: "accept_route_proposal",
+          proposal,
+          wire_id: wire.id,
+          color: wire.color,
+          notes: wire.notes ?? "",
+          replace_wire_id: wire.id,
+          new_route_over: proposal.crossings.length ? true : undefined,
+        },
+        batchEdit.peek(),
+      );
       await refresh();
       completed += 1;
     }

@@ -67,6 +67,7 @@ import {
   pinBoardPosition,
   rotationDegrees,
   viewX,
+  WIRE_OVERHANG_X2,
   type Design,
   type Point,
   type RoutePoint,
@@ -545,8 +546,18 @@ export function BoardCanvas() {
       ? { x, y }
       : undefined;
   }
+  /** A rail node: on the hole grid. */
   function halfGrid(point: Point): RoutePoint {
     return snappedRoutePoint(point, { maxX2, maxY2 });
+  }
+  /** A wire node: on the hole grid or in the board margin around it. */
+  function wireGrid(point: Point): RoutePoint {
+    return snappedRoutePoint(point, {
+      minX2: -WIRE_OVERHANG_X2,
+      minY2: -WIRE_OVERHANG_X2,
+      maxX2: maxX2 + WIRE_OVERHANG_X2,
+      maxY2: maxY2 + WIRE_OVERHANG_X2,
+    });
   }
 
   /** Whether `element` belongs to a bridge drawn on the face being viewed. */
@@ -1006,7 +1017,7 @@ export function BoardCanvas() {
       }
       const draft = wireDraft.peek();
       if (draft) {
-        const snapped = halfGrid(point);
+        const snapped = wireGrid(point);
         wireDraft.value = {
           ...draft,
           vertices: appendOrthogonal(draft.vertices, snapped),
@@ -1259,7 +1270,7 @@ export function BoardCanvas() {
       return;
     }
     if (active.kind === "vertex") {
-      const next = halfGrid(point);
+      const next = wireGrid(point);
       if (next.x2 !== active.current.x2 || next.y2 !== active.current.y2)
         gesture.value = { ...active, current: next };
       return;
@@ -1601,7 +1612,7 @@ export function BoardCanvas() {
       {wireDraft.value && cursorPoint && (
         <WireDraftPreview
           draft={wireDraft.value}
-          cursor={halfGrid(cursorPoint)}
+          cursor={wireGrid(cursorPoint)}
         />
       )}
       {railDraft.value && (

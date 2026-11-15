@@ -9,8 +9,20 @@ const ADVICE: Record<string, string> = {
     "Some pins on this net are not joined yet. Follow the dashed hints on the board or ask for a suggested route.",
   "circuit.net_too_small": "A net needs at least two pins to mean anything.",
   "circuit.proposed_net": "Review it in Nets and accept or reject it.",
+  "circuit.bridge_short":
+    "Bridges join pins of different nets. Remove or move a bridge, or move the pins onto one net.",
+  "route.terminal_net_mismatch":
+    "The wire ends on something of another net. Reconnect the end, or move the wire to that net.",
+  "route.off_board":
+    "Part of this route is off the board. Drag its nodes back onto the board or its margin.",
+  "route.crosses_pin":
+    "The route runs through a pin it does not connect to. Reroute around it.",
+  "route.junction_needs_through_hole":
+    "Wires on both faces meet here. Make the junction a through-hole, or keep the wires on one face.",
+  "route.rail_node_other_side":
+    "A wire on the other face can only reach a rail at a whole hole. Move the rail node onto a hole.",
   "placement.out_of_bounds":
-    "Move the part fully onto the board, or enlarge the board.",
+    "A pin has no hole to go in. Move the part so every pin is on the board, or enlarge the board.",
   "placement.occupied_hole": "Two parts want the same hole. Move one of them.",
   "placement.keepout_overlap":
     "A part sits inside another part's keepout area.",

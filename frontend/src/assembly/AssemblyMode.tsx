@@ -14,7 +14,11 @@ import type {
   WireListEntry,
 } from "../api/project";
 import { BoardBase } from "../board/BoardBase";
-import { BoardScene, defaultViewBox } from "../board/BoardScene";
+import {
+  BOARD_VIEW_PAD,
+  BoardScene,
+  defaultViewBox,
+} from "../board/BoardScene";
 import { wireColorCss, wireColorName } from "../model/naming";
 import { confirmAction, openDialogKind } from "../shell/dialogs";
 import {
@@ -513,7 +517,8 @@ function StepDetail({ plan: current }: { plan: AssemblyPlan }) {
 
 function boardBox(holesX: number, holesY: number): ViewBox {
   // Room for the floating side switch above the board.
-  return [-2.2, -4.4, holesX - 1 + 4.4, holesY - 1 + 6.6];
+  const pad = BOARD_VIEW_PAD;
+  return [-pad, -pad - 2.2, holesX - 1 + pad * 2, holesY - 1 + pad * 2 + 2.2];
 }
 
 function AssemblyCanvas({ plan: current }: { plan: AssemblyPlan }) {

@@ -11,13 +11,10 @@
 import { useSignalEffect, type ReadonlySignal } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type { Side } from "../api/project";
-import type { Design } from "../model/geometry";
+import { BOARD_MARGIN, PAD_RADIUS, type Design } from "../model/geometry";
 
 type Board = Design["board"];
 type ViewBox = [number, number, number, number];
-
-/** Keep in sync with `BOARD_MARGIN` in BoardScene. */
-const BOARD_MARGIN = 0.7;
 
 function roundRect(
   ctx: CanvasRenderingContext2D,
@@ -100,7 +97,7 @@ function draw(
       }
   };
   if (side === "solder") {
-    holes(0.36);
+    holes(PAD_RADIUS);
     ctx.fillStyle = color("--pad-ring-solder");
     ctx.fill();
     ctx.lineWidth = 0.03;

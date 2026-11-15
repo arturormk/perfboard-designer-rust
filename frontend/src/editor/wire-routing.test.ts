@@ -63,6 +63,18 @@ describe("wire route shapes", () => {
     ).toEqual({ x2: 21, y2: 0 });
   });
 
+  it("lets wire nodes reach into the board margin", () => {
+    const bounds = { minX2: -2, minY2: -2, maxX2: 24, maxY2: 18 };
+    expect(snappedRoutePoint({ x: -0.6, y: -3 }, bounds)).toEqual({
+      x2: -1,
+      y2: -2,
+    });
+    expect(snappedRoutePoint({ x: 15, y: 9.4 }, bounds)).toEqual({
+      x2: 24,
+      y2: 18,
+    });
+  });
+
   it("inserts the closest on-segment half-grid node", () => {
     expect(
       insertWireNode(

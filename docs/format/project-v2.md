@@ -8,6 +8,10 @@ history ([ADR 0013](../adr/0013-patch-encoded-history.md)). The design,
 validation cache, commit map, commit order and head commit are unchanged.
 Only the following differ.
 
+The stored validation reports (the project's and each commit's) are a cache.
+Readers recompute them on load and never reject a file because they differ,
+so a project saved under older validation rules still opens.
+
 ## Commit changes
 
 `commits.<id>.changes` lists the changes the commit absorbed as records of

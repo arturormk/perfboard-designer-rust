@@ -539,6 +539,23 @@ textarea::placeholder {
 }
 
 .badge.agent,
+button.pill.batch-toggle {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+button.pill.batch-toggle:hover {
+  color: var(--text-1);
+}
+
+button.pill.batch-toggle.on {
+  background: var(--copper-soft);
+  border-color: var(--copper);
+  color: var(--copper);
+}
+
 .pill.agent {
   background: var(--agent-soft);
   color: var(--agent);
@@ -2576,6 +2593,11 @@ textarea::placeholder {
 .status-coords b {
   color: var(--text-1);
   font-weight: 500;
+}
+
+.status-batch {
+  color: var(--copper);
+  font-weight: 600;
 }
 
 .status-problems {

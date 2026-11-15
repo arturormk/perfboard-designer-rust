@@ -231,6 +231,15 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 Ok(SessionResponse::ProjectView(Box::new(view)))
             }
             SessionRequest::ApplyTransaction(request) => {
+                // The bridge serves agents. Batch edit is for the person at
+                // the app, whatever origin a request claims; agents batch by
+                // putting every step in one transaction.
+                if request.defer_checks {
+                    return Err(SessionApiError::new(
+                        "operation.deferred_checks_not_allowed",
+                        OperationError::DeferredChecksNotAllowed.to_string(),
+                    ));
+                }
                 let (result, event) = self
                     .lock()?
                     .apply_transaction(request)

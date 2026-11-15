@@ -24,6 +24,9 @@ pub struct TransactionRequest {
     pub rationale: Option<String>,
     #[serde(default)]
     pub allow_invalid_placement: bool,
+    /// Batch edit; see [`OperationRequest::defer_checks`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub defer_checks: bool,
     pub operations: Vec<OperationPayload>,
 }
 
@@ -181,6 +184,7 @@ impl ProjectSession {
             }
             .into());
         }
+        crate::operations::check_origin(request.origin, request.defer_checks)?;
         let before = self.document.design.clone();
         let before_validation = self.document.validation.clone();
         let mut candidate = self.document.clone();
@@ -198,9 +202,20 @@ impl ProjectSession {
                     origin: request.origin,
                     rationale: request.rationale.clone(),
                     allow_invalid_placement: request.allow_invalid_placement,
+                    defer_checks: request.defer_checks,
                     payload: payload.clone(),
                 },
+                // A transaction may pass through states that break rules;
+                // only its result is checked, below.
+                false,
             )?);
+        }
+        if !request.defer_checks {
+            crate::operations::check_new_violations(
+                &before_validation,
+                &candidate.validation,
+                request.allow_invalid_placement,
+            )?;
         }
         let summary = results
             .iter()

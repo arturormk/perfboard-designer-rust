@@ -2,13 +2,14 @@ export type RoutePoint = { x2: number; y2: number };
 
 export function snappedRoutePoint(
   point: { x: number; y: number },
-  bounds?: { maxX2: number; maxY2: number },
+  bounds?: { minX2?: number; minY2?: number; maxX2: number; maxY2: number },
 ): RoutePoint {
   const x2 = Math.round(point.x * 2);
   const y2 = Math.round(point.y * 2);
+  if (!bounds) return { x2, y2 };
   return {
-    x2: bounds ? Math.max(0, Math.min(bounds.maxX2, x2)) : x2,
-    y2: bounds ? Math.max(0, Math.min(bounds.maxY2, y2)) : y2,
+    x2: Math.max(bounds.minX2 ?? 0, Math.min(bounds.maxX2, x2)),
+    y2: Math.max(bounds.minY2 ?? 0, Math.min(bounds.maxY2, y2)),
   };
 }
 

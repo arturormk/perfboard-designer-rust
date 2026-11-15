@@ -7,12 +7,14 @@ import {
   redo,
   save,
   saveAs,
+  setBatchEdit,
   undo,
   showHistory,
 } from "../state/actions";
 import {
   appMode,
   appVersion,
+  batchEdit,
   changeCount,
   dirty,
   filePath,
@@ -208,6 +210,21 @@ export function TopBar() {
             title="Connections proposed by the agent need your review"
           >
             <Icon name="agent" size={14} /> {proposals} to review
+          </button>
+        )}
+        {appMode.value === "board" && (
+          <button
+            class={`pill batch-toggle${batchEdit.value ? " on" : ""}`}
+            aria-pressed={batchEdit.value}
+            onClick={() => setBatchEdit(!batchEdit.value)}
+            title={
+              batchEdit.value
+                ? "Batch edit is on: rule checks are paused. Click to resume them."
+                : "Batch edit: pause rule checks while you rework the board in several steps"
+            }
+          >
+            <Icon name={batchEdit.value ? "pause" : "layers"} size={14} />
+            {batchEdit.value ? "Batch edit on" : "Batch edit"}
           </button>
         )}
         <div class="btn-group">

@@ -26,6 +26,17 @@ export interface RoutePoint {
   y2: number;
 }
 
+/** Outer radius of a drawn hole: the solder-side pad, in pitches. */
+export const PAD_RADIUS = 0.36;
+/** How far a wire may run past the outermost holes, in half-grid steps. */
+export const WIRE_OVERHANG_X2 = 2;
+/**
+ * Distance from the outermost holes to the board edge. A ring of holes one
+ * pitch outside the grid would touch the edge from inside, leaving room for
+ * wires to bend through the margin. Matches `BOARD_MARGIN` in rendering.rs.
+ */
+export const BOARD_MARGIN = WIRE_OVERHANG_X2 / 2 + PAD_RADIUS;
+
 export const ROTATIONS: Rotation[] = ["deg0", "deg90", "deg180", "deg270"];
 
 export function rotationDegrees(rotation: Rotation): number {

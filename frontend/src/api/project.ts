@@ -657,9 +657,14 @@ export function createProject(
 ): Promise<ProjectDocument> {
   return invoke("create_project", { name, holesX, holesY, pitchMm });
 }
+/**
+ * Applies one operation. `deferChecks` is batch edit: design-rule checks are
+ * skipped so a rework can pass through intermediate states that break them.
+ */
 export function applyOperation(
   revision: number,
   payload: OperationPayload,
+  deferChecks = false,
 ): Promise<void> {
   return invoke("apply_project_operation", {
     request: {
@@ -667,6 +672,7 @@ export function applyOperation(
       expected_revision: revision,
       origin: "user",
       allow_invalid_placement: true,
+      ...(deferChecks ? { defer_checks: true } : {}),
       payload: undefined,
       ...payload,
     },
@@ -676,6 +682,7 @@ export function applyTransaction(
   revision: number,
   operations: OperationPayload[],
   rationale?: string,
+  deferChecks = false,
 ): Promise<void> {
   return invoke("apply_project_transaction", {
     request: {
@@ -684,6 +691,7 @@ export function applyTransaction(
       origin: "user",
       rationale,
       allow_invalid_placement: true,
+      ...(deferChecks ? { defer_checks: true } : {}),
       operations,
     },
   });

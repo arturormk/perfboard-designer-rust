@@ -39,6 +39,12 @@ pub struct OperationRequest {
     /// Accept placement diagnostics while preserving structural invariants.
     #[serde(default)]
     pub allow_invalid_placement: bool,
+    /// Batch edit: skip design-rule checks for this change, so a person can
+    /// rework the board one step at a time through intermediate states that
+    /// break rules. Integrity checks still apply. Only `user` operations from
+    /// the desktop app may set it; agents batch with transactions instead.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub defer_checks: bool,
     #[serde(flatten)]
     pub payload: OperationPayload,
 }
@@ -257,8 +263,10 @@ pub enum OperationError {
     InstanceNotFound,
     #[error("component definition does not allow the requested rotation")]
     RotationNotAllowed,
-    #[error("operation would create an invalid placement")]
+    #[error("{}", describe_violations(.diagnostics))]
     InvalidPlacement { diagnostics: Vec<Diagnostic> },
+    #[error("batch edit (deferred checks) is only available to the person using the desktop app")]
+    DeferredChecksNotAllowed,
     #[error("board dimensions must contain at least one hole on each axis")]
     InvalidBoardSize,
     #[error("board resize offset must keep either the near or far edge anchored")]
@@ -347,7 +355,7 @@ pub fn apply_operation(
     let before = document.design.clone();
     let before_validation = document.validation.clone();
     let metadata = request.clone();
-    let result = apply_operation_untracked(document, request)?;
+    let result = apply_operation_untracked(document, request, true)?;
     if document.working_base.is_none() {
         document.working_base = Some(before.clone());
     }
@@ -366,7 +374,74 @@ pub fn apply_operation(
     Ok(result)
 }
 
-fn check_saddle(design: &crate::Design, saddle: &Saddle) -> Result<(), OperationError> {
+/// Only the person at the desktop app may defer checks.
+pub(crate) fn check_origin(
+    origin: OperationOrigin,
+    defer_checks: bool,
+) -> Result<(), OperationError> {
+    if defer_checks && origin != OperationOrigin::User {
+        return Err(OperationError::DeferredChecksNotAllowed);
+    }
+    Ok(())
+}
+
+/// Whether `diagnostic` is a design-rule error a live edit may not add.
+///
+/// Required design constraints always count. Placement errors count unless
+/// the request allows invalid placement (the desktop app does, so parts can be
+/// dragged across each other).
+fn blocks(diagnostic: &Diagnostic, allow_invalid_placement: bool) -> bool {
+    diagnostic.code.0 == "constraint.required"
+        || (diagnostic.severity == DiagnosticSeverity::Error
+            && !(allow_invalid_placement && diagnostic.code.0.starts_with("placement.")))
+}
+
+/// Refuses a change that adds a design-rule error.
+///
+/// Only errors that were not there before count, so a project that already
+/// breaks a rule (opened from a file, or left by a batch edit) can still be
+/// edited, and repaired, one step at a time.
+///
+/// # Errors
+/// [`OperationError::InvalidPlacement`] listing the new errors.
+pub(crate) fn check_new_violations(
+    before: &[Diagnostic],
+    after: &[Diagnostic],
+    allow_invalid_placement: bool,
+) -> Result<(), OperationError> {
+    let added: Vec<Diagnostic> = after
+        .iter()
+        .filter(|item| blocks(item, allow_invalid_placement) && !before.contains(item))
+        .cloned()
+        .collect();
+    if added.is_empty() {
+        Ok(())
+    } else {
+        Err(OperationError::InvalidPlacement { diagnostics: added })
+    }
+}
+
+fn describe_violations(diagnostics: &[Diagnostic]) -> String {
+    let mut messages: Vec<&str> = diagnostics
+        .iter()
+        .map(|item| item.message.as_str())
+        .collect();
+    messages.dedup();
+    match messages.as_slice() {
+        [] => "the change would break a design rule".into(),
+        [only] => format!("the change would break a design rule: {only}"),
+        [first, rest @ ..] => format!(
+            "the change would break design rules: {first} (and {} more)",
+            rest.len()
+        ),
+    }
+}
+
+fn check_saddle(
+    design: &crate::Design,
+    saddle: &Saddle,
+    defer_checks: bool,
+) -> Result<(), OperationError> {
     let size = design.board.size;
     if saddle.start == saddle.end
         || [saddle.start, saddle.end]
@@ -374,6 +449,9 @@ fn check_saddle(design: &crate::Design, saddle: &Saddle) -> Result<(), Operation
             .any(|hole| hole.x >= size.holes_x() || hole.y >= size.holes_y())
     {
         return Err(OperationError::InvalidSaddle);
+    }
+    if defer_checks {
+        return Ok(());
     }
     if let Some(reason) = crate::saddles::hole_conflict(design, saddle) {
         return Err(OperationError::SaddleHoleOccupied(reason));
@@ -385,10 +463,18 @@ fn check_saddle(design: &crate::Design, saddle: &Saddle) -> Result<(), Operation
 }
 
 #[allow(clippy::too_many_lines, clippy::similar_names)] // This match is the auditable operation registry.
+///
+/// With `check_rules`, the change is refused if it adds a design-rule error
+/// (see [`check_new_violations`]). A transaction passes `false` and checks
+/// once, after its last step.
 pub(crate) fn apply_operation_untracked(
     document: &mut ProjectDocument,
     request: OperationRequest,
+    check_rules: bool,
 ) -> Result<OperationResult, OperationError> {
+    check_origin(request.origin, request.defer_checks)?;
+    let defer_checks = request.defer_checks;
+    let check_rules = check_rules && !defer_checks;
     if request.expected_revision != document.revision {
         return Err(OperationError::StaleRevision {
             expected: request.expected_revision,
@@ -1004,7 +1090,9 @@ pub(crate) fn apply_operation_untracked(
             if !crate::connectivity::route_is_supported(&wire.vertices) {
                 return Err(OperationError::UnsupportedWireRoute);
             }
-            if crate::connectivity::route_crosses_unrelated_pin(&next.design, wire) {
+            if !request.defer_checks
+                && crate::connectivity::route_crosses_unrelated_pin(&next.design, wire)
+            {
                 return Err(OperationError::WireCrossesPin);
             }
             next.design.wires.insert(wire.id, wire.clone());
@@ -1016,7 +1104,7 @@ pub(crate) fn apply_operation_untracked(
             if next.design.saddles.contains_key(&saddle.id) {
                 return Err(OperationError::DuplicateSaddle);
             }
-            check_saddle(&next.design, saddle)?;
+            check_saddle(&next.design, saddle, request.defer_checks)?;
             next.design.saddles.insert(saddle.id, saddle.clone());
             format!("Added saddle {}", saddle.id)
         }
@@ -1024,7 +1112,7 @@ pub(crate) fn apply_operation_untracked(
             if !next.design.saddles.contains_key(&saddle.id) {
                 return Err(OperationError::SaddleNotFound);
             }
-            check_saddle(&next.design, saddle)?;
+            check_saddle(&next.design, saddle, request.defer_checks)?;
             next.design.saddles.insert(saddle.id, saddle.clone());
             format!("Updated saddle {}", saddle.id)
         }
@@ -1066,7 +1154,7 @@ pub(crate) fn apply_operation_untracked(
             if !crate::connectivity::route_is_supported(&rail.vertices) {
                 return Err(OperationError::UnsupportedRailRoute);
             }
-            if crate::connectivity::rail_crosses_pin(&next.design, rail) {
+            if !request.defer_checks && crate::connectivity::rail_crosses_pin(&next.design, rail) {
                 return Err(OperationError::RailCrossesPin);
             }
             next.design.rails.insert(rail.id, rail.clone());
@@ -1110,7 +1198,7 @@ pub(crate) fn apply_operation_untracked(
                 return Err(OperationError::UnsupportedRailRoute);
             }
             rail.vertices.clone_from(vertices);
-            if crate::connectivity::rail_crosses_pin(&next.design, &rail) {
+            if !request.defer_checks && crate::connectivity::rail_crosses_pin(&next.design, &rail) {
                 return Err(OperationError::RailCrossesPin);
             }
             let referenced: BTreeSet<RoutePos> = next
@@ -1170,7 +1258,9 @@ pub(crate) fn apply_operation_untracked(
             if !crate::connectivity::route_is_supported(&candidate.vertices) {
                 return Err(OperationError::UnsupportedWireRoute);
             }
-            if crate::connectivity::route_crosses_unrelated_pin(&next.design, &candidate) {
+            if !request.defer_checks
+                && crate::connectivity::route_crosses_unrelated_pin(&next.design, &candidate)
+            {
                 return Err(OperationError::WireCrossesPin);
             }
             next.design.wires.insert(*wire_id, candidate.clone());
@@ -1256,7 +1346,9 @@ pub(crate) fn apply_operation_untracked(
             if !crate::connectivity::route_is_supported(&candidate.vertices) {
                 return Err(OperationError::UnsupportedWireRoute);
             }
-            if crate::connectivity::route_crosses_unrelated_pin(&next.design, &candidate) {
+            if !request.defer_checks
+                && crate::connectivity::route_crosses_unrelated_pin(&next.design, &candidate)
+            {
                 return Err(OperationError::WireCrossesPin);
             }
             next.design.wires.insert(*wire_id, candidate.clone());
@@ -1420,7 +1512,9 @@ pub(crate) fn apply_operation_untracked(
                 locked: false,
                 notes: notes.clone(),
             };
-            if crate::connectivity::route_crosses_unrelated_pin(&next.design, &routed_wire) {
+            if !defer_checks
+                && crate::connectivity::route_crosses_unrelated_pin(&next.design, &routed_wire)
+            {
                 return Err(OperationError::WireCrossesPin);
             }
             if let Some(replaced) = replace_wire_id {
@@ -1467,19 +1561,12 @@ pub(crate) fn apply_operation_untracked(
         }
     };
     next.validation = next.calculate_validation();
-    if (!request.allow_invalid_placement
-        && next
-            .validation
-            .iter()
-            .any(|item| item.severity == DiagnosticSeverity::Error))
-        || next
-            .validation
-            .iter()
-            .any(|item| item.code.0 == "constraint.required")
-    {
-        return Err(OperationError::InvalidPlacement {
-            diagnostics: next.validation,
-        });
+    if check_rules {
+        check_new_violations(
+            &document.validation,
+            &next.validation,
+            request.allow_invalid_placement,
+        )?;
     }
     next.revision.0 += 1;
     next.validate()?;
@@ -1531,6 +1618,7 @@ mod tests {
             origin: OperationOrigin::User,
             rationale: None,
             allow_invalid_placement: false,
+            defer_checks: false,
             payload,
         }
     }
@@ -1549,6 +1637,7 @@ mod tests {
             origin: OperationOrigin::User,
             rationale: None,
             allow_invalid_placement: false,
+            defer_checks: false,
             payload: OperationPayload::RemoveComponent {
                 instance_id: ComponentInstanceId::new(),
             },
@@ -1798,6 +1887,7 @@ mod tests {
                 origin: OperationOrigin::User,
                 rationale: None,
                 allow_invalid_placement: false,
+                defer_checks: false,
                 payload: OperationPayload::ResizeBoard {
                     holes_x: 5,
                     holes_y: 3,

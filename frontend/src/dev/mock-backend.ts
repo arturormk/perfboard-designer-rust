@@ -962,6 +962,7 @@ export async function installMockBackend(): Promise<void> {
         expected_revision,
         origin: _origin,
         allow_invalid_placement: _allow,
+        defer_checks: _defer,
         payload: _payload,
         rationale,
         ...payload

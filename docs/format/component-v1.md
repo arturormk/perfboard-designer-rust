@@ -95,7 +95,9 @@ allow_board_overhang = true
 - `occupied_holes` adds local grid positions covered by the component beyond
   its pins. They block placement and component-side routing and cannot anchor a
   bend, but a solder-side wire may run straight beneath them. Only `pins`
-  describe leads that physically obstruct a route through the board.
+  describe leads that physically obstruct a route through the board. Every pin
+  must land on a board hole; occupied holes may fall past the board edge, since
+  a body may overhang it.
   `keepouts` are inclusive local-grid rectangles which constrain placement.
   `wire_keepouts` use the same coordinates but constrain only component-side
   wire routing, including half-grid route points between their grid bounds;

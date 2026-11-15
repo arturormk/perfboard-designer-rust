@@ -30,6 +30,7 @@ fn add(session: &mut ProjectSession, name: &str, x: u32, y: u32) {
             origin: OperationOrigin::Mcp,
             rationale: Some(format!("Place {name}")),
             allow_invalid_placement: false,
+            defer_checks: false,
             payload: OperationPayload::AddComponent {
                 instance: ComponentInstance {
                     id: ComponentInstanceId::new(),

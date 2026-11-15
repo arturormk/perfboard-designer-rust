@@ -1,5 +1,6 @@
 import {
   appMode,
+  batchEdit,
   busy,
   cursorHole,
   design,
@@ -68,6 +69,11 @@ export function StatusBar() {
               : "Solder side · mirrored"}
           </span>
         </>
+      )}
+      {batchEdit.value && (
+        <span class="status-batch" title="Rule checks are paused">
+          Batch edit · checks paused
+        </span>
       )}
       <button
         class="status-problems"

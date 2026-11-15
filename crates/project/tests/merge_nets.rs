@@ -19,6 +19,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) -> Result<()
             origin: OperationOrigin::User,
             rationale: None,
             allow_invalid_placement: false,
+            defer_checks: false,
             payload,
         },
     )
