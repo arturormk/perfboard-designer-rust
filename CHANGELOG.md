@@ -9,6 +9,11 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Screw terminals: a new 5-position block joins the 2- and 3-position ones.
+  All three have measured bodies (definition version 1.1.0): half a hole
+  past the end pins, so the holes beyond them stay free, and a whole hole in
+  front and behind. Wires still enter from the marked south side.
+
 - The Welcome card over an empty board closes once you create or open a
   project, and has a close button. Before, it stayed over every empty
   board, including one you had just made.

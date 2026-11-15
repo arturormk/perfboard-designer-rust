@@ -543,15 +543,18 @@ fn headers() -> Vec<Part> {
     parts
 }
 
+/// Screw terminal blocks on the 5.08 mm pitch: pins on every other hole. The
+/// block reaches half a hole past the end pins, so the holes beyond them stay
+/// free, and a whole hole in front and behind, so those rows are covered.
 fn screw_terminals() -> Vec<Part> {
-    [2, 3]
+    [2, 3, 5]
         .into_iter()
         .map(|positions: i32| {
             let pins = (1..=positions)
                 .map(|number| numbered_pin(usize::try_from(number).unwrap(), 2 * (number - 1), 0))
                 .collect();
             let name = format!("Screw terminal, {positions} positions");
-            part(Spec {
+            let mut terminal = part(Spec {
                 folder: &format!("screw-terminal-{positions}"),
                 name: &name,
                 designator: "J",
@@ -559,7 +562,12 @@ fn screw_terminals() -> Vec<Part> {
                     "Generic {positions}-position PCB screw terminal block, 5.08 mm pitch"
                 ),
                 pins,
-                outline: centred(f64::from(positions - 1), 0.0, f64::from(positions) * 5.08, 7.62),
+                outline: centred(
+                    f64::from(positions - 1),
+                    0.0,
+                    f64::from(2 * positions - 1) * PITCH,
+                    3.0 * PITCH,
+                ),
                 access: vec![AccessRegion {
                     min: LocalPos { x: 0, y: 2 },
                     max: LocalPos {
@@ -575,12 +583,15 @@ fn screw_terminals() -> Vec<Part> {
                     &name,
                     &[
                         &format!(
-                            "A PCB screw terminal block with {positions} positions on the 5.08 mm pitch, so its pins use every other hole. The block covers the holes around and between its pins."
+                            "A PCB screw terminal block with {positions} positions on the 5.08 mm pitch, so its pins use every other hole. It covers the holes between its pins and the rows in front of and behind them; the holes beyond the end pins stay free."
                         ),
                         "Wires enter from the south side (positive y). That side needs room for the wires and a screwdriver; it may overhang the board edge.",
                     ],
                 ),
-            })
+            });
+            // 1.1.0 measured the block: half a hole past the end pins, not a whole one.
+            terminal.definition.definition_version = "1.1.0".into();
+            terminal
         })
         .collect()
 }
@@ -693,6 +704,20 @@ fn coverage_occupies_holes_under_the_body_but_not_the_pins() {
         BTreeSet::from([(0, -1), (1, -1), (2, -1), (1, 0), (0, 1), (1, 1), (2, 1)])
     );
     assert_eq!(keepouts.len(), 3);
+    // A screw terminal covers the rows in front and behind and the hole
+    // between its pins, but not the holes beyond the end pins.
+    let terminal = &screw_terminals()[0].definition;
+    let occupied: BTreeSet<(i32, i32)> = terminal
+        .occupied_holes
+        .iter()
+        .map(|hole| (hole.x, hole.y))
+        .collect();
+    let mut border: BTreeSet<(i32, i32)> = (0..=2)
+        .flat_map(|x| (-1..=1).map(move |y| (x, y)))
+        .collect();
+    border.remove(&(0, 0));
+    border.remove(&(2, 0));
+    assert_eq!(occupied, border);
     // A DIP-8 body covers the two rows between its pin rows.
     let dip = &dip_packages()[0].definition;
     assert_eq!(dip.occupied_holes.len(), 8);
