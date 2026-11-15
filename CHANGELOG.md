@@ -9,6 +9,12 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Bridges can be deleted once no wire ends on them. A bridge end joins a net
+  when a wire is drawn to it and stayed listed there after the wire was
+  gone, which blocked deleting the bridge with "object is still referenced
+  by circuit or routing data". Its ends now leave their nets with it. A
+  bridge that still has a wire is refused with a message that says so.
+
 - A pin, bridge end or rail node under an airwire now takes the click, so you
   can start or end a wire there. Before, the airwire drawn over it took the
   click and asked for route suggestions instead.

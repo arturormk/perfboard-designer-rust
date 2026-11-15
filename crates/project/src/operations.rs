@@ -327,6 +327,8 @@ pub enum OperationError {
     InvalidRouteProposal,
     #[error("object is still referenced by circuit or routing data")]
     ObjectInUse,
+    #[error("a wire still ends on this bridge; remove the wire first")]
+    BridgeHasWire,
     #[error("only proposed nets can be accepted or rejected")]
     NotAProposal,
     #[error(transparent)]
@@ -623,7 +625,37 @@ pub(crate) fn apply_operation_untracked(
             format!("Updated {definition_name} component metadata")
         }
         OperationPayload::RemoveComponent { instance_id } => {
-            if next
+            let is_bridge = next
+                .design
+                .components
+                .get(instance_id)
+                .and_then(|instance| {
+                    next.design
+                        .component_definitions
+                        .get(&instance.definition_id)
+                })
+                .is_some_and(|definition| definition.kind == ComponentKind::Bridge);
+            if is_bridge {
+                // A bridge end joins a net only by following what it is
+                // soldered to, so that membership goes with the bridge. A
+                // wire ending on it is a real reference.
+                let ends_here = |terminal: &perfboard_core::TerminalRef| matches!(terminal, perfboard_core::TerminalRef::Pin { component_id, .. } if component_id == instance_id);
+                if next
+                    .design
+                    .wires
+                    .values()
+                    .any(|wire| ends_here(&wire.start) || ends_here(&wire.end))
+                {
+                    return Err(OperationError::BridgeHasWire);
+                }
+                for (net_id, net) in &mut next.design.nets {
+                    let before = net.pins.len();
+                    net.pins.retain(|pin| pin.component_id != *instance_id);
+                    if net.pins.len() != before {
+                        affected_nets.insert(*net_id);
+                    }
+                }
+            } else if next
                 .design
                 .nets
                 .values()

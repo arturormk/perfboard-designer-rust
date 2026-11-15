@@ -245,3 +245,37 @@ fn a_wire_can_end_on_a_bridge_joined_to_its_net_from_either_side() {
         .unwrap_or_else(|error| panic!("chain {chain}, {side:?}: {error}"));
     }
 }
+
+/// A bridge whose ends joined a net, but carry no wire, can be removed; its
+/// ends leave the net with it. One that still has a wire ending on it cannot.
+#[test]
+fn a_bridge_without_wires_can_be_removed_even_if_its_ends_joined_a_net() {
+    let Fixture {
+        mut document,
+        bridge_far,
+        x,
+        wire_id,
+        ..
+    } = fixture();
+    let bridge = bridge_far.component_id;
+    let error = apply(
+        &mut document,
+        OperationPayload::RemoveComponent {
+            instance_id: bridge,
+        },
+    )
+    .unwrap_err();
+    assert!(error.contains("wire"), "{error}");
+
+    apply(&mut document, OperationPayload::RemoveWire { wire_id }).unwrap();
+    assert!(document.design.nets[&x].pins.contains(&bridge_far));
+    apply(
+        &mut document,
+        OperationPayload::RemoveComponent {
+            instance_id: bridge,
+        },
+    )
+    .unwrap();
+    assert!(!document.design.components.contains_key(&bridge));
+    assert!(!document.design.nets[&x].pins.contains(&bridge_far));
+}
