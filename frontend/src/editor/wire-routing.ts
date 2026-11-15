@@ -207,19 +207,19 @@ export function orthogonalRoute(vertices: RoutePoint[]): RoutePoint[] {
   );
 }
 
-export function appendOrthogonal(
+/**
+ * Appends a clicked point to a wire being drawn as one straight segment, at
+ * whatever angle it lies. A click on the current end adds nothing.
+ */
+export function appendSegment(
   vertices: RoutePoint[],
   target: RoutePoint,
 ): RoutePoint[] {
-  if (vertices.length === 0) return [target];
-  const result = [...vertices];
-  const last = result.at(-1)!;
-  if (last.x2 !== target.x2 && last.y2 !== target.y2) {
-    result.push({ x2: target.x2, y2: last.y2 });
+  const last = vertices.at(-1);
+  if (last && last.x2 === target.x2 && last.y2 === target.y2) {
+    return [...vertices];
   }
-  const end = result.at(-1)!;
-  if (end.x2 !== target.x2 || end.y2 !== target.y2) result.push(target);
-  return result;
+  return [...vertices, target];
 }
 
 /**

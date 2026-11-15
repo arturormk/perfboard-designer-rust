@@ -79,7 +79,7 @@ import {
   type ResizeHandle,
 } from "../editor/board-size";
 import {
-  appendOrthogonal,
+  appendSegment,
   closestWireSegmentIndex,
   dragRailNode,
   finishWireNodeDrag,
@@ -738,7 +738,7 @@ export function BoardCanvas() {
       netId = endNet.net.id;
       activeNetId.value = netId;
     }
-    const vertices = appendOrthogonal(draft.vertices, position);
+    const vertices = appendSegment(draft.vertices, position);
     wireDraft.value = null;
     await addWire(netId, draft.start, terminal, vertices);
   }
@@ -1020,7 +1020,7 @@ export function BoardCanvas() {
         const snapped = wireGrid(point);
         wireDraft.value = {
           ...draft,
-          vertices: appendOrthogonal(draft.vertices, snapped),
+          vertices: appendSegment(draft.vertices, snapped),
         };
         return;
       }
@@ -1818,7 +1818,7 @@ function WireDraftPreview({
   draft: WireDraft;
   cursor: RoutePoint;
 }) {
-  const vertices = appendOrthogonal(draft.vertices, cursor);
+  const vertices = appendSegment(draft.vertices, cursor);
   return (
     <g class="wire-draft">
       <polyline

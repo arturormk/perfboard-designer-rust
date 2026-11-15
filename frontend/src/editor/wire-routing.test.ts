@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  appendOrthogonal,
+  appendSegment,
   closestWireSegmentIndex,
   dragRailNode,
   finishWireNodeDrag,
@@ -49,11 +49,20 @@ describe("wire route shapes", () => {
     ).toBe(true);
   });
 
-  it("adds only horizontal and vertical segments while drawing", () => {
-    expect(appendOrthogonal([{ x2: 2, y2: 4 }], { x2: 10, y2: 12 })).toEqual([
+  it("adds each click as one straight segment at any angle", () => {
+    expect(appendSegment([{ x2: 2, y2: 4 }], { x2: 10, y2: 12 })).toEqual([
       { x2: 2, y2: 4 },
-      { x2: 10, y2: 4 },
       { x2: 10, y2: 12 },
+    ]);
+    expect(appendSegment([{ x2: 2, y2: 4 }], { x2: 7, y2: 4 })).toEqual([
+      { x2: 2, y2: 4 },
+      { x2: 7, y2: 4 },
+    ]);
+  });
+
+  it("ignores a click on the current end of the wire", () => {
+    expect(appendSegment([{ x2: 2, y2: 4 }], { x2: 2, y2: 4 })).toEqual([
+      { x2: 2, y2: 4 },
     ]);
   });
 

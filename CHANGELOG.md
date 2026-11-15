@@ -9,6 +9,10 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- While drawing a wire, each click adds one straight segment from the last
+  point to the click, at any angle, so diagonal runs can be drawn directly.
+  Before, every click was split into a horizontal and a vertical segment.
+
 - Click again on the same spot to select the next object down when parts,
   wires or rails overlap, for example a resistor fitted under a module.
   Pressing on the selected object and dragging moves it, even where
