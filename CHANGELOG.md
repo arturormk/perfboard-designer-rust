@@ -9,6 +9,9 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- An Arduino Nano (30 pins, USB side marked) is now in the standard library
+  as `dev.perfboard.arduino-nano`.
+
 - The Part designer's part list scrolls again. Its library sections were
   squashed to fit the window, which clipped their text (the Project section
   most visibly) and left nothing to scroll.

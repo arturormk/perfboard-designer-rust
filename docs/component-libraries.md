@@ -19,8 +19,8 @@ searched in order:
    it access (see [User libraries and grants](#user-libraries-and-grants)).
 3. **The standard library.** General-purpose parts built into the application:
    resistors, capacitors, diodes and LEDs, TO-92 and TO-220 packages, DIP
-   packages, pin headers, screw terminals, the bridge and the Dupont jumper
-   and pin. Always searched last, and read-only.
+   packages, pin headers, screw terminals, an Arduino Nano, the bridge and the
+   Dupont jumper and pin. Always searched last, and read-only.
 
 Each library folder holds one part per subfolder:
 
