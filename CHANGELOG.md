@@ -9,6 +9,10 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- A pin, bridge end or rail node under an airwire now takes the click, so you
+  can start or end a wire there. Before, the airwire drawn over it took the
+  click and asked for route suggestions instead.
+
 - Wires drawn on the component side can end on a bridge. Bridge ends now
   show there as dashed through-hole points, like rail nodes on the other
   face. Before, clicking a bridge end on the component side only added a

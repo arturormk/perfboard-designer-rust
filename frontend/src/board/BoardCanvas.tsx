@@ -541,6 +541,15 @@ export function BoardCanvas() {
     return snappedRoutePoint(point, { maxX2, maxY2 });
   }
 
+  /** Whether `element` belongs to a bridge drawn on the face being viewed. */
+  function bridgeAt(element: Element): boolean {
+    const id =
+      element.closest<SVGElement>("[data-component]")?.dataset.component;
+    return Boolean(
+      id && definitionOf(target, target.components?.[id])?.kind === "bridge",
+    );
+  }
+
   /** A node of a rail on the face being viewed (not a through-board node). */
   function ownRailNode(
     element: Element | null,
@@ -812,14 +821,29 @@ export function BoardCanvas() {
       return;
     }
 
-    const handle = element.closest<SVGElement>("[data-handle]");
-    const pinEl = element.closest<SVGElement>("[data-pin]");
-    const wireEl = element.closest<SVGElement>("[data-wire]");
-    const railEl = element.closest<SVGElement>("[data-rail]");
-    const railNodeEl = element.closest<SVGElement>("[data-rail-node]");
-    const saddleEl = element.closest<SVGElement>("[data-saddle]");
-    const partEl = element.closest<SVGElement>("[data-component]");
-    const airEl = element.closest<SVGElement>("[data-airwire]");
+    // Airwires are drawn on top and end on pins, often running straight over
+    // bridge ends and rail nodes. A terminal under the pointer wins over the
+    // airwire above it, so wires can start and end there; the airwire still
+    // takes clicks along the rest of its length.
+    let targetEl = element;
+    if (element.closest("[data-airwire]")) {
+      const beneath = document
+        .elementsFromPoint(event.clientX, event.clientY)
+        .find((item) => !item.closest("[data-airwire]"));
+      if (
+        beneath?.closest("[data-pin], [data-rail-node]") ||
+        (beneath && bridgeAt(beneath))
+      )
+        targetEl = beneath;
+    }
+    const handle = targetEl.closest<SVGElement>("[data-handle]");
+    const pinEl = targetEl.closest<SVGElement>("[data-pin]");
+    const wireEl = targetEl.closest<SVGElement>("[data-wire]");
+    const railEl = targetEl.closest<SVGElement>("[data-rail]");
+    const railNodeEl = targetEl.closest<SVGElement>("[data-rail-node]");
+    const saddleEl = targetEl.closest<SVGElement>("[data-saddle]");
+    const partEl = targetEl.closest<SVGElement>("[data-component]");
+    const airEl = targetEl.closest<SVGElement>("[data-airwire]");
     const resizeEl = element.closest<SVGElement>("[data-resize]");
 
     // Placement of a new part from the library.
@@ -891,7 +915,7 @@ export function BoardCanvas() {
     if (activeTool === "rail") {
       // Between rails, an existing node can be dragged; a plain click on it
       // still starts a new rail there.
-      const node = railDraft.peek() ? undefined : ownRailNode(element);
+      const node = railDraft.peek() ? undefined : ownRailNode(targetEl);
       if (node) startRailNodeDrag(event, node, point);
       else railToolClick(point);
       return;
@@ -1026,7 +1050,7 @@ export function BoardCanvas() {
       select({ kind: "saddle", id: saddleEl.dataset.saddle! });
       return;
     }
-    const node = ownRailNode(element);
+    const node = ownRailNode(targetEl);
     if (node) {
       select({ kind: "rail", id: node.railId });
       startRailNodeDrag(event, node);
