@@ -90,6 +90,8 @@ import {
   netForWireStart,
   netsAtPin,
   parsePinKey,
+  pickUnderPointer,
+  type Pickable,
   terminalForWireEnd,
 } from "./hit";
 import { BoardBase } from "./BoardBase";
@@ -286,6 +288,12 @@ export function BoardCanvas() {
   const bridgeStart = useSignal<Point | null>(null);
   const saddleStart = useSignal<Point | null>(null);
   const cursor = useSignal<Point | null>(null);
+  /** The hole of the last select click, to step through stacked objects. */
+  const lastPickRef = useRef<{ x: number; y: number; side: string } | null>(
+    null,
+  );
+  /** Objects to step through when the current press ends without a drag. */
+  const stepStackRef = useRef<Pickable[] | null>(null);
   const placementRotation = useSignal<Rotation>("deg0");
   const netPrompt = useSignal<NetPrompt | null>(null);
   const hoverClient = useSignal<{ x: number; y: number } | null>(null);
@@ -822,19 +830,26 @@ export function BoardCanvas() {
     }
 
     // Airwires are drawn on top and end on pins, often running straight over
-    // bridge ends and rail nodes. A terminal under the pointer wins over the
-    // airwire above it, so wires can start and end there; the airwire still
-    // takes clicks along the rest of its length.
+    // bridge ends, rail nodes and parts. A terminal under the pointer wins
+    // over the airwire above it, so wires can start and end there. Off the
+    // visible dashed line, in the airwire's wider click margin, anything
+    // selectable beneath wins too, so stacked parts stay reachable. The
+    // visible line itself still takes clicks along the rest of its length.
     let targetEl = element;
     if (element.closest("[data-airwire]")) {
       const beneath = document
         .elementsFromPoint(event.clientX, event.clientY)
         .find((item) => !item.closest("[data-airwire]"));
+      const margin = element.classList.contains("airwire-hit");
       if (
         beneath?.closest("[data-pin], [data-rail-node]") ||
-        (beneath && bridgeAt(beneath))
+        (beneath && bridgeAt(beneath)) ||
+        (margin &&
+          beneath?.closest(
+            "[data-component], [data-wire], [data-rail], [data-saddle]",
+          ))
       )
-        targetEl = beneath;
+        targetEl = beneath!;
     }
     const handle = targetEl.closest<SVGElement>("[data-handle]");
     const pinEl = targetEl.closest<SVGElement>("[data-pin]");
@@ -1046,6 +1061,40 @@ export function BoardCanvas() {
         });
       return;
     }
+    // Several objects under the pointer: repeated clicks on one spot step
+    // through them, so a part under another part can be selected and moved.
+    const stack = pickablesAt(event);
+    const hole = holeAt(point);
+    const lastPick = lastPickRef.current;
+    const sameSpot = Boolean(
+      hole &&
+      lastPick &&
+      lastPick.x === hole.x &&
+      lastPick.y === hole.y &&
+      lastPick.side === side.peek(),
+    );
+    lastPickRef.current = hole ? { ...hole, side: side.peek() } : null;
+    stepStackRef.current = null;
+    if (stack.length > 1) {
+      const before = selection.peek();
+      const picked = pickUnderPointer(stack, before, false);
+      if (picked && picked.kind !== "component") {
+        select(pickUnderPointer(stack, before, sameSpot) ?? picked);
+        return;
+      }
+      if (picked) {
+        // Step down the stack on release, unless the press becomes a drag:
+        // pressing on a selected part and dragging moves that part.
+        const inStack = before
+          ? stack.some(
+              (item) => item.kind === before.kind && item.id === before.id,
+            )
+          : false;
+        if (sameSpot && inStack) stepStackRef.current = stack;
+        startComponentPick(event, picked.id, point);
+        return;
+      }
+    }
     if (saddleEl) {
       select({ kind: "saddle", id: saddleEl.dataset.saddle! });
       return;
@@ -1065,27 +1114,67 @@ export function BoardCanvas() {
       partEl?.dataset.component ??
       (pinEl ? parsePinKey(pinEl.dataset.pin!).component_id : undefined);
     if (componentId) {
-      const instance = target.components?.[componentId];
-      const definition = definitionOf(target, instance);
-      if (!instance) return;
-      const ownSide = definition?.kind === "bridge" ? "solder" : "component";
-      if (ownSide !== side.peek()) {
-        select({ kind: "component", id: componentId });
-        return;
-      }
-      select({ kind: "component", id: componentId });
-      gesture.value = {
-        kind: "move",
-        pointerId: event.pointerId,
-        id: componentId,
-        start: point,
-        origin: { ...instance.position },
-        current: { ...instance.position },
-      };
-      svg.setPointerCapture(event.pointerId);
+      startComponentPick(event, componentId, point);
       return;
     }
     startPan(event, true);
+  }
+
+  /** Selects a part and, if it is on the face being viewed, starts a move. */
+  function startComponentPick(
+    event: PointerEvent,
+    componentId: string,
+    point: Point,
+  ): void {
+    const instance = target.components?.[componentId];
+    const definition = definitionOf(target, instance);
+    if (!instance) return;
+    select({ kind: "component", id: componentId });
+    const ownSide = definition?.kind === "bridge" ? "solder" : "component";
+    if (ownSide !== side.peek()) return;
+    gesture.value = {
+      kind: "move",
+      pointerId: event.pointerId,
+      id: componentId,
+      start: point,
+      origin: { ...instance.position },
+      current: { ...instance.position },
+    };
+    svgRef.current?.setPointerCapture(event.pointerId);
+  }
+
+  /** The selectable objects under the pointer, topmost first, each once. */
+  function pickablesAt(event: PointerEvent): Pickable[] {
+    const found: Pickable[] = [];
+    const add = (item: Pickable) => {
+      if (
+        !found.some((other) => other.kind === item.kind && other.id === item.id)
+      )
+        found.push(item);
+    };
+    for (const element of document.elementsFromPoint(
+      event.clientX,
+      event.clientY,
+    )) {
+      if (!svgRef.current?.contains(element)) continue;
+      if (element.closest("[data-airwire]")) continue;
+      const saddle = element.closest<SVGElement>("[data-saddle]");
+      const wire = element.closest<SVGElement>("[data-wire]");
+      const rail = element.closest<SVGElement>("[data-rail]");
+      const part = element.closest<SVGElement>("[data-component]");
+      const pin = element.closest<SVGElement>("[data-pin]");
+      if (saddle) add({ kind: "saddle", id: saddle.dataset.saddle! });
+      else if (wire) add({ kind: "wire", id: wire.dataset.wire! });
+      else if (rail && !element.closest(".rail-through"))
+        add({ kind: "rail", id: rail.dataset.rail! });
+      else if (part) add({ kind: "component", id: part.dataset.component! });
+      else if (pin)
+        add({
+          kind: "component",
+          id: parsePinKey(pin.dataset.pin!).component_id,
+        });
+    }
+    return found;
   }
 
   function startPan(event: PointerEvent, deselect: boolean): void {
@@ -1224,6 +1313,8 @@ export function BoardCanvas() {
       return;
     }
     if (active.kind === "move") {
+      const stack = stepStackRef.current;
+      stepStackRef.current = null;
       if (
         active.current.x !== active.origin.x ||
         active.current.y !== active.origin.y
@@ -1233,6 +1324,10 @@ export function BoardCanvas() {
           instance_id: active.id,
           position: active.current,
         });
+      else if (stack) {
+        const next = pickUnderPointer(stack, selection.peek(), true);
+        if (next) select(next);
+      }
       return;
     }
     if (active.kind === "vertex") {

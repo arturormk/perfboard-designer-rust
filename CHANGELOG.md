@@ -9,6 +9,13 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Click again on the same spot to select the next object down when parts,
+  wires or rails overlap, for example a resistor fitted under a module.
+  Pressing on the selected object and dragging moves it, even where
+  something else covers it. Airwires no longer catch clicks meant for what
+  lies under them, except on the dashed line itself, which still asks for a
+  suggested route.
+
 - Bridges can be deleted once no wire ends on them. A bridge end joins a net
   when a wire is drawn to it and stayed listed there after the wire was
   gone, which blocked deleting the bridge with "object is still referenced

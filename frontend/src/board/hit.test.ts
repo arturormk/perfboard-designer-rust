@@ -3,6 +3,7 @@ import {
   netForWireStart,
   netsAtPin,
   parsePinKey,
+  pickUnderPointer,
   pinsAt,
   pinUsableOnSide,
   terminalForWireEnd,
@@ -121,5 +122,33 @@ describe("bridge ends take the net they are soldered to", () => {
       netForWireStart(design, { component_id: "b1", pin_id: "b" }, undefined)
         .reason,
     ).toMatch(/joins/);
+  });
+});
+
+describe("picking under the pointer", () => {
+  const nano = { kind: "component", id: "nano" } as const;
+  const resistor = { kind: "component", id: "r1" } as const;
+  const wire = { kind: "wire", id: "w1" } as const;
+  const stack = [nano, resistor, wire];
+
+  it("takes the topmost object first", () => {
+    expect(pickUnderPointer(stack, null, false)).toEqual(nano);
+    expect(pickUnderPointer(stack, { kind: "net", id: "n" }, true)).toEqual(
+      nano,
+    );
+  });
+
+  it("steps down through the stack on repeated clicks, wrapping round", () => {
+    expect(pickUnderPointer(stack, nano, true)).toEqual(resistor);
+    expect(pickUnderPointer(stack, resistor, true)).toEqual(wire);
+    expect(pickUnderPointer(stack, wire, true)).toEqual(nano);
+  });
+
+  it("keeps a covered selection when it is clicked at another spot", () => {
+    expect(pickUnderPointer(stack, resistor, false)).toEqual(resistor);
+  });
+
+  it("returns nothing over empty board", () => {
+    expect(pickUnderPointer([], nano, true)).toBeUndefined();
   });
 });

@@ -138,3 +138,32 @@ export function pinUsableOnSide(
   // Through-hole pins are reachable from both faces; bridges live on the solder side.
   return !isBridge(definitionOf(design, instance)) || side === "solder";
 }
+
+/** Something the select tool can pick: a part, wire, rail or saddle. */
+export interface Pickable {
+  kind: "component" | "wire" | "rail" | "saddle";
+  id: string;
+}
+
+/**
+ * Which of the objects under the pointer (topmost first) a select click
+ * picks. A first click takes the topmost. Clicking the same spot again steps
+ * to the next one down, wrapping round, so a part hidden under another can be
+ * reached. Clicking the selected object elsewhere keeps it, so it can be
+ * dragged even where something covers it.
+ */
+export function pickUnderPointer(
+  candidates: Pickable[],
+  selected: { kind: string; id: string } | null,
+  sameSpot: boolean,
+): Pickable | undefined {
+  const index = selected
+    ? candidates.findIndex(
+        (item) => item.kind === selected.kind && item.id === selected.id,
+      )
+    : -1;
+  if (index < 0) return candidates[0];
+  return sameSpot
+    ? candidates[(index + 1) % candidates.length]
+    : candidates[index];
+}
