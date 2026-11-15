@@ -9,6 +9,10 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- The Part designer's part list scrolls again. Its library sections were
+  squashed to fit the window, which clipped their text (the Project section
+  most visibly) and left nothing to scroll.
+
 - Screw terminals: a new 5-position block joins the 2- and 3-position ones.
   All three have measured bodies (definition version 1.1.0): half a hole
   past the end pins, so the holes beyond them stay free, and a whole hole in

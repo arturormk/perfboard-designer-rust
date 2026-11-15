@@ -521,6 +521,9 @@
 }
 
 .browser-section {
+  /* overflow: hidden would let the flex column squash sections to fit; keep
+     their full height so the browser scrolls instead. */
+  flex-shrink: 0;
   border: 1px solid var(--line-2);
   border-radius: 8px;
   overflow: hidden;
