@@ -9,6 +9,11 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Wires drawn on the component side can end on a bridge. Bridge ends now
+  show there as dashed through-hole points, like rail nodes on the other
+  face. Before, clicking a bridge end on the component side only added a
+  bend to the wire.
+
 - An Arduino Nano (30 pins, USB side marked) is now in the standard library
   as `dev.perfboard.arduino-nano`.
 

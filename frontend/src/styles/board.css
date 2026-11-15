@@ -683,6 +683,19 @@
   stroke-dasharray: 0.12 0.08;
 }
 
+/* A bridge end seen from the component side, soldered through its hole:
+   wires on this face can end on it like a pin. */
+.bridge-through {
+  cursor: pointer;
+}
+
+.bridge-through .bridge-node {
+  fill: transparent;
+  stroke: #c9ccd0;
+  stroke-width: 0.07;
+  stroke-dasharray: 0.12 0.08;
+}
+
 .wire-end {
   fill: var(--joint);
   stroke: rgb(30 30 30 / 60%);

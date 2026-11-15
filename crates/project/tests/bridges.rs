@@ -195,3 +195,53 @@ fn a_bridge_still_wired_to_another_net_is_a_short() {
     .unwrap_err();
     assert!(error.contains("bridge"), "{error}");
 }
+
+/// A wire from a pin on net N to the free end of a bridge (or a chain of
+/// bridges) whose other end shares a hole with another pin on N, drawn on
+/// either face: a bridge end is soldered in its hole, so both faces reach it.
+#[test]
+fn a_wire_can_end_on_a_bridge_joined_to_its_net_from_either_side() {
+    for (chain, side) in [1u32, 2]
+        .into_iter()
+        .flat_map(|chain| [Side::Solder, Side::Component].map(|side| (chain, side)))
+    {
+        let mut document = ProjectDocument::new(
+            ProjectId::new(),
+            "bridges",
+            Board::new("board", BoardSize::new(10, 4).unwrap(), 2.54),
+        );
+        let p = pin(place(&mut document, PIN, 0), "p");
+        let last = (0..chain)
+            .map(|x| place(&mut document, BRIDGE, x))
+            .last()
+            .unwrap();
+        let q = pin(place(&mut document, PIN, 7), "p");
+        let n = net(&mut document, "N", &[p, q.clone()]);
+        let far = pin(last, "b");
+        apply(
+            &mut document,
+            OperationPayload::AssignPin {
+                net_id: n,
+                pin: far.clone(),
+            },
+        )
+        .unwrap();
+        apply(
+            &mut document,
+            OperationPayload::AddWire {
+                wire: Wire {
+                    id: WireId::new(),
+                    net_id: n,
+                    start: TerminalRef::from(q),
+                    end: TerminalRef::from(far),
+                    side,
+                    color: WireColor::Green,
+                    vertices: vec![RoutePos::new(14, 0), RoutePos::new(i64::from(chain) * 2, 0)],
+                    locked: false,
+                    notes: String::new(),
+                },
+            },
+        )
+        .unwrap_or_else(|error| panic!("chain {chain}, {side:?}: {error}"));
+    }
+}

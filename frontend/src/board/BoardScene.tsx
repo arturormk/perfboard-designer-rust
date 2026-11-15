@@ -511,6 +511,21 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
       }),
     );
 
+  // Bridge ends seen from the component side: a bridge end is soldered in its
+  // hole, so a wire on this face can end there, as on a rail node. A hole
+  // that already has a part's pad uses the pad instead; one target per hole.
+  const padHoles = new Set(pads.map(({ point }) => `${point.x},${point.y}`));
+  const bridgeThrough = new Map<string, { point: Point; pin: string }>();
+  for (const { instance, definition } of other) {
+    if (definition.kind !== "bridge") continue;
+    for (const pin of definition.pins) {
+      const point = pinBoardPosition(instance, pin);
+      const key = `${point.x},${point.y}`;
+      if (padHoles.has(key) || bridgeThrough.has(key)) continue;
+      bridgeThrough.set(key, { point, pin: `${instance.id}\u0000${pin.id}` });
+    }
+  }
+
   const removed =
     showChanges && removedFrom
       ? {
@@ -765,6 +780,20 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                   stateClass={stateOf(rail.id, rail.net_id)}
                 />
               ))}
+          {interactive && bridgeThrough.size > 0 && (
+            <g class="bridge-through">
+              {[...bridgeThrough.values()].map(({ point, pin }) => (
+                <circle
+                  key={pin}
+                  class="bridge-node"
+                  cx={point.x}
+                  cy={point.y}
+                  r={0.22}
+                  data-pin={pin}
+                />
+              ))}
+            </g>
+          )}
         </g>
 
         <g class="layer-saddles">
