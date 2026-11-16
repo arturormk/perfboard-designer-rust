@@ -11,7 +11,9 @@ deterministic automatic routing, and local MCP access to the active desktop
 working copy from Codex or Claude Code. Milestone 6 (assembly planning) adds
 a step-by-step build order with an Assembly mode in the editor, a printable
 build drawing with the wire list and a build-order checklist, and 1:1 wire cut
-guides and bending templates.
+guides and bending templates. A Breadboard tab lays the same design out on
+solderless breadboards, so the circuit can be tried before anything is
+soldered.
 
 ![Perfboard Designer showing the solder side of an Arduino Nano RS-485 board with two RJ45 connectors](docs/screenshots/nano-rs485-board.png)
 
@@ -132,6 +134,19 @@ keyboard shortcuts.
 - **History** shows each step with its origin. Agent steps are marked in violet
   with the agent's rationale. Commit to create a named checkpoint, compare the
   working copy with any commit (highlighted or side by side), or restore one.
+- **Assembly** (tab) builds the board one step at a time, from a plan derived
+  from the design: one step per part, wire, rail, bridge and saddle, in an
+  order that respects physical dependencies, followed by continuity and
+  short checks. The board shows what is installed so far, with the current
+  step's holes ringed, on the face it is done on. Beside it are the step's
+  instructions, the steps it comes after and why, and for wires and rails
+  the colour, net, approximate cut length and bends. **Done, next** (Enter)
+  ticks the step; ← and → move between steps. Clicking a check measurement
+  rings its test points on the board. Checkmarks are kept in the app's
+  configuration folder, not in the project; when the design changes, a
+  banner says which steps were added, changed or removed, and a ticked step
+  that changed is flagged. See
+  [ADR 0012](docs/adr/0012-assembly-planning.md).
 - **File → Print build drawing** prints both faces and a wire cut list. It is
   a reference drawing, not true to scale.
 - **File → Export wire templates…** saves a PDF to build the wiring from, then
@@ -149,6 +164,18 @@ keyboard shortcuts.
   top of each page measures 50 mm. The templates are a PDF because the app's
   web view cannot print at an exact scale; see
   [ADR 0011](docs/adr/0011-true-scale-pdf-output.md).
+- **Breadboard** (tab) rebuilds the design on standard full-size solderless
+  breadboards, to try the circuit on the bench first. Parts straddle the
+  channel or sit on one side with a row per pin; ground and supply take the
+  rails; every connection is a numbered Dupont jumper in the colour of the
+  net's wires, listed by net in the panel. More boards are added side by side
+  when one is not tall enough, and parts that cannot sit on a board, such as
+  2×N headers, go beside it with male–female leads. Access areas such as a
+  Nano's USB end are kept clear. The view is read-only, follows every design
+  change, and checks its own connectivity against the nets; see
+  [ADR 0018](docs/adr/0018-breadboard-layout.md).
+
+  ![The Breadboard tab showing a capacitive touch module laid out on one breadboard: an Arduino Nano straddling the channel, four screw terminals and six resistors below it, 5V and GND on the rails, and 20 numbered jumpers listed by net on the right](docs/screenshots/breadboard-view.png)
 
 Electrical changes proposed by an agent appear under **Needs your approval** in
 the Nets panel and stay inactive until accepted.
