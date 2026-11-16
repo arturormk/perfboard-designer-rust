@@ -1,6 +1,7 @@
 //! Schema-versioned project documents and deterministic serialization.
 
 pub mod assembly;
+pub mod breadboard;
 pub mod diff;
 pub mod document;
 pub mod notes;
@@ -16,6 +17,11 @@ pub mod view;
 pub use assembly::{
     AssemblyPlan, AssemblyStep, AssemblyWarning, Probe, StepDependency, StepKind, WireListEntry,
     WireListKind, assembly_plan,
+};
+pub use breadboard::{
+    BreadboardJumper, BreadboardLayout, BreadboardPart, BreadboardRail, BreadboardWarning,
+    JumperKind, PartPlacement, RailPolarity, RailSlot, breadboard_layout, is_rail_row,
+    verify_breadboard_layout,
 };
 pub use diff::{ChangeKind, DiffEntry, SemanticDiff};
 pub use document::{

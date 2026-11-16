@@ -1,5 +1,6 @@
 import { useEffect } from "preact/hooks";
 import { AssemblyMode } from "../assembly/AssemblyMode";
+import { BreadboardMode } from "../breadboard/BreadboardMode";
 import { BoardCanvas } from "../board/BoardCanvas";
 import { ComponentDesigner } from "../component-designer/ComponentDesigner";
 import { HistoryPanel } from "../panels/HistoryPanel";
@@ -349,6 +350,8 @@ export function App() {
         </main>
       ) : appMode.value === "assembly" ? (
         <AssemblyMode />
+      ) : appMode.value === "breadboard" ? (
+        <BreadboardMode />
       ) : (
         <ComponentDesigner />
       )}

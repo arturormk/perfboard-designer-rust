@@ -9,6 +9,7 @@ import "./styles/board.css";
 import "./styles/designer.css";
 import "./styles/print.css";
 import "./styles/assembly.css";
+import "./styles/breadboard.css";
 
 async function boot(): Promise<void> {
   const native = "__TAURI_INTERNALS__" in window;

@@ -1,0 +1,360 @@
+/* ── Breadboard view (ADR 0018) ─────────────────────────────────────────── */
+.breadboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  min-height: 0;
+}
+
+.breadboard-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.breadboard-empty h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.breadboard-svg {
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+/* The board: off-white plastic, a grooved channel, red and blue stripes. */
+.bb-plastic {
+  fill: #ece8de;
+  stroke: #c9c3b4;
+  stroke-width: 0.08;
+}
+
+.bb-channel {
+  fill: #d9d3c4;
+}
+
+.bb-stripe {
+  stroke-width: 0.12;
+  stroke-linecap: round;
+}
+
+.bb-stripe.minus {
+  stroke: #3e7bfa;
+}
+
+.bb-stripe.plus {
+  stroke: #e5484d;
+}
+
+.bb-holes {
+  fill: #3a3833;
+}
+
+.bb-label,
+.bb-board-name,
+.bb-off-board text {
+  font-family: var(--font-mono);
+  font-size: 0.5px;
+  fill: #8a8475;
+  text-anchor: middle;
+  dominant-baseline: central;
+  user-select: none;
+}
+
+.bb-board-name,
+.bb-off-board text {
+  font-family: var(--font-ui);
+  font-size: 0.75px;
+  fill: var(--text-2);
+}
+
+.bb-off-board text {
+  text-anchor: start;
+}
+
+.bb-off-board rect {
+  fill: rgb(255 255 255 / 3%);
+  stroke: var(--line-3);
+  stroke-width: 0.08;
+  stroke-dasharray: 0.4 0.3;
+}
+
+.bb-rail-tag {
+  font-family: var(--font-ui);
+  font-size: 0.6px;
+  font-weight: 600;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: #3a3833;
+  stroke-width: 0.12px;
+}
+
+.bb-rail-tag.dark {
+  stroke: #f4f1ea;
+}
+
+/* Jumpers: insulated wire, black Dupont housings at the ends, a number. */
+.bb-jumper {
+  cursor: default;
+}
+
+.bb-jumper path {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.bb-jumper .casing {
+  stroke: rgb(20 14 8 / 70%);
+  stroke-width: 0.34;
+}
+
+.bb-jumper.dark .casing {
+  stroke: rgb(255 248 236 / 60%);
+}
+
+.bb-jumper .core {
+  stroke-width: 0.24;
+}
+
+.bb-jumper .housing {
+  fill: #1d1d1f;
+  stroke: rgb(255 255 255 / 25%);
+  stroke-width: 0.04;
+}
+
+.bb-jumper .housing.female {
+  fill: #2c2c30;
+  stroke: rgb(255 255 255 / 45%);
+}
+
+.bb-jumper .number-bg {
+  fill: rgb(20 20 22 / 82%);
+}
+
+.bb-jumper .number {
+  font-family: var(--font-mono);
+  font-size: 0.42px;
+  fill: #f4f1ea;
+  text-anchor: middle;
+  dominant-baseline: central;
+  user-select: none;
+}
+
+.bb-jumper.dim {
+  opacity: 0.18;
+}
+
+.bb-jumper.focus .casing {
+  stroke: var(--focus);
+  stroke-width: 0.46;
+}
+
+/* Panel */
+.breadboard-summary {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-1);
+  flex: none;
+}
+
+.breadboard-summary .field-note {
+  margin: 0;
+}
+
+.breadboard-body {
+  overflow: auto;
+  padding: 4px 0 16px;
+}
+
+.bb-section {
+  padding: 8px 14px;
+}
+
+.bb-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0 8px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bb-warnings {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0 0 0 16px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.bb-warnings li.bad {
+  color: var(--error);
+}
+
+.bb-rails {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+}
+
+.bb-rails li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.bb-slot {
+  width: 64px;
+  color: var(--text-3);
+}
+
+.bb-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+
+.bb-net {
+  margin-bottom: 6px;
+  border-radius: var(--radius-s);
+}
+
+.bb-net.on {
+  background: var(--copper-soft);
+}
+
+.bb-net-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.bb-net-head:hover {
+  background: var(--bg-3);
+}
+
+.bb-net-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.bb-net-head .field-note {
+  margin: 0;
+  font-size: 11px;
+}
+
+.bb-jumper-list {
+  margin: 0;
+  padding: 0 0 4px;
+  list-style: none;
+}
+
+.bb-jumper-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 6px 3px 24px;
+  border-radius: var(--radius-s);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.bb-jumper-list li:hover,
+.bb-jumper-list li.on {
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+
+.bb-number {
+  min-width: 20px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+.bb-ends {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.bb-kind {
+  padding: 0 5px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  color: var(--text-3);
+  font-size: 10px;
+}
+
+/* Access regions (a connector's open side), so parts read the right way
+   round: stronger than on the perfboard, with their label. */
+.breadboard-svg .access rect {
+  fill: rgb(62 123 250 / 16%);
+  stroke: #3e7bfa;
+  stroke-width: 0.06;
+}
+
+.breadboard-svg .access-arrow {
+  stroke: #2a5fd6;
+  stroke-width: 0.12;
+}
+
+.breadboard-svg .access-label {
+  font-family: var(--font-ui);
+  font-size: 0.42px;
+  font-weight: 600;
+  fill: #1f4fb8;
+  text-anchor: middle;
+  dominant-baseline: central;
+  paint-order: stroke;
+  stroke: #ece8de;
+  stroke-width: 0.14px;
+  user-select: none;
+}
+
+/* Rail-to-rail links: each rail is its own copper, so say what joins them. */
+.bb-links {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.bb-links li {
+  padding: 3px 6px;
+  border-radius: var(--radius-s);
+}
+
+.bb-links li:hover,
+.bb-links li.on {
+  background: var(--bg-3);
+  color: var(--text-1);
+}

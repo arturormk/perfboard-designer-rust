@@ -194,6 +194,15 @@ export function TopBar() {
         </button>
         <button
           role="tab"
+          aria-selected={appMode.value === "breadboard"}
+          class={appMode.value === "breadboard" ? "on" : ""}
+          onClick={() => (appMode.value = "breadboard")}
+          title="Try the circuit on a solderless breadboard (protoboard) before soldering"
+        >
+          <Icon name="breadboard" size={16} /> Breadboard
+        </button>
+        <button
+          role="tab"
           aria-selected={appMode.value === "components"}
           class={appMode.value === "components" ? "on" : ""}
           onClick={() => (appMode.value = "components")}

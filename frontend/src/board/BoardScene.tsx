@@ -51,6 +51,16 @@ export interface SceneProps {
   fade?: boolean;
   pinLabels?: PinLabelMode;
   showKeepouts?: boolean;
+  /**
+   * Draw every part's access regions (a connector's open side) even when
+   * keepouts are hidden, so the reader can tell which way parts face.
+   */
+  showAccess?: boolean;
+  /**
+   * Mark pins as hover targets (`data-pin`) without making anything
+   * editable, for read-only views that show a hover card.
+   */
+  hoverable?: boolean;
   airwires?: Airwire[];
   wireLabels?: Map<string, string>;
   railLabels?: Map<string, string>;
@@ -60,6 +70,8 @@ export interface SceneProps {
    * canvas passes `false` and draws them on a `<BoardBase>` canvas instead.
    */
   baseLayer?: boolean;
+  /** Draw the hole rulers along the board edges (default). */
+  rulers?: boolean;
   /** Extra geometry in canonical board space (tool previews, handles). */
   overlay?: ComponentChildren;
   /** Extra content in view space (readable text). */
@@ -89,6 +101,7 @@ function ComponentBody({
   opposite,
   stateClass,
   showKeepouts,
+  showAccess = false,
 }: {
   instance: ComponentInstance;
   definition: ComponentDefinition;
@@ -96,6 +109,8 @@ function ComponentBody({
   opposite: boolean;
   stateClass: string;
   showKeepouts: boolean;
+  /** Access regions without the keepouts, to show which way a part faces. */
+  showAccess?: boolean;
 }) {
   const transform = `translate(${instance.position.x} ${instance.position.y}) rotate(${rotationDegrees(instance.rotation)})`;
   if (definition.kind === "bridge") {
@@ -161,7 +176,7 @@ function ComponentBody({
       {!opposite && instance.shunted && isJumper(definition) && (
         <ShuntCap pins={definition.pins} />
       )}
-      {showKeepouts &&
+      {(showKeepouts || showAccess) &&
         !opposite &&
         (definition.access ?? []).map((area, index) => {
           const r = rect(area);
@@ -182,6 +197,17 @@ function ComponentBody({
                   d="M -0.55 0 H 0.45 M 0.15 -0.3 L 0.5 0 L 0.15 0.3"
                 />
               </g>
+              {showAccess && area.label && (
+                // Kept upright however the part is turned.
+                <text
+                  class="access-label"
+                  x={cx}
+                  y={cy + 0.75}
+                  transform={`rotate(${-rotationDegrees(instance.rotation)} ${cx} ${cy})`}
+                >
+                  {area.label}
+                </text>
+              )}
             </g>
           );
         })}
@@ -451,15 +477,19 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
     focusIds,
     pinLabels = "numbers",
     showKeepouts,
+    showAccess,
+    hoverable,
     airwires,
     wireLabels,
     railLabels,
     saddleLabels,
     baseLayer = true,
+    rulers = true,
   } = props;
   const board = design.board;
   const pitch = board.pitch_mm;
   const interactive = mode === "edit";
+  const pinTargets = interactive || Boolean(hoverable);
   const definitions = design.component_definitions ?? {};
   const pinNets = netForPin(design);
   const mirror =
@@ -700,6 +730,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
               pitch={pitch}
               opposite={false}
               stateClass={stateOf(instance.id)}
+              showAccess={showAccess}
               showKeepouts={Boolean(
                 showKeepouts || selection?.id === instance.id,
               )}
@@ -729,7 +760,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                 height={0.6}
                 rx={0.08}
                 data-pin={
-                  interactive ? `${instance.id}\u0000${pin.id}` : undefined
+                  pinTargets ? `${instance.id}\u0000${pin.id}` : undefined
                 }
               />
             ) : (
@@ -740,7 +771,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                 cy={point.y}
                 r={joint ? 0.3 : 0.32}
                 data-pin={
-                  interactive ? `${instance.id}\u0000${pin.id}` : undefined
+                  pinTargets ? `${instance.id}\u0000${pin.id}` : undefined
                 }
               />
             );
@@ -867,7 +898,9 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
 
       {/* Readable text, positioned in view space. */}
       <g class="labels">
-        <Rulers holesX={board.holes_x} holesY={board.holes_y} side={side} />
+        {rulers && (
+          <Rulers holesX={board.holes_x} holesY={board.holes_y} side={side} />
+        )}
         {mode !== "print" &&
           ownParts.map(({ instance, definition }) => {
             const label = partLabel(

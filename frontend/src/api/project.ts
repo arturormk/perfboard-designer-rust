@@ -804,6 +804,80 @@ export function setAssemblyStepDone(
 export function resetAssemblyProgress(): Promise<Checkmarks> {
   return invoke("reset_assembly_progress");
 }
+// ── Breadboard layout (ADR 0018) ─────────────────────────────────────────
+
+export type RailSlot =
+  "left_outer" | "left_inner" | "right_inner" | "right_outer";
+export type RailPolarity = "minus" | "plus";
+export type PartPlacement = "straddle" | "left" | "right" | "off_board";
+export type JumperKind = "jumper" | "lead";
+export interface BreadboardGeometry {
+  rows: number;
+  rail_first_row: number;
+  rail_last_row: number;
+  /** Rows with rail holes: groups of five, one row left out between. */
+  rail_rows: number[];
+  board_columns: number;
+  board_stride: number;
+  left_columns: number[];
+  right_columns: number[];
+  rail_columns: Array<{
+    slot: RailSlot;
+    column: number;
+    polarity: RailPolarity;
+  }>;
+  /** First column beside the boards for parts that cannot sit on them. */
+  off_board_x: number;
+  width: number;
+  height: number;
+}
+export interface BreadboardPart {
+  component_id: string;
+  name: string;
+  definition_id: string;
+  position: HolePos;
+  rotation: Rotation;
+  placement: PartPlacement;
+  board?: number;
+}
+export interface BreadboardRail {
+  board: number;
+  slot: RailSlot;
+  net_id: string;
+  net_name: string;
+  color: WireColor;
+}
+export interface BreadboardJumper {
+  id: string;
+  number: number;
+  kind: JumperKind;
+  net_id: string;
+  net_name: string;
+  color: WireColor;
+  from: HolePos;
+  to: HolePos;
+  from_label: string;
+  to_label: string;
+}
+export interface BreadboardWarning {
+  code: string;
+  message: string;
+  objects?: ObjectReference[];
+}
+/** The design rebuilt on solderless breadboards: derived, read-only. */
+export interface BreadboardLayout {
+  source_revision: number;
+  board_count: number;
+  geometry: BreadboardGeometry;
+  parts: BreadboardPart[];
+  rails: BreadboardRail[];
+  jumpers: BreadboardJumper[];
+  warnings: BreadboardWarning[];
+}
+export function getBreadboardLayout(): Promise<BreadboardLayout> {
+  return invoke("get_breadboard_layout");
+}
+
 export function undoProject(expectedRevision: number): Promise<void> {
   return invoke("undo_project", { expectedRevision });
 }

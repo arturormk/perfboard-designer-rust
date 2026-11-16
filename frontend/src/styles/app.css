@@ -3027,6 +3027,14 @@ button.pill.batch-toggle.on {
   font-size: 12px;
 }
 
+.hc-detail {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line-1);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
 .hc-tags {
   display: flex;
   flex-wrap: wrap;

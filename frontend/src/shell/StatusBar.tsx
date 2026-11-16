@@ -29,6 +29,9 @@ const HINTS: Record<string, string> = {
 const ASSEMBLY_HINT =
   "← → move between steps · Enter marks done and moves on · Space ticks or unticks · drag to pan, wheel to zoom";
 
+const BREADBOARD_HINT =
+  "Read-only · drag to pan, wheel to zoom · point at a jumper or pick a net to find its jumpers";
+
 export function StatusBar() {
   const hole = cursorHole.value;
   const current = design.value;
@@ -42,6 +45,7 @@ export function StatusBar() {
   const counts = problemCounts.value;
   const state = engine.value;
   const assembling = appMode.value === "assembly";
+  const breadboarding = appMode.value === "breadboard";
   return (
     <footer class="statusbar">
       <span class="status-hint">
@@ -50,9 +54,11 @@ export function StatusBar() {
             ? `Placing ${placing.value.name}`
             : assembling
               ? ASSEMBLY_HINT
-              : hoverText || HINTS[tool.value])}
+              : breadboarding
+                ? BREADBOARD_HINT
+                : hoverText || HINTS[tool.value])}
       </span>
-      {!assembling && (
+      {!assembling && !breadboarding && (
         <>
           <span class="status-coords" aria-live="off">
             {hole ? (

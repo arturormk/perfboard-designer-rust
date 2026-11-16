@@ -9,6 +9,21 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- A new Breadboard tab lays the design out on standard solderless
+  breadboards (protoboards), so the circuit can be tried before anything is
+  soldered. Parts straddle the channel or sit on one side with their own
+  rows; ground and supply take the rails; every connection is a numbered
+  Dupont jumper in the colour of the net's wires. More boards are added side
+  by side when one is not tall enough, and parts that cannot sit on a board,
+  such as 2×N headers, go beside it with male–female leads. Required access
+  areas, such as a Nano's USB end, are drawn with their label and kept clear
+  of parts and jumpers. Each side's rails are separate copper, so a jumper
+  just below the parts joins a net's rails, and the Rails list names it. The
+  view is read-only with pan and zoom, follows every design change, and checks its
+  own connectivity against the nets. Available to MCP clients as
+  `get_breadboard_layout`. See
+  [ADR 0018](docs/adr/0018-breadboard-layout.md).
+
 - While drawing a wire, each click adds one straight segment from the last
   point to the click, at any angle, so diagonal runs can be drawn directly.
   Before, every click was split into a horizontal and a vertical segment.

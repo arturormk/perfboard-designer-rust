@@ -59,6 +59,9 @@ const PATHS = {
     "M12 2v4 M12 18v4 M4.9 4.9l2.8 2.8 M16.3 16.3l2.8 2.8 M2 12h4 M18 12h4 M4.9 19.1l2.8-2.8 M16.3 7.7l2.8-2.8",
   board:
     "M3 5h18v14H3z M7 9v.01 M11 9v.01 M15 9v.01 M7 13v.01 M11 13v.01 M15 13v.01 M19 9v.01 M19 13v.01",
+  // Two strips either side of the channel, with a jumper across.
+  breadboard:
+    "M3 4h18v16H3z M12 4v4 M12 16v4 M6.5 7v.01 M9 7v.01 M15 7v.01 M17.5 7v.01 M6.5 17v.01 M9 17v.01 M15 17v.01 M17.5 17v.01 M7 13c2-4 8-4 10 0",
   component: "M5 7h14v10H5z M8 4v3 M12 4v3 M16 4v3 M8 17v3 M12 17v3 M16 17v3",
 } as const;
 

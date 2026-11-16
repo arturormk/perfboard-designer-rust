@@ -15,7 +15,14 @@ import {
   wireColorName,
 } from "../model/naming";
 
-export function HoverCard({ at }: { at: { x: number; y: number } }) {
+export function HoverCard({
+  at,
+  detail,
+}: {
+  at: { x: number; y: number };
+  /** An extra line about the target, such as where it sits on a breadboard. */
+  detail?: preact.ComponentChildren;
+}) {
   const target = hover.value;
   const current = design.value;
   if (!target || !current) return null;
@@ -134,6 +141,7 @@ export function HoverCard({ at }: { at: { x: number; y: number } }) {
       role="tooltip"
     >
       {body}
+      {detail && <div class="hc-detail">{detail}</div>}
     </div>
   );
 }

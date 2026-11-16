@@ -12,12 +12,13 @@ use perfboard_core::{
     Side,
 };
 use perfboard_project::{
-    AssemblyPlan, Board, ChangeMarker, Commit, DocumentRevision, HistoryActionResult,
-    OperationError, OperationOrigin, OperationRequest, OperationResult, ProjectDocument,
-    ProjectSession, ReviewNote, ReviewNoteUpdate, RevisionError, RouteAlternative, RouteError,
-    RouteRequest, RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError,
-    TransactionRequest, TransactionResult, assembly_plan, evaluate_route, load_project,
-    render_design_svg, save_project_atomic, suggest_route, suggest_route_alternatives,
+    AssemblyPlan, Board, BreadboardLayout, ChangeMarker, Commit, DocumentRevision,
+    HistoryActionResult, OperationError, OperationOrigin, OperationRequest, OperationResult,
+    ProjectDocument, ProjectSession, ReviewNote, ReviewNoteUpdate, RevisionError, RouteAlternative,
+    RouteError, RouteRequest, RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError,
+    TransactionRequest, TransactionResult, assembly_plan, breadboard_layout, evaluate_route,
+    load_project, render_design_svg, save_project_atomic, suggest_route,
+    suggest_route_alternatives,
 };
 use perfboard_session_ipc::{
     ComponentDocumentation, DocumentationTrust, ProjectRenamed, RenderedDesign, ReviewNotesChanged,
@@ -487,6 +488,17 @@ fn get_assembly_plan(state: tauri::State<'_, SessionState>) -> Result<AssemblyPl
     let session = state.0.lock().map_err(|error| error.to_string())?;
     let document = session.document();
     Ok(assembly_plan(&document.design, document.revision))
+}
+
+/// The open design laid out on solderless breadboards (ADR 0018).
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // Tauri extracts State by value.
+fn get_breadboard_layout(
+    state: tauri::State<'_, SessionState>,
+) -> Result<BreadboardLayout, String> {
+    let session = state.0.lock().map_err(|error| error.to_string())?;
+    let document = session.document();
+    Ok(breadboard_layout(&document.design, document.revision))
 }
 
 fn open_project_id_value(state: &SessionState) -> Result<ProjectId, String> {
@@ -1851,6 +1863,7 @@ pub fn run() {
             get_assembly_progress,
             set_assembly_step_done,
             reset_assembly_progress,
+            get_breadboard_layout,
             create_project,
             apply_project_operation,
             apply_project_transaction,

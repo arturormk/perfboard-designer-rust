@@ -28,6 +28,7 @@ import type {
 } from "../api/project";
 import { pinPosition, type Design } from "../model/geometry";
 import { mockAssemblyPlan } from "./mock-assembly";
+import { mockBreadboardLayout } from "./mock-breadboard";
 import { nextInstanceName } from "../model/naming";
 import { insertBySeverity } from "../panels/note-order";
 
@@ -1172,6 +1173,7 @@ export async function installMockBackend(): Promise<void> {
       return undefined;
     },
     get_assembly_plan: () => mockAssemblyPlan(doc.design, doc.revision),
+    get_breadboard_layout: () => mockBreadboardLayout(doc.design, doc.revision),
     get_assembly_progress: () => clone(progress[doc.project_id] ?? {}),
     set_assembly_step_done: ({ stepId, fingerprint }) => {
       const marks = (progress[doc.project_id] ??= {});

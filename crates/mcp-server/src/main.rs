@@ -438,6 +438,32 @@ impl PerfboardMcp {
         }
     }
 
+    /// Lay the current working copy out on standard solderless breadboards
+    /// (63 rows, a–e and f–j strips, two rails per side), for trying the
+    /// circuit before soldering: part placements, rail nets, numbered
+    /// Dupont jumpers in the nets' wire colours, off-board parts with their
+    /// leads, and warnings. Derived data only; it changes nothing.
+    #[tool(annotations(
+        title = "Get breadboard layout",
+        read_only_hint = true,
+        destructive_hint = false,
+        idempotent_hint = true,
+        open_world_hint = false
+    ))]
+    async fn get_breadboard_layout(&self) -> CallToolResult {
+        match self.client.call(SessionRequest::GetProjectView).await {
+            Ok(SessionResponse::ProjectView(project)) => {
+                let layout =
+                    perfboard_project::breadboard_layout(&project.design, project.revision);
+                CallToolResult::structured(
+                    json!({ "ok": true, "revision": project.revision, "layout": layout }),
+                )
+            }
+            Ok(other) => unexpected(&other),
+            Err(error) => ipc_error(error),
+        }
+    }
+
     /// Render a deterministic, self-contained SVG overview of the active design.
     #[tool(annotations(
         title = "Get rendered design",
@@ -868,7 +894,7 @@ mod tests {
     #[test]
     fn tool_catalog_is_codex_and_claude_friendly() {
         let tools = PerfboardMcp::tool_router().list_all();
-        assert_eq!(tools.len(), 24);
+        assert_eq!(tools.len(), 25);
         assert!(tools.iter().all(|tool| {
             tool.annotations
                 .as_ref()
@@ -886,6 +912,7 @@ mod tests {
             "list_constraints",
             "get_jumper_inventory",
             "get_assembly_plan",
+            "get_breadboard_layout",
             "get_rendered_design",
             "suggest_routes",
             "evaluate_route",

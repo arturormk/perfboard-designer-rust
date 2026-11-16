@@ -1181,6 +1181,7 @@ suggest_routes
 evaluate_route
 get_jumper_inventory
 get_assembly_plan
+get_breadboard_layout
 get_wire_list
 ```
 
