@@ -61,7 +61,7 @@ the release candidate.
   `src-tauri/src/component_library.rs`, `src-tauri/src/library_grants.rs`,
   `src-tauri/src/library_parts.rs`
 - The standard library: `src-tauri/src/component_library.rs::embeds_every_checkout_component_without_diagnostics`,
-  (all 46 standard parts load cleanly and are compiled in),
+  (all 48 standard parts load cleanly and are compiled in),
   `crates/library/tests/generated_parts.rs` (the 41 generated parts validate
   and match their folders)
 

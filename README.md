@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/arturormk/perfboard-designer-rust/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/arturormk/perfboard-designer-rust/actions/workflows/ci.yml)
 [![Built with Codex: backend and initial UI](https://img.shields.io/badge/Codex-backend%20%26%20initial%20UI-000000)](https://openai.com/codex/)
-[![Built with Claude Code: UI revamp](https://img.shields.io/badge/Claude%20Code-UI%20revamp-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
+[![Built with Claude Code: UI revamp, assembly, breadboard and libraries](https://img.shields.io/badge/Claude%20Code-UI%2C%20assembly%2C%20breadboard%20%26%20libraries-D97757?logo=claude&logoColor=white)](https://claude.com/claude-code)
 
 Perfboard Designer is a local-first desktop application for designing small
 circuits on isolated-pad perfboard. The project is under active development.
@@ -110,17 +110,22 @@ Fix releases (`v0.2.1`) are cut the same way from a branch at `v0.2.0`.
 
 ## Editor
 
-The window has a parts and nets panel on the left, a tool rail, the board, and
-an inspector on the right with Problems and History tabs. Press `?` for all
-keyboard shortcuts.
+The top bar switches between the Board, Assembly, Breadboard and Part designer
+workspaces. On the Board, the window has a panel on the left with Parts, Nets
+and History tabs, a tool rail, the board, and a panel on the right with
+Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
 
 - **Place parts** by choosing one in the library and clicking a hole; `R`
   rotates. Drag parts to move them, or nudge with the arrow keys.
 - **Connect** with the wire tool (`W`): click a pin, click holes to bend, click
   the target pin. Starting from a pin with no net asks for a net name. Dashed
   lines show connections that are still unrouted; click one to get a suggested
-  route, then accept or discard it. Bridges (`B`) and rails (`L`) have their own
-  tools.
+  route, then accept or discard it, or press `1` to `5` to preview alternatives
+  (a different path, fewest bends, shortest, the other side). Each click while
+  drawing adds one straight segment, at any angle. Bridges (`B`) and rails
+  (`L`) have their own tools.
+- **Select** a part hidden under another, such as a resistor under a module, by
+  clicking the same spot again: each click selects the next object down.
 - **Tie wires down** with the saddle tool (`S`): click a free hole on each side
   of a wire or bundle. A saddle is a short strap, typically black wire,
   soldered into both holes; it belongs to no net, so its holes must stay clear
@@ -130,7 +135,20 @@ keyboard shortcuts.
   mirrored and stored coordinates stay canonical.
 - **Problems** lists validation findings with advice; clicking one frames the
   object. Manual edits may temporarily leave a part out of bounds or
-  overlapping; the edit is kept and reported until resolved.
+  overlapping; the edit is kept and reported until resolved. An edit is refused
+  only if it adds a design-rule error that was not there before, so a board
+  that breaks a rule can be repaired step by step.
+- **Batch edit** (top bar) pauses rule checks while you rework the board in
+  several steps; turning it off lists what is left in Problems. It is per
+  session and off at start, and agents cannot use it. See
+  [ADR 0017](docs/adr/0017-rule-checks-and-batch-edit.md).
+- **Notes** holds review notes that an agent leaves in the project, in severity
+  order until you reorder them. Acknowledge a note, or reply and request a
+  review; the tab copies a ready-made request for the agent's chat, and the
+  agent's answer appears under your reply. Notes are saved with the project
+  but are not undo steps or part of commits. See
+  [ADR 0015](docs/adr/0015-review-notes.md) and
+  [ADR 0016](docs/adr/0016-review-note-replies.md).
 - **History** shows each step with its origin. Agent steps are marked in violet
   with the agent's rationale. Commit to create a named checkpoint, compare the
   working copy with any commit (highlighted or side by side), or restore one.
@@ -147,8 +165,10 @@ keyboard shortcuts.
   banner says which steps were added, changed or removed, and a ticked step
   that changed is flagged. See
   [ADR 0012](docs/adr/0012-assembly-planning.md).
-- **File → Print build drawing** prints both faces and a wire cut list. It is
-  a reference drawing, not true to scale.
+- **File → Print build drawing** prints both faces, the wire list in build
+  order with estimated cut lengths, and a build-order checklist with a box for
+  every step and continuity measurement. It is a reference drawing, not true to
+  scale.
 - **File → Export wire templates…** saves a PDF to build the wiring from, then
   opens it in your PDF viewer. A cut guide comes first: every wire laid out
   straight at 1:1 over a millimetre grid, with cut lines, strip marks, and a

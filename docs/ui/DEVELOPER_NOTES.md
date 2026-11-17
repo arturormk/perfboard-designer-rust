@@ -44,7 +44,7 @@ src/
     CanvasHud.tsx     floating tool options, side switch, route card, view
     HoverCard.tsx     pointer tooltips
     hit.ts            pure pointer helpers (tested)
-  panels/             Parts, Nets, Inspector, Problems, History
+  panels/             Parts, Nets, History (left); Inspector, Problems, Notes (right)
   shell/              TopBar, ToolRail, StatusBar, Toasts, dialogs, Welcome
   component-designer/ part editor; preview.ts and helpers predate the rebuild
   print/
