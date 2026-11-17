@@ -47,6 +47,7 @@ fn fixture() -> ProjectDocument {
                     name: name.into(),
                     position: HolePos::new(x, y),
                     rotation: Rotation::Deg0,
+                    value: String::new(),
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,

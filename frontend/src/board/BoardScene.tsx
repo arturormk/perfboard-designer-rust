@@ -9,6 +9,7 @@
 import type { ComponentChildren } from "preact";
 import { memo } from "preact/compat";
 import type {
+  Band,
   ComponentDefinition,
   ComponentInstance,
   Rail,
@@ -29,6 +30,7 @@ import {
   type Design,
   type Point,
 } from "../model/geometry";
+import { BAND_COLORS, OUTLINED_BANDS, bandRects } from "../model/bands";
 import { isDarkWire, wireColorCss } from "../model/naming";
 import type { Airwire } from "../model/ratsnest";
 import type { PinLabelMode, Selection } from "../state/store";
@@ -50,6 +52,10 @@ export interface SceneProps {
   focusIds?: ReadonlySet<string>;
   fade?: boolean;
   pinLabels?: PinLabelMode;
+  /** Show each part's value under its name, where there is room. */
+  showValues?: boolean;
+  /** Component ID → resistor colour bands to paint on its body. */
+  partBands?: ReadonlyMap<string, readonly Band[]>;
   showKeepouts?: boolean;
   /**
    * Draw every part's access regions (a connector's open side) even when
@@ -102,6 +108,7 @@ function ComponentBody({
   stateClass,
   showKeepouts,
   showAccess = false,
+  bands,
 }: {
   instance: ComponentInstance;
   definition: ComponentDefinition;
@@ -111,6 +118,8 @@ function ComponentBody({
   showKeepouts: boolean;
   /** Access regions without the keepouts, to show which way a part faces. */
   showAccess?: boolean;
+  /** Resistor colour bands to paint on the body. */
+  bands?: readonly Band[];
 }) {
   const transform = `translate(${instance.position.x} ${instance.position.y}) rotate(${rotationDegrees(instance.rotation)})`;
   if (definition.kind === "bridge") {
@@ -167,6 +176,18 @@ function ComponentBody({
         height={body.height / pitch}
         rx={0.3}
       />
+      {!opposite && bands && (
+        <BandOverlay
+          bands={bands}
+          body={{
+            x: body.x / pitch,
+            y: body.y / pitch,
+            width: body.width / pitch,
+            height: body.height / pitch,
+          }}
+          rotation={instance.rotation}
+        />
+      )}
       {!opposite && (
         <path
           class="part-notch"
@@ -211,6 +232,37 @@ function ComponentBody({
             </g>
           );
         })}
+    </g>
+  );
+}
+
+/** Colour bands across a lying resistor's body, in part-local holes. */
+function BandOverlay({
+  bands,
+  body,
+  rotation,
+}: {
+  bands: readonly Band[];
+  body: { x: number; y: number; width: number; height: number };
+  rotation: ComponentInstance["rotation"];
+}) {
+  const rects = bandRects(bands, body, rotation);
+  if (!rects.length) return null;
+  return (
+    <g class="part-bands">
+      {rects.map((rect, index) => (
+        <rect
+          key={index}
+          class={classes("band", OUTLINED_BANDS.has(rect.band) && "outlined")}
+          x={rect.x}
+          y={rect.y + 0.04}
+          width={rect.width}
+          height={rect.height - 0.08}
+          fill={BAND_COLORS[rect.band]}
+        >
+          <title>{rect.band}</title>
+        </rect>
+      ))}
     </g>
   );
 }
@@ -476,6 +528,8 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
     dimIds,
     focusIds,
     pinLabels = "numbers",
+    showValues = false,
+    partBands,
     showKeepouts,
     showAccess,
     hoverable,
@@ -731,6 +785,9 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
               opposite={false}
               stateClass={stateOf(instance.id)}
               showAccess={showAccess}
+              bands={
+                side === "component" ? partBands?.get(instance.id) : undefined
+              }
               showKeepouts={Boolean(
                 showKeepouts || selection?.id === instance.id,
               )}
@@ -901,48 +958,49 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
         {rulers && (
           <Rulers holesX={board.holes_x} holesY={board.holes_y} side={side} />
         )}
-        {mode !== "print" &&
-          ownParts.map(({ instance, definition }) => {
-            const label = partLabel(
-              instance.name,
-              bodyBounds(instance, definition, pitch),
-              vx,
-            );
-            if (!label) return null;
-            return (
-              <text
-                key={instance.id}
-                class={classes(
-                  "part-label",
-                  label.vertical && "vertical",
-                  stateOf(instance.id),
-                )}
-                transform={label.transform}
-                dy={TEXT_CENTER_DY}
-              >
+        {ownParts.map(({ instance, definition }) => {
+          const print = mode === "print";
+          const label = partLabel(
+            instance.name,
+            showValues ? instance.value : undefined,
+            bodyBounds(instance, definition, pitch),
+            vx,
+            print,
+          );
+          if (!label) return null;
+          const className = classes(
+            "part-label",
+            label.vertical && "vertical",
+            !print && stateOf(instance.id),
+          );
+          return label.value ? (
+            <g
+              key={instance.id}
+              class={classes("part-label-group", label.vertical && "vertical")}
+              transform={label.transform}
+            >
+              <text class={className} y={-0.19} dy={TEXT_CENTER_DY}>
                 {label.text}
               </text>
-            );
-          })}
-        {mode === "print" &&
-          ownParts.map(({ instance, definition }) => {
-            const label = partLabel(
-              instance.name,
-              bodyBounds(instance, definition, pitch),
-              vx,
-              true,
-            );
-            return label ? (
               <text
-                key={instance.id}
-                class={classes("part-label", label.vertical && "vertical")}
-                transform={label.transform}
+                class={classes("part-value", !print && stateOf(instance.id))}
+                y={0.24}
                 dy={TEXT_CENTER_DY}
               >
-                {label.text}
+                {label.value}
               </text>
-            ) : null;
-          })}
+            </g>
+          ) : (
+            <text
+              key={instance.id}
+              class={className}
+              transform={label.transform}
+              dy={TEXT_CENTER_DY}
+            >
+              {label.text}
+            </text>
+          );
+        })}
         {pinLabels !== "off" &&
           pads
             .filter((pad) => pad.ownSide === side)
@@ -1032,6 +1090,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
 });
 
 const LABEL_CHAR_WIDTH = 0.29;
+const VALUE_CHAR_WIDTH = 0.2;
 
 /**
  * Centres a part name on its body, running along the longer side so tall
@@ -1050,10 +1109,13 @@ export const TEXT_CENTER_DY = "0.35em";
 
 function partLabel(
   name: string,
+  value: string | undefined,
   bounds: { x: number; y: number; width: number; height: number },
   vx: (x: number) => number,
   force = false,
-): { text: string; transform: string; vertical: boolean } | undefined {
+):
+  | { text: string; value?: string; transform: string; vertical: boolean }
+  | undefined {
   const cx = (vx(bounds.x) + vx(bounds.x + bounds.width)) / 2;
   const cy = bounds.y + bounds.height / 2;
   const vertical = bounds.height > bounds.width * 1.6 && bounds.width < 3.5;
@@ -1065,8 +1127,16 @@ function partLabel(
     !force && name.length > maxChars
       ? `${name.slice(0, Math.max(1, maxChars - 1))}…`
       : name;
+  // The value goes on a second, smaller line when the body has room for it;
+  // otherwise only the hover card shows it.
+  const fits =
+    value &&
+    (force ||
+      (Math.min(bounds.width, bounds.height) >= 0.95 &&
+        value.length * VALUE_CHAR_WIDTH <= room));
   return {
     text,
+    value: fits ? value : undefined,
     vertical,
     transform: `translate(${cx} ${cy})${vertical ? " rotate(-90)" : ""}`,
   };

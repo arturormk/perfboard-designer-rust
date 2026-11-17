@@ -4,7 +4,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::Rotation;
+use crate::{Rotation, ValueKind};
 
 pub const COMPONENT_SCHEMA_VERSION: u32 = 1;
 
@@ -105,6 +105,11 @@ pub struct ComponentDefinition {
     pub designator: String,
     #[serde(default)]
     pub description: String,
+    /// How placed parts read their value: free text (default), or a
+    /// resistance or capacitance that is checked, normalised and, for
+    /// resistors, drawn as a colour code.
+    #[serde(default, skip_serializing_if = "ValueKind::is_text")]
+    pub value_kind: ValueKind,
     #[serde(default)]
     pub origin_x: i32,
     #[serde(default)]
@@ -211,8 +216,8 @@ impl ComponentDefinition {
     }
 
     /// Whether `other` differs from this definition at most in what "Update
-    /// metadata" refreshes: name, designator, description, documentation and
-    /// version. Pins, geometry and kind must match.
+    /// metadata" refreshes: name, designator, description, value kind,
+    /// documentation and version. Pins, geometry and kind must match.
     #[must_use]
     pub fn same_except_metadata(&self, other: &Self) -> bool {
         let mut other = other.clone();
@@ -222,6 +227,7 @@ impl ComponentDefinition {
         other.name.clone_from(&self.name);
         other.designator.clone_from(&self.designator);
         other.description.clone_from(&self.description);
+        other.value_kind = self.value_kind;
         other.documentation.clone_from(&self.documentation);
         *self == other
     }
@@ -367,6 +373,7 @@ mod tests {
             definition_version: "1.0.0".into(),
             name: "Part".into(),
             designator: String::new(),
+            value_kind: crate::ValueKind::Text,
             description: String::new(),
             origin_x: 0,
             origin_y: 0,

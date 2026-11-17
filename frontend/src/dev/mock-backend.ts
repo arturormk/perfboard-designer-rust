@@ -31,6 +31,7 @@ import { mockAssemblyPlan } from "./mock-assembly";
 import { mockBreadboardLayout } from "./mock-breadboard";
 import { nextInstanceName } from "../model/naming";
 import { insertBySeverity } from "../panels/note-order";
+import { mockNormalizeValue } from "./mock-values";
 
 type Doc = ProjectDocument;
 interface Entry {
@@ -342,6 +343,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
     }
     case "set_jumper_shunt":
       d.components![op.instance_id]!.shunted = op.shunted;
+      return;
+    case "set_component_value":
+      d.components![op.instance_id]!.value = mockNormalizeValue(op.value);
       return;
     case "define_net":
       d.nets = { ...d.nets, [op.net.id]: op.net };

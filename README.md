@@ -124,6 +124,14 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
   (a different path, fewest bends, shortest, the other side). Each click while
   drawing adds one straight segment, at any angle. Bridges (`B`) and rails
   (`L`) have their own tools.
+- **Values**: give a part its value in the inspector's Value field.
+  Resistors take `4k7`, `4.7k`, `4700` or `4R7` and show `4.7 kΩ`;
+  capacitors take `100n`, `0.1u`, `22p` or the code `104` and show `100 nF`;
+  other parts take free text such as `1N4148`. A value that cannot be read
+  is refused with a hint. **View → Part values** shows values under the part
+  names on the board (off by default); the hover card always shows them. The
+  Assembly and Breadboard tabs draw resistors with their five-band colour code
+  (1% tolerance). See [ADR 0019](docs/adr/0019-component-values.md).
 - **Select** a part hidden under another, such as a resistor under a module, by
   clicking the same spot again: each click selects the next object down.
 - **Tie wires down** with the saddle tool (`S`): click a free hole on each side
@@ -160,15 +168,18 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
   instructions, the steps it comes after and why, and for wires and rails
   the colour, net, approximate cut length and bends. **Done, next** (Enter)
   ticks the step; ← and → move between steps. Clicking a check measurement
-  rings its test points on the board. Checkmarks are kept in the app's
+  rings its test points on the board. Part steps name the value and, for
+  resistors, the colour bands to look for; **parts to gather** above the
+  steps groups the parts by type and value, and a note names any resistor or
+  capacitor still without a value. Checkmarks are kept in the app's
   configuration folder, not in the project; when the design changes, a
   banner says which steps were added, changed or removed, and a ticked step
   that changed is flagged. See
   [ADR 0012](docs/adr/0012-assembly-planning.md).
-- **File → Print build drawing** prints both faces, the wire list in build
-  order with estimated cut lengths, and a build-order checklist with a box for
-  every step and continuity measurement. It is a reference drawing, not true to
-  scale.
+- **File → Print build drawing** prints both faces, the parts grouped by
+  value, the wire list in build order with estimated cut lengths, and a
+  build-order checklist with a box for every step and continuity measurement.
+  It is a reference drawing, not true to scale.
 - **File → Export wire templates…** saves a PDF to build the wiring from, then
   opens it in your PDF viewer. A cut guide comes first: every wire laid out
   straight at 1:1 over a millimetre grid, with cut lines, strip marks, and a

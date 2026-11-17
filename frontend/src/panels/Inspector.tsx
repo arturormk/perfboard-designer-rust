@@ -7,6 +7,7 @@ import type {
   Rail,
   RouteProposal,
   Saddle,
+  ValueKind,
   Wire,
 } from "../api/project";
 import {
@@ -199,6 +200,65 @@ function NotesField({
   );
 }
 
+const VALUE_HINTS: Record<ValueKind, { placeholder: string; note: string }> = {
+  resistance: {
+    placeholder: "e.g. 4k7",
+    note: "Type 4k7, 4.7k, 4700 or 4R7; it is shown as 4.7 kΩ. Assembly and Breadboard draw the colour code.",
+  },
+  capacitance: {
+    placeholder: "e.g. 100n",
+    note: "Type 100n, 0.1u, 22p or the code 104; it is shown as 100 nF.",
+  },
+  text: {
+    placeholder: "e.g. 1N4148",
+    note: "Free text, such as a part number or colour.",
+  },
+};
+
+function ValueField({
+  instance,
+  kind,
+}: {
+  instance: ComponentInstance;
+  kind: ValueKind;
+}) {
+  const failed = useSignal(false);
+  const hints = VALUE_HINTS[kind];
+  const save = async (input: HTMLInputElement) => {
+    const next = input.value.trim();
+    if (next === (instance.value ?? "")) {
+      failed.value = false;
+      return;
+    }
+    const ok = await mutate(
+      { type: "set_component_value", instance_id: instance.id, value: next },
+      { failure: "Value not saved" },
+    );
+    failed.value = !ok;
+  };
+  return (
+    <Section title="Value">
+      <input
+        key={`${instance.id}:${instance.value ?? ""}`}
+        defaultValue={instance.value ?? ""}
+        placeholder={hints.placeholder}
+        aria-label="Value"
+        aria-invalid={failed.value}
+        maxLength={32}
+        onBlur={(event) => void save(event.target as HTMLInputElement)}
+        onKeyDown={(event) =>
+          event.key === "Enter" && (event.target as HTMLInputElement).blur()
+        }
+      />
+      <p class="field-note">
+        {failed.value
+          ? "Not saved: see the message for how to write it."
+          : hints.note}
+      </p>
+    </Section>
+  );
+}
+
 function ComponentInspector({
   instance,
   design: current,
@@ -277,6 +337,13 @@ function ComponentInspector({
         subtitle={`${definition?.name ?? instance.definition_id}${bridge ? " · solder side" : ""}`}
         onFocus={() => focusOn({ kind: "component", id: instance.id })}
       />
+
+      {!bridge && (
+        <ValueField
+          instance={instance}
+          kind={definition?.value_kind ?? "text"}
+        />
+      )}
 
       <Section title="Placement">
         <div class="field-grid three">

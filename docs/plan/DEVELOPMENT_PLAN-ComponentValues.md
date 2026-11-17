@@ -1,6 +1,22 @@
 # Component values development plan
 
-Status: accepted
+Status: implemented (see [ADR 0019](../adr/0019-component-values.md))
+
+> **Changes made while implementing.** Three points below were changed to
+> respect ADR 0004, which forbids duplicating domain rules in TypeScript, and
+> to keep older callers safe:
+>
+> - Values are stored in their **display form** (`4.7 kΩ`, `100 nF`), not a
+>   unitless canonical form, so no view needs formatting code (§2.3).
+> - **All parsing and band logic is in Rust.** The frontend only paints the
+>   bands the engine sends with assembly steps and breadboard parts; there is
+>   no TypeScript copy and no shared fixture file (§2.4, §2.8). The Inspector
+>   shows the stored, normalised value after saving, not live bands.
+> - Values are set with a **new operation, `set_component_value`**, instead of
+>   an `Option` field on `change_instance_properties` (§2.5).
+>
+> Also: the parts list orders values by magnitude (220 Ω, 4.7 kΩ, 10 kΩ), and
+> the printed parts list on the PDF sheet is split by value.
 Scope: part values (resistance, capacitance, free text) shown on the Board,
 Assembly and Breadboard tabs, with resistor colour codes on the two physical
 views
@@ -87,10 +103,9 @@ treat any part with designator R as a resistor.
 
 ### 2.3 Parsing and canonical form (Rust, `crates/core/src/value.rs`)
 
-The canonical form uses engineering notation: a mantissa from 1 up to (not
-including) 1000, at most three significant digits where possible, and an SI
-prefix, with no unit and no spaces. The display form adds a space and the
-unit.
+The stored form uses engineering notation: a mantissa from 1 up to (not
+including) 1000, an SI prefix and the unit, separated by a space (`4.7 kΩ`).
+It reads back unchanged.
 
 **Resistance** accepts:
 
@@ -146,26 +161,18 @@ tolerance band. The tolerance band goes on the right (or bottom) end of the
 body as seen in the view, so the code reads left to right or top to bottom
 whatever the part's rotation.
 
-**Where the code lives.** The frontend computes bands too, because the Board
-and Assembly scenes draw straight from the design. To keep Rust and
-TypeScript from drifting, a shared fixture file
-`crates/core/tests/fixtures/values.json` lists input → canonical → display →
-bands. Both test suites run against it.
+**Where the code lives.** Only in Rust. `read_value` returns the display
+text, bands and capacitor code; assembly steps and breadboard parts carry it,
+and the frontend paints what it is given.
 
 ### 2.5 Operations
 
-`change_instance_properties` replaces name, notes and properties wholesale.
-It gets a new field:
-
-```rust
-#[serde(default)]
-value: Option<String>,   // None = unchanged, Some("") = clear
-```
-
-It is `Option` so that existing callers, including MCP clients built against
-the old schema, cannot wipe values just by leaving the field out. The
-operation checks the value against the definition's `value_kind`, stores the
-canonical form, and reports `Set R1 to 4.7 kΩ`.
+A new operation, `set_component_value { instance_id, value }`, checks the
+value against the definition's `value_kind`, stores the normalised form, and
+reports `Set R1 to 4.7 kΩ` (an empty value clears it). `add_component`
+normalises the instance's value the same way. `change_instance_properties` is
+unchanged, so its existing callers cannot clear a value they do not know
+about.
 
 ### 2.6 Assembly plan
 
@@ -231,17 +238,18 @@ canonical form, and reports `Set R1 to 4.7 kΩ`.
 
 **Shared code**
 
-- `frontend/src/model/values.ts` holds the band computation for the canonical
-  form, a display formatter, and a band-to-CSS-colour map.
+- `frontend/src/model/bands.ts` holds the band-to-colour map and where the
+  bands go on a body; `frontend/src/ui/ValueBadge.tsx` draws a value with its
+  swatches.
 - The colours are tuned so that brown, red and orange stay distinct, and
   black and white bands get a thin outline against the body colour.
 
 **Inspector** (`frontend/src/panels/Inspector.tsx`)
 
 - A "Value" field under Name with a placeholder from the kind (`e.g. 4k7`,
-  `e.g. 100n`, `e.g. 1N4148`). The normalised display and the bands appear
-  live under it.
-- Server errors show inline on the field.
+  `e.g. 100n`, `e.g. 1N4148`) and a note on how to write it. After saving it
+  shows the normalised value.
+- A refused value marks the field invalid; the toast gives the reason.
 
 **Dev mock** (`frontend/src/dev/`)
 

@@ -42,6 +42,7 @@ fn place(document: &mut ProjectDocument, x: u32) -> PinRef {
                 name: format!("P{x}"),
                 position: HolePos::new(x, 1),
                 rotation: Rotation::Deg0,
+                value: String::new(),
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,

@@ -11,6 +11,7 @@ pub mod id;
 pub mod layout;
 pub mod routing;
 pub mod validation;
+pub mod value;
 
 pub use board::{BoardFeatures, ForbiddenArea, MarginsMm, MountingHole};
 pub use circuit::{ConnectionState, ElectricalNet, Junction, PinRef, TerminalRef};
@@ -37,3 +38,7 @@ pub use routing::{
     RouteMeasurements, RouteProposal, Saddle, Wire, WireColor, measure_route,
 };
 pub use validation::{PlacementPolicy, validate_design_placements};
+pub use value::{
+    Band, DEFAULT_TOLERANCE, DEFAULT_TOLERANCE_TEXT, MAX_VALUE_LEN, ValueError, ValueKind,
+    ValueReading, compare_values, normalize_value, read_value,
+};

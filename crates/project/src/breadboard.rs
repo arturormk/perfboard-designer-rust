@@ -43,7 +43,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
     ComponentDefinition, ComponentInstance, ComponentInstanceId, ComponentKind, ConnectionState,
-    HolePos, NetId, ObjectReference, PinRef, Rotation, WireColor,
+    HolePos, NetId, ObjectReference, PinRef, Rotation, ValueReading, WireColor, read_value,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -207,6 +207,9 @@ pub enum PartPlacement {
 pub struct BreadboardPart {
     pub component_id: ComponentInstanceId,
     pub name: String,
+    /// The part's value, with its colour code or marking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<ValueReading>,
     pub definition_id: String,
     /// The component's origin in layout coordinates.
     pub position: HolePos,
@@ -810,6 +813,11 @@ impl<'a> Planner<'a> {
             .get(&instance.definition_id)
     }
 
+    fn value(&self, instance: &ComponentInstance) -> Option<ValueReading> {
+        let kind = self.definition(instance)?.value_kind;
+        read_value(kind, &instance.value)
+    }
+
     fn pin_label(&self, pin: &PinRef) -> String {
         let Some(instance) = self.design.components.get(&pin.component_id) else {
             return pin.pin_id.clone();
@@ -1034,6 +1042,7 @@ impl<'a> Planner<'a> {
         self.parts.push(BreadboardPart {
             component_id: instance.id,
             name: instance.name.clone(),
+            value: self.value(instance),
             definition_id: instance.definition_id.clone(),
             position: hole(origin),
             rotation: fit.rotation,
@@ -1077,6 +1086,7 @@ impl<'a> Planner<'a> {
         self.parts.push(BreadboardPart {
             component_id: instance.id,
             name: instance.name.clone(),
+            value: self.value(instance),
             definition_id: instance.definition_id.clone(),
             position: hole(origin),
             rotation: instance.rotation,

@@ -51,6 +51,7 @@ fn wires_connect_through_explicit_nodes_on_a_net_owned_rail() {
                     name: "pin".into(),
                     position: HolePos::new(x, 1),
                     rotation: Rotation::Deg0,
+                    value: String::new(),
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,

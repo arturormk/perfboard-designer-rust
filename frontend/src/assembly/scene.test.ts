@@ -29,6 +29,7 @@ function planOf(steps: AssemblyStep[], fingerprint = "plan"): AssemblyPlan {
     source_revision: 1,
     fingerprint,
     steps,
+    parts: [],
     wire_list: [],
     warnings: [],
   };

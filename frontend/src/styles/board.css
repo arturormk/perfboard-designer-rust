@@ -1041,6 +1041,36 @@
   fill: var(--copper-strong);
 }
 
+.part-value {
+  fill: var(--part-text);
+  font-size: 0.34px;
+  font-weight: 550;
+  opacity: 0.85;
+  text-anchor: middle;
+  paint-order: stroke;
+  stroke: rgb(20 21 23 / 85%);
+  stroke-width: 0.1px;
+  stroke-linejoin: round;
+}
+
+.faded .part-value {
+  fill: rgb(30 22 12 / 80%);
+  stroke: rgb(255 240 220 / 60%);
+}
+
+.part-value.selected {
+  fill: var(--copper-strong);
+}
+
+.part-bands .band.outlined {
+  stroke: rgb(255 255 255 / 35%);
+  stroke-width: 0.03px;
+}
+
+.faded .part-bands {
+  opacity: 0.35;
+}
+
 .pin-label {
   fill: #2b2219;
   font-family: var(--font-mono);

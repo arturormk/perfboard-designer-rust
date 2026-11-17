@@ -295,6 +295,11 @@ textarea:disabled {
   cursor: default;
 }
 
+input[aria-invalid="true"],
+input[aria-invalid="true"]:hover:not(:disabled) {
+  border-color: var(--error);
+}
+
 input[type="number"] {
   font-family: var(--font-mono);
   font-size: 12px;
@@ -2996,6 +3001,13 @@ button.pill.batch-toggle.on {
   font-weight: 600;
 }
 
+.hc-value {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+
 .hc-pin {
   display: inline-grid;
   place-items: center;
@@ -3402,4 +3414,70 @@ button.pill.batch-toggle.on {
 
 .confirm-message {
   white-space: pre-line;
+}
+
+/* ── Part values ─────────────────────────────────────────────────────────── */
+
+.value-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.value-text {
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.value-badge.compact .value-text {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.value-bands {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 3px;
+  height: 18px;
+  padding: 2px 6px;
+  border-radius: 9px;
+  background: #d9c08f;
+}
+
+.value-badge.compact .value-bands {
+  height: 12px;
+  gap: 2px;
+  padding: 1px 4px;
+}
+
+.value-band {
+  display: block;
+  width: 6px;
+  border-radius: 1px;
+}
+
+.value-badge.compact .value-band {
+  width: 4px;
+}
+
+.value-band.outlined {
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 25%);
+}
+
+/* The wider gap before the tolerance band shows which end to read from. */
+.value-band.tolerance {
+  margin-left: 6px;
+}
+
+.value-badge.compact .value-band.tolerance {
+  margin-left: 4px;
+}
+
+.value-code {
+  color: var(--text-3);
+  font-size: 11px;
 }

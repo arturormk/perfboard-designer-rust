@@ -39,6 +39,7 @@ const plan: AssemblyPlan = {
   source_revision: 1,
   fingerprint: "p",
   steps: [step(1, "a"), step(2, "b"), step(3, "c", ["b", "a"])],
+  parts: [],
   wire_list: [entry("W1", 3), entry("W2", 1), entry("R1", 2)],
   warnings: [],
 };

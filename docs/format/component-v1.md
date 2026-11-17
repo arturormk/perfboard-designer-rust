@@ -83,6 +83,14 @@ allow_board_overhang = true
   (`Bridge 1`). Like `name`, `description` and `documentation`, it is
   metadata: placing a definition that differs from a project's stored copy
   only in these fields and `definition_version` refreshes the stored copy.
+- `value_kind` is optional and says how placed parts read their value
+  ([ADR 0019](../adr/0019-component-values.md)): `text` (the default, shown
+  as typed, such as `1N4148`), `resistance` or `capacitance`. Resistances
+  accept `4k7`, `4.7k`, `4700`, `4R7`, `R47`, `2M2` and `0`, with an optional
+  `Ω` or `ohm`; capacitances accept `100n`, `0.1u`, `4.7µF`, `22p` or a
+  three-digit code such as `104` (a bare three-digit number is always a
+  code). Both are stored normalised (`4.7 kΩ`, `100 nF`), and resistors are
+  drawn with a five-band, 1% colour code. It is metadata like `designator`.
 - `id` is a stable library identifier; `definition_version` or a canonical
   content hash identifies the exact definition revision.
 - Body measurements use millimetres. Pin and mounting positions use signed

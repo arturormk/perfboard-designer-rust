@@ -13,7 +13,13 @@ import {
   wireColorCss,
   wireColorName,
 } from "../model/naming";
-import { design, railLabelMap, view, wireLabelMap } from "../state/store";
+import {
+  design,
+  railLabelMap,
+  showPartValues,
+  view,
+  wireLabelMap,
+} from "../state/store";
 import { checklistRows, printPlan, wireListInBuildOrder } from "./checklist";
 
 const SIDE_SHORT = { component: "Component", solder: "Solder" } as const;
@@ -205,6 +211,7 @@ export function PrintSheet() {
                 mode="print"
                 idPrefix={`print-${face}`}
                 pinLabels="numbers"
+                showValues={showPartValues.value}
                 wireLabels={labels}
                 railLabels={railLabelMap.value}
               />
@@ -225,23 +232,38 @@ export function PrintSheet() {
       <section>
         <h2>Parts</h2>
         <ul class="print-parts">
-          {parts.map((group) => (
-            <li key={group.definitionId}>
-              <strong>{group.instances.length} ×</strong>{" "}
-              {group.definition?.name ?? group.definitionId}
-              {!group.bridge && (
-                <span>
-                  {" "}
-                  — {group.instances.map((item) => item.name).join(", ")}
-                </span>
-              )}
-            </li>
-          ))}
+          {parts.flatMap((group) =>
+            byValue(group.instances).map(([value, instances]) => (
+              <li key={`${group.definitionId}\u0000${value}`}>
+                <strong>{instances.length} ×</strong>{" "}
+                {group.definition?.name ?? group.definitionId}
+                {value && `, ${value}`}
+                {!group.bridge && (
+                  <span>
+                    {" "}
+                    — {instances.map((item) => item.name).join(", ")}
+                  </span>
+                )}
+              </li>
+            )),
+          )}
         </ul>
       </section>
       {fresh && <BuildChecklist plan={fresh.plan} marks={fresh.marks} />}
     </div>
   );
+}
+
+/** Parts of one type split by value, in the order values first appear. */
+function byValue<T extends { value?: string }>(
+  instances: T[],
+): Array<[string, T[]]> {
+  const groups = new Map<string, T[]>();
+  for (const instance of instances) {
+    const value = instance.value ?? "";
+    groups.set(value, [...(groups.get(value) ?? []), instance]);
+  }
+  return [...groups.entries()];
 }
 
 /** Without a current plan: wires by label with their routed length. */

@@ -48,6 +48,7 @@ import {
   selection,
   showChanges,
   showKeepouts,
+  showPartValues,
   showRatsnest,
   side,
   splitCompare,
@@ -1713,6 +1714,7 @@ export function BoardCanvas() {
             removedFrom={compareTarget}
             flashIds={flashing}
             showKeepouts={showKeepouts.value}
+            showValues={showPartValues.value}
             airwires={
               showRatsnest.value && !pending ? airwires.value : undefined
             }

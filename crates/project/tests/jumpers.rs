@@ -45,6 +45,7 @@ fn place(document: &mut ProjectDocument, toml: &str, x: u32) -> ComponentInstanc
                 name: "JP1".into(),
                 position: HolePos::new(x, 1),
                 rotation: Rotation::Deg0,
+                value: String::new(),
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,

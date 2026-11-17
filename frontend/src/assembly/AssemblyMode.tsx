@@ -9,6 +9,7 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type {
   AssemblyPlan,
+  Band,
   Side,
   StepKind,
   WireListEntry,
@@ -52,6 +53,7 @@ import {
   wireLabelMap,
 } from "../state/store";
 import { Icon, type IconName } from "../ui/Icon";
+import { ValueBadge } from "../ui/ValueBadge";
 import {
   axisLabel,
   edgeLabels,
@@ -259,7 +261,7 @@ function StepList({ plan: current }: { plan: AssemblyPlan }) {
           >
             <Icon name="warning" size={14} />
             {current.warnings.length} note
-            {current.warnings.length === 1 ? "" : "s"} about the order
+            {current.warnings.length === 1 ? "" : "s"} about the plan
             <Icon
               name={warningsOpen.value ? "chevronUp" : "chevronDown"}
               size={14}
@@ -288,6 +290,7 @@ function StepList({ plan: current }: { plan: AssemblyPlan }) {
           )}
         </div>
       )}
+      <PartsList plan={current} />
       <ol class="step-rows" ref={listRef}>
         {current.steps.map((step) => (
           <li key={step.id}>
@@ -312,6 +315,64 @@ function StepList({ plan: current }: { plan: AssemblyPlan }) {
         ))}
       </ol>
     </aside>
+  );
+}
+
+/** The parts to gather, grouped by type and value. */
+function PartsList({ plan: current }: { plan: AssemblyPlan }) {
+  const open = useSignal(false);
+  if (!current.parts.length) return null;
+  const total = current.parts.reduce(
+    (sum, entry) => sum + entry.names.length,
+    0,
+  );
+  const stepOf = (name: string) =>
+    current.steps.find(
+      (step) => step.kind === "component" && step.label === name,
+    );
+  return (
+    <div class="assembly-parts">
+      <button
+        class="parts-toggle"
+        aria-expanded={open.value}
+        onClick={() => (open.value = !open.value)}
+      >
+        <Icon name="chip" size={14} />
+        {total} part{total === 1 ? "" : "s"} to gather
+        <Icon name={open.value ? "chevronUp" : "chevronDown"} size={14} />
+      </button>
+      {open.value && (
+        <ul>
+          {current.parts.map((entry) => (
+            <li
+              key={`${entry.definition_id}\u0000${entry.value?.display ?? ""}`}
+            >
+              <div class="parts-head">
+                <strong>{entry.names.length} ×</strong>
+                <span class="parts-type">{entry.part}</span>
+                {entry.value ? (
+                  <ValueBadge value={entry.value} compact />
+                ) : null}
+              </div>
+              <div class="parts-names">
+                {entry.names.map((name) => {
+                  const step = stepOf(name);
+                  return (
+                    <button
+                      key={name}
+                      disabled={!step}
+                      onClick={() => step && goToStep(step.id)}
+                    >
+                      {name}
+                    </button>
+                  );
+                })}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -408,6 +469,11 @@ function StepDetail({ plan: current }: { plan: AssemblyPlan }) {
           <span class={`side-badge ${step.side}`}>{SIDE_NAME[step.side]}</span>
         </p>
         <h2>{step.title}</h2>
+        {step.value && (
+          <p class="step-value">
+            <ValueBadge value={step.value} />
+          </p>
+        )}
         {status === "changed" && (
           <p class="step-changed">
             This step changed after you marked it done. Check the board against
@@ -527,6 +593,17 @@ function StepDetail({ plan: current }: { plan: AssemblyPlan }) {
 
 // ── Board ─────────────────────────────────────────────────────────────────
 
+/** Component ID → its colour bands, from the plan's component steps. */
+function partBands(current: AssemblyPlan): Map<string, Band[]> {
+  const bands = new Map<string, Band[]>();
+  for (const step of current.steps) {
+    const object = step.objects[0];
+    if (step.kind === "component" && object && step.value?.bands?.length)
+      bands.set(object.id, step.value.bands);
+  }
+  return bands;
+}
+
 function boardBox(holesX: number, holesY: number): ViewBox {
   // Room for the floating side switch above the board.
   const pad = BOARD_VIEW_PAD;
@@ -630,6 +707,8 @@ function AssemblyCanvas({ plan: current }: { plan: AssemblyPlan }) {
             dimIds={scene.dimIds}
             focusIds={scene.focusIds}
             pinLabels={pinLabels.value}
+            showValues
+            partBands={partBands(current)}
             wireLabels={wireLabelMap.value}
             railLabels={railLabelMap.value}
             saddleLabels={saddleLabelMap.value}

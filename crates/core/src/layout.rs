@@ -15,6 +15,11 @@ pub struct ComponentInstance {
     pub name: String,
     pub position: HolePos,
     pub rotation: Rotation,
+    /// The part's value as printed or coded on it: `10 kΩ`, `100 nF`,
+    /// `1N4148`. Resistances and capacitances are stored normalised (see
+    /// [`crate::normalize_value`]).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub value: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub properties: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "String::is_empty")]

@@ -12,7 +12,12 @@ import {
   type Signal,
 } from "@preact/signals";
 import { useEffect, useMemo, useRef } from "preact/hooks";
-import type { BreadboardLayout, RailPolarity, RailSlot } from "../api/project";
+import type {
+  Band,
+  BreadboardLayout,
+  RailPolarity,
+  RailSlot,
+} from "../api/project";
 import { BoardScene } from "../board/BoardScene";
 import { HoverCard } from "../board/HoverCard";
 import { parsePinKey } from "../board/hit";
@@ -283,6 +288,8 @@ function BreadboardCanvas({ layout }: { layout: BreadboardLayout }) {
             showAccess
             hoverable
             pinLabels={pinLabels.value}
+            showValues
+            partBands={partBands(layout)}
             overlay={<Jumpers layout={layout} />}
           />
         </svg>
@@ -304,6 +311,17 @@ function BreadboardCanvas({ layout }: { layout: BreadboardLayout }) {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Component ID → its colour bands, as the layout reads its value. */
+function partBands(layout: BreadboardLayout): Map<string, Band[]> {
+  return new Map(
+    layout.parts.flatMap((part) =>
+      part.value?.bands?.length
+        ? [[part.component_id, part.value.bands] as const]
+        : [],
+    ),
   );
 }
 

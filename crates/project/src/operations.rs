@@ -4,8 +4,8 @@ use perfboard_core::{
     BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, ComponentKind,
     ConnectionState, Constraint, ConstraintId, ConstraintKind, Diagnostic, DiagnosticSeverity,
     ElectricalNet, HolePos, JumperInventoryEntry, Junction, JunctionId, NetId, OperationId, PinRef,
-    Rail, RailId, Rotation, RoutePos, RouteProposal, Saddle, SaddleId, Side, Wire, WireColor,
-    WireId,
+    Rail, RailId, Rotation, RoutePos, RouteProposal, Saddle, SaddleId, Side, ValueError, Wire,
+    WireColor, WireId, normalize_value,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -90,6 +90,14 @@ pub enum OperationPayload {
     SetJumperShunt {
         instance_id: ComponentInstanceId,
         shunted: bool,
+    },
+    /// Sets a part's value: free text, or for resistor and capacitor
+    /// definitions a resistance (`4k7`, `4.7k`, `4R7`) or capacitance
+    /// (`100n`, `0.1u`, `104`) that is checked and stored normalised
+    /// (`4.7 kΩ`, `100 nF`). An empty value clears it.
+    SetComponentValue {
+        instance_id: ComponentInstanceId,
+        value: String,
     },
     DefineNet {
         net: ElectricalNet,
@@ -339,6 +347,8 @@ pub enum OperationError {
     BridgeHasWire,
     #[error("only proposed nets can be accepted or rejected")]
     NotAProposal,
+    #[error("{name}: {error}")]
+    InvalidValue { name: String, error: ValueError },
     #[error(transparent)]
     InvalidDocument(#[from] DocumentError),
 }
@@ -645,6 +655,13 @@ pub(crate) fn apply_operation_untracked(
             next.design
                 .component_definitions
                 .insert(definition.id.clone(), definition.clone());
+            instance.value =
+                normalize_value(definition.value_kind, &instance.value).map_err(|error| {
+                    OperationError::InvalidValue {
+                        name: instance.name.clone(),
+                        error,
+                    }
+                })?;
             let summary = format!("Added {}", instance.name);
             affected.insert(instance.id);
             next.design.components.insert(instance.id, instance);
@@ -832,6 +849,30 @@ pub(crate) fn apply_operation_untracked(
                 if *shunted { "Fitted" } else { "Removed" },
                 instance.name
             )
+        }
+        OperationPayload::SetComponentValue { instance_id, value } => {
+            let instance = next
+                .design
+                .components
+                .get_mut(instance_id)
+                .ok_or(OperationError::InstanceNotFound)?;
+            let kind = next
+                .design
+                .component_definitions
+                .get(&instance.definition_id)
+                .map(|definition| definition.value_kind)
+                .unwrap_or_default();
+            instance.value =
+                normalize_value(kind, value).map_err(|error| OperationError::InvalidValue {
+                    name: instance.name.clone(),
+                    error,
+                })?;
+            affected.insert(*instance_id);
+            if instance.value.is_empty() {
+                format!("Cleared the value of {}", instance.name)
+            } else {
+                format!("Set {} to {}", instance.name, instance.value)
+            }
         }
         OperationPayload::DefineNet { net } => {
             if next.design.nets.contains_key(&net.id) {
@@ -1605,6 +1646,7 @@ mod tests {
             name: definition.name.clone(),
             position: HolePos::new(x, 1),
             rotation: Rotation::Deg0,
+            value: String::new(),
             properties: BTreeMap::new(),
             notes: String::new(),
             shunted: false,

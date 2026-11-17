@@ -15,8 +15,8 @@ mod stored;
 pub mod view;
 
 pub use assembly::{
-    AssemblyPlan, AssemblyStep, AssemblyWarning, Probe, StepDependency, StepKind, WireListEntry,
-    WireListKind, assembly_plan,
+    AssemblyPlan, AssemblyStep, AssemblyWarning, PartsListEntry, Probe, StepDependency, StepKind,
+    WireListEntry, WireListKind, assembly_plan,
 };
 pub use breadboard::{
     BreadboardJumper, BreadboardLayout, BreadboardPart, BreadboardRail, BreadboardWarning,

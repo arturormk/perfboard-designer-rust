@@ -65,6 +65,7 @@ export function HoverCard({
       <>
         <div class="hc-title">
           <strong>{instance.name}</strong>
+          {instance.value && <span class="hc-value">{instance.value}</span>}
         </div>
         <div class="hc-sub">
           {definition?.name ?? instance.definition_id} ·{" "}

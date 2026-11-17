@@ -21,6 +21,7 @@ use std::{
 
 use perfboard_core::{
     ComponentDefinition, ComponentKind, Keepout, LocalPos, PinDefinition, RectMm, Rotation,
+    ValueKind,
     component::{AccessDirection, AccessRegion, COMPONENT_SCHEMA_VERSION},
 };
 
@@ -206,6 +207,7 @@ fn part(spec: Spec<'_>) -> Part {
             definition_version: "1.0.0".into(),
             name: spec.name.into(),
             designator: spec.designator.into(),
+            value_kind: ValueKind::Text,
             description: spec.description.into(),
             origin_x: 0,
             origin_y: 0,
@@ -237,27 +239,40 @@ fn readme(title: &str, paragraphs: &[&str]) -> String {
     text
 }
 
-const VALUE_NOTE: &str = "The definition has no value. Record it in the placed part's notes.";
+const RESISTANCE_NOTE: &str = "Give each placed part its resistance as its value, such as 4k7, 10k or 220R. Its assembly step shows the colour bands to look for.";
+const CAPACITANCE_NOTE: &str =
+    "Give each placed part its capacitance as its value, such as 100n, 4.7u, 22p or the code 104.";
+
+/// Makes a part read its value as `kind`. The definition version moves to
+/// 1.1.0, the release that added value kinds.
+fn with_value(mut part: Part, kind: ValueKind) -> Part {
+    part.definition.value_kind = kind;
+    part.definition.definition_version = "1.1.0".into();
+    part
+}
 
 fn passives() -> Vec<Part> {
-    let mut parts = vec![part(Spec {
-        folder: "resistor-standing",
-        name: "1/4 Watt, standing",
-        designator: "R",
-        description: "Generic 1/4 Watt axial resistor standing on end, its leads in two adjacent holes",
-        pins: terminals(1),
-        outline: centred(0.5, 0.0, 5.08, 2.54),
-        access: Vec::new(),
-        readme: readme(
-            "Resistor 1/4 Watt, standing",
-            &[
-                "A 1/4 Watt axial resistor mounted upright: the body stands over terminal 1 and the other lead bends back down to terminal 2, one hole away. It takes a third of the length of a lying resistor.",
-                VALUE_NOTE,
-            ],
-        ),
-    })];
+    let mut parts = vec![with_value(
+        part(Spec {
+            folder: "resistor-standing",
+            name: "1/4 Watt, standing",
+            designator: "R",
+            description: "Generic 1/4 Watt axial resistor standing on end, its leads in two adjacent holes",
+            pins: terminals(1),
+            outline: centred(0.5, 0.0, 5.08, 2.54),
+            access: Vec::new(),
+            readme: readme(
+                "Resistor 1/4 Watt, standing",
+                &[
+                    "A 1/4 Watt axial resistor mounted upright: the body stands over terminal 1 and the other lead bends back down to terminal 2, one hole away. It takes a third of the length of a lying resistor.",
+                    RESISTANCE_NOTE,
+                ],
+            ),
+        }),
+        ValueKind::Resistance,
+    )];
     for (holes, millimetres) in [(1, "2.54"), (2, "5.08")] {
-        parts.push(part(Spec {
+        parts.push(with_value(part(Spec {
             folder: &format!("capacitor-ceramic-{}mm", millimetres.replace('.', "-")),
             name: &format!("Ceramic capacitor, {millimetres} mm"),
             designator: "C",
@@ -274,10 +289,10 @@ fn passives() -> Vec<Part> {
                         "A ceramic disc or multilayer capacitor with its leads {millimetres} mm ({holes} hole{}) apart. It is not polarized.",
                         if holes == 1 { "" } else { "s" }
                     ),
-                    VALUE_NOTE,
+                    CAPACITANCE_NOTE,
                 ],
             ),
-        }));
+        }), ValueKind::Capacitance));
     }
     // Diameter, the hole spacing used, and the lead spacing it stands in for.
     for (diameter, label, holes, leads) in [
@@ -286,7 +301,7 @@ fn passives() -> Vec<Part> {
         (8.0, "8", 1, "3.5 mm, squeezed"),
         (10.0, "10", 2, "5.0 mm"),
     ] {
-        parts.push(part(Spec {
+        parts.push(with_value(part(Spec {
             folder: &format!("capacitor-electrolytic-{}mm", label.replace('.', "-")),
             name: &format!("Electrolytic capacitor, {label} mm"),
             designator: "C",
@@ -311,10 +326,10 @@ fn passives() -> Vec<Part> {
                         f64::from(holes) * PITCH
                     ),
                     "It is polarized: the positive lead is pin 1 at the origin, and the negative lead, on the side of the stripe, is pin 2.",
-                    VALUE_NOTE,
+                    CAPACITANCE_NOTE,
                 ],
             ),
-        }));
+        }), ValueKind::Capacitance));
     }
     parts
 }

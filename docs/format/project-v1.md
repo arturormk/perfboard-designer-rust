@@ -43,7 +43,13 @@ Milestone 1 adds optional board `margins_mm`, `mounting_holes`,
 definition ID; and a `components` map keyed by instance UUID. Every used
 definition is embedded in full so external library edits cannot change the
 project. Instance data includes canonical anchor position, rotation, user name,
-properties, notes, and `shunted` (written only when `true`). `shunted` means a
+`value` (written only when set), properties, notes, and `shunted` (written
+only when `true`). `value` is what is printed or coded on the part, such as
+`10 kΩ`, `100 nF` or `1N4148`; parts whose definition has a `resistance` or
+`capacitance` `value_kind` store it normalised, and it is set with
+`set_component_value`, which refuses values that do not read as the
+definition's kind ([ADR 0019](../adr/0019-component-values.md)). Older readers
+ignore the field. `shunted` means a
 shunt is fitted on a `jumper` part: its two pins count as connected. When both
 are on the same net they need no wire between them (an extra, parallel path is
 also fine). When they are on two different nets the shunt joins those nets

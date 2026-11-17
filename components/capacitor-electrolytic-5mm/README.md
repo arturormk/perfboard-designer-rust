@@ -4,4 +4,4 @@ A radial electrolytic capacitor 5 mm across, standing on the board. Its leads (2
 
 It is polarized: the positive lead is pin 1 at the origin, and the negative lead, on the side of the stripe, is pin 2.
 
-The definition has no value. Record it in the placed part's notes.
+Give each placed part its capacitance as its value, such as 100n, 4.7u, 22p or the code 104.

@@ -417,7 +417,10 @@ impl PerfboardMcp {
     /// working copy: physical dependencies first, then heuristics (flat wires,
     /// small parts, large parts, then the solder side). Derived data only; it
     /// changes nothing. Suggest improvements to the human rather than editing
-    /// the design to reorder steps.
+    /// the design to reorder steps. Component steps carry the part's value
+    /// (resistor colour bands, capacitor code); `parts` groups parts by type
+    /// and value, and `assembly.value_missing` names resistors and
+    /// capacitors with no value.
     #[tool(annotations(
         title = "Get assembly plan",
         read_only_hint = true,
@@ -442,7 +445,8 @@ impl PerfboardMcp {
     /// (63 rows, a–e and f–j strips, two rails per side), for trying the
     /// circuit before soldering: part placements, rail nets, numbered
     /// Dupont jumpers in the nets' wire colours, off-board parts with their
-    /// leads, and warnings. Derived data only; it changes nothing.
+    /// leads, part values with resistor colour bands, and warnings. Derived
+    /// data only; it changes nothing.
     #[tool(annotations(
         title = "Get breadboard layout",
         read_only_hint = true,
@@ -526,6 +530,9 @@ impl PerfboardMcp {
     }
 
     /// Apply one or more existing domain operations atomically to the active working copy.
+    /// Set a part's value with `set_component_value`: resistors take `4k7`,
+    /// `10k`, `220R`; capacitors `100n`, `0.1u` or the code `104`; other parts
+    /// free text such as `1N4148`.
     /// Design rules are checked once, on the result: intermediate steps may
     /// break them, so put every step of a rework in one call.
     #[tool(annotations(

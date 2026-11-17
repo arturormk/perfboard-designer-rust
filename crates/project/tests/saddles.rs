@@ -71,6 +71,7 @@ fn fixture() -> (ProjectDocument, [ComponentInstanceId; 2], NetId) {
                     name: format!("pin{x}"),
                     position: HolePos::new(x, 2),
                     rotation: Rotation::Deg0,
+                    value: String::new(),
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,

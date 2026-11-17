@@ -9,6 +9,7 @@
 import type {
   AssemblyPlan,
   AssemblyStep,
+  PartsListEntry,
   Side,
   StepKind,
   WireListEntry,
@@ -20,6 +21,7 @@ import {
   wireColorName,
   wireLabels,
 } from "../model/naming";
+import { mockReadValue } from "./mock-values";
 
 function hash(text: string): string {
   let value = 2166136261;
@@ -68,12 +70,16 @@ export function mockAssemblyPlan(
       return { x2: point.x * 2, y2: point.y * 2 };
     });
     const kind: StepKind = bridge ? "bridge" : "component";
+    const value = bridge ? undefined : mockReadValue(instance.value);
     drafts.push({
       order: bridge ? 50 : 10 + Math.min(definition.pins.length, 30),
       id: `${kind}:${instance.id}`,
       kind,
       label,
-      title: bridge ? `Solder bridge ${label}` : `Fit ${label}`,
+      title: bridge
+        ? `Solder bridge ${label}`
+        : `Fit ${label}${value ? `, ${value.display}` : ""}`,
+      value,
       side: bridge ? "solder" : "component",
       objects: [{ kind: "component", id: instance.id }],
       holes,
@@ -258,10 +264,33 @@ export function mockAssemblyPlan(
   const wire_list = wireList
     .map((entry) => ({ ...entry, step: stepOf.get(entry.id) ?? 0 }))
     .sort((a, b) => a.step - b.step);
+  const groups = new Map<string, PartsListEntry>();
+  for (const instance of Object.values(design.components ?? {})) {
+    const definition = design.component_definitions?.[instance.definition_id];
+    if (!definition || definition.kind === "bridge") continue;
+    const value = mockReadValue(instance.value);
+    const key = `${definition.id}\u0000${value?.display ?? ""}`;
+    const entry = groups.get(key) ?? {
+      definition_id: definition.id,
+      part: definition.name,
+      value,
+      names: [],
+    };
+    entry.names.push(instance.name);
+    groups.set(key, entry);
+  }
+  const parts = [...groups.values()].sort(
+    (a, b) =>
+      a.part.localeCompare(b.part) ||
+      (a.value?.display ?? "\uffff").localeCompare(
+        b.value?.display ?? "\uffff",
+      ),
+  );
   return {
     source_revision: revision,
     fingerprint: hash(JSON.stringify(steps) + JSON.stringify(wire_list)),
     steps,
+    parts,
     wire_list,
     warnings: [],
   };

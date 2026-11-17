@@ -70,6 +70,30 @@ export interface AccessRegion extends LocalRect {
   required: boolean;
   allow_board_overhang: boolean;
 }
+/** How a definition's parts read their value (see `crates/core/src/value.rs`). */
+export type ValueKind = "text" | "resistance" | "capacitance";
+/** One band of a resistor colour code. */
+export type Band =
+  | "black"
+  | "brown"
+  | "red"
+  | "orange"
+  | "yellow"
+  | "green"
+  | "blue"
+  | "violet"
+  | "grey"
+  | "white"
+  | "gold"
+  | "silver";
+/** How a part's value reads, as derived by the Rust engine. */
+export interface ValueReading {
+  display: string;
+  /** Five bands at 1% tolerance, or one black band for a zero-ohm link. */
+  bands?: Band[];
+  /** The three-digit capacitor code, such as `104`. */
+  code?: string;
+}
 export interface ComponentDefinition {
   schema_version: number;
   kind?: "standard" | "bridge" | "jumper";
@@ -79,6 +103,8 @@ export interface ComponentDefinition {
   /** Reference designator prefix such as `R`; placed parts become R1, R2. */
   designator?: string;
   description: string;
+  /** How placed parts read their value; absent means free text. */
+  value_kind?: ValueKind;
   origin_x?: number;
   origin_y?: number;
   body: { x: number; y: number; width: number; height: number };
@@ -160,6 +186,9 @@ export interface ComponentInstance {
   name: string;
   position: HolePos;
   rotation: Rotation;
+  /** As printed or coded on the part; resistances and capacitances are
+   * stored normalised, such as `4.7 kΩ` or `100 nF`. */
+  value?: string;
   properties?: Record<string, string>;
   notes?: string;
   /** A fitted shunt on a `jumper` part joins its two pins. */
@@ -417,6 +446,7 @@ export type OperationPayload =
       notes: string;
     }
   | { type: "set_jumper_shunt"; instance_id: string; shunted: boolean }
+  | { type: "set_component_value"; instance_id: string; value: string }
   | { type: "define_net"; net: ElectricalNet }
   | { type: "remove_net"; net_id: string }
   | { type: "rename_net"; net_id: string; name: string }
@@ -744,6 +774,8 @@ export interface AssemblyStep {
   kind: StepKind;
   label: string;
   title: string;
+  /** Component steps: the part's value, colour code or marking. */
+  value?: ValueReading;
   /** The face to look at while doing the step. */
   side: Side;
   objects: ObjectReference[];
@@ -773,6 +805,12 @@ export interface WireListEntry {
   jumper?: string;
   step: number;
 }
+export interface PartsListEntry {
+  definition_id: string;
+  part: string;
+  value?: ValueReading;
+  names: string[];
+}
 export interface AssemblyWarning {
   code: string;
   message: string;
@@ -782,6 +820,8 @@ export interface AssemblyPlan {
   source_revision: number;
   fingerprint: string;
   steps: AssemblyStep[];
+  /** Parts to gather, grouped by type and value. */
+  parts: PartsListEntry[];
   wire_list: WireListEntry[];
   warnings: AssemblyWarning[];
 }
@@ -834,6 +874,7 @@ export interface BreadboardGeometry {
 export interface BreadboardPart {
   component_id: string;
   name: string;
+  value?: ValueReading;
   definition_id: string;
   position: HolePos;
   rotation: Rotation;

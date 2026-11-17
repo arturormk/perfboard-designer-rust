@@ -15,6 +15,7 @@ import {
   placing,
   showChanges,
   showKeepouts,
+  showPartValues,
   showRatsnest,
   side,
   splitCompare,
@@ -393,6 +394,12 @@ function ViewOptions() {
               ))}
             </div>
           </div>
+          <Toggle
+            label="Part values"
+            hint="Show 10 kΩ, 100 nF… under part names"
+            value={showPartValues.value}
+            onChange={(value) => (showPartValues.value = value)}
+          />
           <Toggle
             label="Unrouted connections"
             hint="Dashed hints between unjoined pins"

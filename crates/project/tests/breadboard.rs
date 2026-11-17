@@ -61,6 +61,7 @@ impl Builder {
                 name: name.to_owned(),
                 position: HolePos::new(1, 1),
                 rotation: Rotation::Deg0,
+                value: String::new(),
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
@@ -83,6 +84,7 @@ impl Builder {
                 name: name.to_owned(),
                 position: HolePos::new(1, 1),
                 rotation: Rotation::Deg0,
+                value: String::new(),
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
@@ -651,7 +653,11 @@ fn rail_links_sit_just_below_the_parts_on_rows_of_their_own() {
             assert_eq!(link.from.y, link.to.y, "{link:?}");
             // Seen with the circuit, not dozens of rows away at the bottom.
             assert!(link.from.y <= lowest + 4, "{link:?} below row {lowest}");
-            assert!(rows.insert(link.from.y), "two links share row {}", link.from.y);
+            assert!(
+                rows.insert(link.from.y),
+                "two links share row {}",
+                link.from.y
+            );
             checked += 1;
         }
     }

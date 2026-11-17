@@ -17,6 +17,7 @@ import type {
 } from "../api/project";
 import { rotateLocal, type Design } from "../model/geometry";
 import { suggestedWireColor } from "../model/naming";
+import { mockReadValue } from "./mock-values";
 
 const LEFT = [3, 4, 5, 6, 7];
 const RIGHT = [10, 11, 12, 13, 14];
@@ -102,6 +103,7 @@ export function mockBreadboardLayout(
     parts.push({
       component_id: instance.id,
       name: instance.name,
+      value: mockReadValue(instance.value),
       definition_id: instance.definition_id,
       position,
       rotation,

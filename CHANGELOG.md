@@ -9,6 +9,20 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Parts have a value. Resistors and capacitors understand theirs: `4k7`,
+  `4.7k` and `4700` all become `4.7 kΩ`, `0.1u` and the code `104` become
+  `100 nF`, and a value that cannot be read (such as `2m2` for 2.2 MΩ) is
+  refused with a hint; other parts take free text such as `1N4148`. Set it in
+  the inspector, or with `set_component_value` from MCP. **View → Part
+  values** shows values on the board (off by default). The Assembly and
+  Breadboard tabs draw resistors with their five-band colour code at 1%
+  tolerance, each part step says which bands to look for, a new parts list
+  groups parts by type and value, and a note names resistors and capacitors
+  without one. The built-in resistor and capacitor parts declare their value
+  kind (`value_kind` in `component.toml`); projects pick it up when a part's
+  definition is updated. See
+  [ADR 0019](docs/adr/0019-component-values.md).
+
 - A new Breadboard tab lays the design out on standard solderless
   breadboards (protoboards), so the circuit can be tried before anything is
   soldered. Parts straddle the channel or sit on one side with their own

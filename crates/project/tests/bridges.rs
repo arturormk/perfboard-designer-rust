@@ -43,6 +43,7 @@ fn place(document: &mut ProjectDocument, toml: &str, x: u32) -> ComponentInstanc
                 name: definition.name.clone(),
                 position: HolePos::new(x, 0),
                 rotation: Rotation::Deg0,
+                value: String::new(),
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,

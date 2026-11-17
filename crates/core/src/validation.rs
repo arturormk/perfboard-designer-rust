@@ -257,6 +257,7 @@ mod tests {
             name: definition_id.into(),
             position: HolePos::new(x, y),
             rotation: Rotation::Deg0,
+            value: String::new(),
             properties: BTreeMap::new(),
             notes: String::new(),
             shunted: false,

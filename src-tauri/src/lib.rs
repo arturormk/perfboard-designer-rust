@@ -1192,6 +1192,7 @@ fn start_new_part(
         definition_version: "0.1.0".into(),
         name: "New part".into(),
         designator: String::new(),
+        value_kind: perfboard_core::ValueKind::Text,
         description: String::new(),
         origin_x: 0,
         origin_y: 0,

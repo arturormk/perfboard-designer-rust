@@ -17,9 +17,10 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use std::fmt::Write as _;
 
 use perfboard_core::{
-    ComponentDefinition, ComponentInstance, ComponentKind, ConnectionState, JumperMatchKind,
-    ObjectReference, PinRef, Rail, RoutePos, Saddle, Side, TerminalRef, Wire, WireColor,
-    measure_route,
+    Band, ComponentDefinition, ComponentInstance, ComponentKind, ConnectionState,
+    DEFAULT_TOLERANCE_TEXT, JumperMatchKind, ObjectReference, PinRef, Rail, RoutePos, Saddle, Side,
+    TerminalRef, ValueKind, ValueReading, Wire, WireColor, compare_values, measure_route,
+    read_value,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -42,8 +43,24 @@ pub struct AssemblyPlan {
     /// the same way, whatever else changed in the design.
     pub fingerprint: String,
     pub steps: Vec<AssemblyStep>,
+    /// The parts to gather, grouped by type and value, so all the 10 kΩ
+    /// resistors can be picked out at once.
+    #[serde(default)]
+    pub parts: Vec<PartsListEntry>,
     pub wire_list: Vec<WireListEntry>,
     pub warnings: Vec<AssemblyWarning>,
+}
+
+/// Placed parts of one type with one value.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct PartsListEntry {
+    pub definition_id: String,
+    /// The part type, such as "1/4 Watt".
+    pub part: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<ValueReading>,
+    /// The placed parts, in natural order: R1, R2, R10.
+    pub names: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -67,6 +84,9 @@ pub struct AssemblyStep {
     /// Short name as shown on the board: R1, W3, Nano.
     pub label: String,
     pub title: String,
+    /// Component steps: the part's value, with its colour code or marking.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub value: Option<ValueReading>,
     /// The face to look at while doing the step.
     pub side: Side,
     pub objects: Vec<ObjectReference>,
@@ -216,6 +236,13 @@ impl<'a> Context<'a> {
                 design.saddles.keys().map(ToString::to_string).collect(),
             ),
         }
+    }
+
+    fn component(&self, id: &str) -> Option<(&'a ComponentInstance, &'a ComponentDefinition)> {
+        self.components
+            .iter()
+            .find(|(instance, _)| instance.id.to_string() == id)
+            .copied()
     }
 
     fn wire_label(&self, wire: &Wire) -> String {
@@ -1088,6 +1115,16 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
             after,
             Vec::new(),
         ));
+        if node.kind == StepKind::Component
+            && let Some(step) = steps.last_mut()
+        {
+            step.value =
+                context
+                    .component(&node.objects[0].id)
+                    .and_then(|(instance, definition)| {
+                        read_value(definition.value_kind, &instance.value)
+                    });
+        }
     }
     for check in check_steps(&context) {
         let number = u32::try_from(steps.len() + 1).unwrap_or(u32::MAX);
@@ -1116,11 +1153,14 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
         key(a).cmp(&key(b))
     });
 
-    let fingerprint = hash(&(&steps, &wire_list, &warnings));
+    warnings.extend(missing_values(&context));
+    let parts = parts_list(&context);
+    let fingerprint = hash(&(&steps, &parts, &wire_list, &warnings));
     AssemblyPlan {
         source_revision: revision,
         fingerprint,
         steps,
+        parts,
         wire_list,
         warnings,
     }
@@ -1207,6 +1247,7 @@ fn finish_step(
         kind,
         label,
         title,
+        value: None,
         side,
         objects,
         holes,
@@ -1235,7 +1276,13 @@ fn component_text(
     definition: &ComponentDefinition,
 ) -> (String, Vec<String>) {
     let first = definition.pins.first();
-    let mut instructions = vec![match (first, node.holes.first()) {
+    let value = read_value(definition.value_kind, &instance.value);
+    let mut instructions: Vec<String> = value
+        .as_ref()
+        .map(|value| value_check_text(definition.value_kind, value))
+        .into_iter()
+        .collect();
+    instructions.push(match (first, node.holes.first()) {
         (Some(pin), Some(hole)) => format!(
             "Insert {} on the component side{}, with pin {} in hole {}.",
             instance.name,
@@ -1244,7 +1291,7 @@ fn component_text(
             hole_text(*hole)
         ),
         _ => format!("Insert {} on the component side.", instance.name),
-    }];
+    });
     instructions.push(match definition.pins.len() {
         1 => "Solder its pin on the solder side.".into(),
         count => format!("Solder its {count} pins on the solder side."),
@@ -1256,10 +1303,109 @@ fn component_text(
             "Leave the shunt off (open).".into()
         });
     }
-    (
-        format!("Fit {} ({})", instance.name, definition.name),
-        instructions,
-    )
+    let title = match &value {
+        Some(value) => format!(
+            "Fit {} ({}), {}",
+            instance.name, definition.name, value.display
+        ),
+        None => format!("Fit {} ({})", instance.name, definition.name),
+    };
+    (title, instructions)
+}
+
+/// The line that has the builder check they hold the right part.
+fn value_check_text(kind: ValueKind, value: &ValueReading) -> String {
+    match (kind, value.bands.as_slice(), &value.code) {
+        (ValueKind::Resistance, [Band::Black], _) => {
+            "Check the colour code: a single black band (a zero-ohm link).".into()
+        }
+        (ValueKind::Resistance, [_, ..], _) => format!(
+            "Check the colour bands: {} ({}, {DEFAULT_TOLERANCE_TEXT}).",
+            value
+                .bands
+                .iter()
+                .map(|band| band.name())
+                .collect::<Vec<_>>()
+                .join(", "),
+            value.display
+        ),
+        (ValueKind::Capacitance, _, Some(code)) => {
+            format!("Check the value: {} (code {code}).", value.display)
+        }
+        _ => format!("Check the value: {}.", value.display),
+    }
+}
+
+/// Resistors and capacitors with no value: the plan cannot say which to fit.
+fn missing_values(context: &Context<'_>) -> Vec<AssemblyWarning> {
+    let mut missing: Vec<&ComponentInstance> = context
+        .components
+        .iter()
+        .filter(|(instance, definition)| {
+            !definition.value_kind.is_text() && instance.value.trim().is_empty()
+        })
+        .map(|(instance, _)| *instance)
+        .collect();
+    missing.sort_by(|a, b| natural_cmp(&a.name, &b.name));
+    missing
+        .into_iter()
+        .map(|instance| AssemblyWarning {
+            code: "assembly.value_missing".into(),
+            message: format!(
+                "{} has no value. Set it in the inspector so the plan can say which part to fit.",
+                instance.name
+            ),
+            objects: vec![ObjectReference {
+                kind: "component".into(),
+                id: instance.id.to_string(),
+            }],
+        })
+        .collect()
+}
+
+/// Placed parts grouped by type and value. Bridges are not parts to gather.
+fn parts_list(context: &Context<'_>) -> Vec<PartsListEntry> {
+    let mut groups: BTreeMap<(String, String), (ValueKind, String, PartsListEntry)> =
+        BTreeMap::new();
+    for (instance, definition) in &context.components {
+        if is_bridge(definition) {
+            continue;
+        }
+        let value = read_value(definition.value_kind, &instance.value);
+        let display = value
+            .as_ref()
+            .map(|value| value.display.clone())
+            .unwrap_or_default();
+        groups
+            .entry((definition.id.clone(), display.clone()))
+            .or_insert_with(|| {
+                (
+                    definition.value_kind,
+                    display,
+                    PartsListEntry {
+                        definition_id: definition.id.clone(),
+                        part: definition.name.clone(),
+                        value,
+                        names: Vec::new(),
+                    },
+                )
+            })
+            .2
+            .names
+            .push(instance.name.clone());
+    }
+    let mut parts: Vec<(ValueKind, String, PartsListEntry)> = groups.into_values().collect();
+    for (_, _, entry) in &mut parts {
+        entry.names.sort_by(|a, b| natural_cmp(a, b));
+    }
+    // By type; then smallest value first, parts with no value last.
+    parts.sort_by(|(kind, a_value, a), (_, b_value, b)| {
+        natural_cmp(&a.part, &b.part)
+            .then_with(|| a_value.is_empty().cmp(&b_value.is_empty()))
+            .then_with(|| compare_values(*kind, a_value, b_value))
+            .then_with(|| natural_cmp(&a.names[0], &b.names[0]))
+    });
+    parts.into_iter().map(|(_, _, entry)| entry).collect()
 }
 
 fn bridge_text(node: &Node, instance: &ComponentInstance) -> (String, Vec<String>) {

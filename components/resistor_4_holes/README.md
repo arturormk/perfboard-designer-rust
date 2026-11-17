@@ -6,6 +6,6 @@ The body occupies the middle four holes, with one terminal hole at each end.
 The origin is terminal 1 at `(0, 0)`; terminal 2 is at `(5, 0)`. The component
 may be placed horizontally or vertically using any 90-degree rotation.
 
-This definition intentionally does not specify a resistance value. Record that
-detail on the component instance or create a named variant when it matters to
-the design.
+Give each placed part its resistance as its value, such as `4k7`, `10k` or
+`220R`. The value is shown as `4.7 kΩ`, and the Assembly and Breadboard views
+draw its five-band colour code (1% tolerance).

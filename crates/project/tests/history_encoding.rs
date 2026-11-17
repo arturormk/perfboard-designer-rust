@@ -38,6 +38,7 @@ fn add(session: &mut ProjectSession, name: &str, x: u32, y: u32) {
                     name: name.into(),
                     position: HolePos::new(x, y),
                     rotation: Rotation::Deg0,
+                    value: String::new(),
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,
