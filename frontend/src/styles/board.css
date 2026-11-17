@@ -1335,3 +1335,40 @@
   font-size: 10px;
   color: var(--text-3);
 }
+
+/* Assembly mode: row and column names as printed on the physical board,
+   drawn in the board margin. Black on either face, like silkscreen. */
+.edge-labels text {
+  fill: #000;
+  font-size: 0.4px;
+  font-weight: 650;
+  font-family: var(--font-mono);
+  text-anchor: middle;
+}
+
+.edge-label-options {
+  bottom: calc(100% + 8px);
+  left: 0;
+  width: 340px;
+  padding: 10px 14px;
+}
+
+.edge-axis {
+  gap: 10px;
+}
+
+.edge-axis > span {
+  flex: 1;
+}
+
+.edge-reverse {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.edge-label-options .field-note {
+  margin: 6px 0 0;
+}

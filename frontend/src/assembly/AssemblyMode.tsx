@@ -14,11 +14,14 @@ import type {
   WireListEntry,
 } from "../api/project";
 import { BoardBase } from "../board/BoardBase";
+import { Toggle } from "../board/CanvasHud";
 import {
   BOARD_VIEW_PAD,
   BoardScene,
   defaultViewBox,
+  TEXT_CENTER_DY,
 } from "../board/BoardScene";
+import { BOARD_MARGIN, PAD_RADIUS, viewX } from "../model/geometry";
 import { wireColorCss, wireColorName } from "../model/naming";
 import { confirmAction, openDialogKind } from "../shell/dialogs";
 import {
@@ -49,6 +52,14 @@ import {
   wireLabelMap,
 } from "../state/store";
 import { Icon, type IconName } from "../ui/Icon";
+import {
+  axisLabel,
+  edgeLabels,
+  loadEdgeLabels,
+  setEdgeLabels,
+  type AxisLabels,
+  type EdgeLabels,
+} from "./edge-labels";
 import { assemblyScene } from "./scene";
 
 type ViewBox = [number, number, number, number];
@@ -81,6 +92,7 @@ export function AssemblyMode() {
     void view.value?.revision;
     void loadAssembly();
   });
+  useSignalEffect(() => loadEdgeLabels(view.value?.project_id));
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -566,6 +578,7 @@ function AssemblyCanvas({ plan: current }: { plan: AssemblyPlan }) {
   }, []);
 
   const probe = currentProbe.value;
+  const labels = edgeLabels.value;
   const scene = assemblyScene(target, current, step, probe);
   const side = shownSide.value;
   const box = viewBox.value ?? defaultViewBox(target);
@@ -621,6 +634,16 @@ function AssemblyCanvas({ plan: current }: { plan: AssemblyPlan }) {
             railLabels={railLabelMap.value}
             saddleLabels={saddleLabelMap.value}
             overlay={<g class="step-holes">{markers}</g>}
+            viewOverlay={
+              labels.enabled && (
+                <BoardEdgeLabels
+                  holesX={holesX}
+                  holesY={holesY}
+                  side={side}
+                  labels={labels}
+                />
+              )
+            }
           />
         </svg>
         <div class="hud hud-top-center">
@@ -648,6 +671,9 @@ function AssemblyCanvas({ plan: current }: { plan: AssemblyPlan }) {
             {side === "solder" && <span class="mirror-tag">mirrored</span>}
           </div>
         </div>
+        <div class="hud hud-bottom-left">
+          <EdgeLabelOptions />
+        </div>
         <div class="hud hud-top-right">
           <div class="zoom-group">
             <button
@@ -661,6 +687,153 @@ function AssemblyCanvas({ plan: current }: { plan: AssemblyPlan }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Edge labels ───────────────────────────────────────────────────────────
+
+/** Edge labels sit in the margin between the outer holes and the board edge. */
+const EDGE_LABEL_OFFSET = (PAD_RADIUS + BOARD_MARGIN) / 2;
+
+/**
+ * The row and column names printed on the physical board, drawn in its
+ * margin. Each label stays with its hole, so on the mirrored solder side the
+ * columns read in the opposite order, as they do on the real board.
+ */
+function BoardEdgeLabels({
+  holesX,
+  holesY,
+  side,
+  labels,
+}: {
+  holesX: number;
+  holesY: number;
+  side: Side;
+  labels: EdgeLabels;
+}) {
+  const above = -EDGE_LABEL_OFFSET;
+  const below = holesY - 1 + EDGE_LABEL_OFFSET;
+  const left = -EDGE_LABEL_OFFSET;
+  const right = holesX - 1 + EDGE_LABEL_OFFSET;
+  const columns = Array.from({ length: holesX }, (_, x) =>
+    axisLabel(x, holesX, labels.columns),
+  );
+  const rows = Array.from({ length: holesY }, (_, y) =>
+    axisLabel(y, holesY, labels.rows),
+  );
+  return (
+    <g class="edge-labels" aria-hidden="true">
+      {[above, below].map((y) =>
+        columns.map((text, x) => (
+          <text
+            key={`c${x}@${y}`}
+            x={viewX(x, holesX, side)}
+            y={y}
+            dy={TEXT_CENTER_DY}
+          >
+            {text}
+          </text>
+        )),
+      )}
+      {[left, right].map((x) =>
+        rows.map((text, y) => (
+          <text key={`r${y}@${x}`} x={x} y={y} dy={TEXT_CENTER_DY}>
+            {text}
+          </text>
+        )),
+      )}
+    </g>
+  );
+}
+
+function AxisOptions({
+  name,
+  axis,
+  onChange,
+}: {
+  name: string;
+  axis: AxisLabels;
+  onChange: (axis: AxisLabels) => void;
+}) {
+  return (
+    <div class="popover-row edge-axis">
+      <span>{name}</span>
+      <div class="segmented small" role="radiogroup" aria-label={name}>
+        {(["numbers", "letters"] as const).map((style) => (
+          <button
+            key={style}
+            role="radio"
+            aria-checked={axis.style === style}
+            class={axis.style === style ? "on" : ""}
+            onClick={() => onChange({ ...axis, style })}
+          >
+            {style === "numbers" ? "1, 2, 3" : "A, B, C"}
+          </button>
+        ))}
+      </div>
+      <label class="edge-reverse" title="Count from the other end">
+        <input
+          type="checkbox"
+          checked={axis.reversed}
+          onChange={(event) =>
+            onChange({
+              ...axis,
+              reversed: (event.target as HTMLInputElement).checked,
+            })
+          }
+        />
+        Reversed
+      </label>
+    </div>
+  );
+}
+
+function EdgeLabelOptions() {
+  const open = useSignal(false);
+  const labels = edgeLabels.value;
+  return (
+    <div class="view-options">
+      <button
+        class={`btn hud-btn${open.value ? " on" : ""}`}
+        aria-expanded={open.value}
+        title="Label rows and columns as printed on your board"
+        onClick={() => (open.value = !open.value)}
+      >
+        <Icon name="layers" /> Labels
+      </button>
+      {open.value && (
+        <div
+          class="popover edge-label-options"
+          role="dialog"
+          aria-label="Board labels"
+        >
+          <Toggle
+            label="Board labels"
+            hint="Rows and columns as printed on your perfboard"
+            value={labels.enabled}
+            onChange={(enabled) => setEdgeLabels({ ...labels, enabled })}
+          />
+          {labels.enabled && (
+            <>
+              <AxisOptions
+                name="Columns"
+                axis={labels.columns}
+                onChange={(columns) => setEdgeLabels({ ...labels, columns })}
+              />
+              <AxisOptions
+                name="Rows"
+                axis={labels.rows}
+                onChange={(rows) => setEdgeLabels({ ...labels, rows })}
+              />
+              <p class="field-note">
+                Drawn on the board edge. The numbers outside the board are the
+                design's own coordinates and do not change.
+              </p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
