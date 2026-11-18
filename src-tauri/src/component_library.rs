@@ -162,10 +162,16 @@ mod tests {
         fs::create_dir_all(&part).unwrap();
         let bridge = fs::read_to_string(checkout_components().join("bridge/component.toml"))
             .unwrap()
-            .replace(
-                "definition_version = \"1.1.0\"",
-                "definition_version = \"7.0.0\"",
-            );
+            .lines()
+            .map(|line| {
+                if line.starts_with("definition_version") {
+                    "definition_version = \"7.0.0\""
+                } else {
+                    line
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         fs::write(part.join("component.toml"), bridge).unwrap();
 
         let unsaved = current_library(&LibraryInputs::of(&session(None, None), &no_grants()));

@@ -9,6 +9,10 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Bridges are named B1, B2… (definition version 1.2.0) instead of W1, W2…,
+  which clashed with the numbering of wires. Bridges already placed keep
+  their names; rename them in the inspector if you like.
+
 - Screw terminals cover the hole beyond each end pin again (definition
   version 1.2.0): seen along the row a block takes X P X P X, so two blocks
   butted together keep the 5.08 mm pitch without sharing a hole. New 4-, 6-,
