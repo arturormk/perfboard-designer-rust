@@ -7,7 +7,11 @@
 //! editor reads this view instead: the current design plus compact summaries
 //! of history.
 
-use perfboard_core::{CommitId, Diagnostic, ProjectId};
+use std::collections::BTreeMap;
+
+use perfboard_core::{
+    CommitId, ComponentInstanceId, Diagnostic, ProjectId, ValueReading, read_value,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -51,6 +55,10 @@ pub struct ProjectView {
     pub name: String,
     pub revision: DocumentRevision,
     pub design: Design,
+    /// How each valued part's value reads: display text, resistor colour
+    /// bands, capacitor code (ADR 0019). Derived from `design`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub value_readings: BTreeMap<ComponentInstanceId, ValueReading>,
     /// Review notes in the user's order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub review_notes: Vec<ReviewNote>,
@@ -90,6 +98,23 @@ fn summarize(change: &WorkingChange) -> ChangeSummary {
     }
 }
 
+/// The reading of every part that has a value.
+#[must_use]
+pub fn value_readings(design: &Design) -> BTreeMap<ComponentInstanceId, ValueReading> {
+    design
+        .components
+        .values()
+        .filter_map(|instance| {
+            let kind = design
+                .component_definitions
+                .get(&instance.definition_id)
+                .map(|definition| definition.value_kind)
+                .unwrap_or_default();
+            read_value(kind, &instance.value).map(|reading| (instance.id, reading))
+        })
+        .collect()
+}
+
 impl ProjectView {
     #[must_use]
     pub fn from_document(document: &ProjectDocument) -> Self {
@@ -127,6 +152,7 @@ impl ProjectView {
             name: document.name.clone(),
             revision: document.revision,
             design: document.design.clone(),
+            value_readings: value_readings(&document.design),
             review_notes: document.review_notes.clone(),
             validation: document.validation.clone(),
             commits,

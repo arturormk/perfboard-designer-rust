@@ -1,4 +1,5 @@
 import { useSignal } from "@preact/signals";
+import { ColorCode } from "../ui/ColorCode";
 import type {
   ComponentDefinition,
   ComponentInstance,
@@ -203,7 +204,7 @@ function NotesField({
 const VALUE_HINTS: Record<ValueKind, { placeholder: string; note: string }> = {
   resistance: {
     placeholder: "e.g. 4k7",
-    note: "Type 4k7, 4.7k, 4700 or 4R7; it is shown as 4.7 kΩ. Assembly and Breadboard draw the colour code.",
+    note: "Type 4k7, 4.7k, 4700 or 4R7; it is shown as 4.7 kΩ.",
   },
   capacitance: {
     placeholder: "e.g. 100n",
@@ -218,12 +219,16 @@ const VALUE_HINTS: Record<ValueKind, { placeholder: string; note: string }> = {
 function ValueField({
   instance,
   kind,
+  libraryKind,
 }: {
   instance: ComponentInstance;
   kind: ValueKind;
+  /** The library's value kind, when it differs from the project's copy. */
+  libraryKind?: ValueKind;
 }) {
   const failed = useSignal(false);
   const hints = VALUE_HINTS[kind];
+  const reading = view.value?.value_readings?.[instance.id];
   const save = async (input: HTMLInputElement) => {
     const next = input.value.trim();
     if (next === (instance.value ?? "")) {
@@ -255,6 +260,16 @@ function ValueField({
           ? "Not saved: see the message for how to write it."
           : hints.note}
       </p>
+      {libraryKind && libraryKind !== "text" && (
+        <p class="field-note warn">
+          The library now reads this part&apos;s value as a {libraryKind}. Use{" "}
+          <strong>Update metadata</strong> below to adopt it
+          {libraryKind === "resistance" ? " and see the colour code" : ""}.
+        </p>
+      )}
+      {reading?.bands && (
+        <ColorCode bands={reading.bands} value={reading.display} />
+      )}
     </Section>
   );
 }
@@ -285,6 +300,15 @@ function ComponentInspector({
     libraryDefinition &&
     definition &&
     libraryDefinition.definition_version !== definition.definition_version;
+  // The library reads this part's value as a resistance or capacitance but
+  // the project's copy does not yet (copied before value kinds existed).
+  const libraryValueKind =
+    libraryDefinition &&
+    definition &&
+    (libraryDefinition.value_kind ?? "text") !==
+      (definition.value_kind ?? "text")
+      ? (libraryDefinition.value_kind ?? "text")
+      : undefined;
 
   const rename = (value: string) => {
     const name = value.trim();
@@ -342,6 +366,7 @@ function ComponentInspector({
         <ValueField
           instance={instance}
           kind={definition?.value_kind ?? "text"}
+          libraryKind={libraryValueKind}
         />
       )}
 
@@ -467,10 +492,14 @@ function ComponentInspector({
             <dt>Version</dt>
             <dd>
               {definition.definition_version}
-              {outdated && (
+              {outdated ? (
                 <span class="badge warn">
                   library has {libraryDefinition!.definition_version}
                 </span>
+              ) : (
+                libraryValueKind && (
+                  <span class="badge warn">library reads values</span>
+                )
               )}
             </dd>
             <dt>Body</dt>
@@ -485,7 +514,7 @@ function ComponentInspector({
             {libraryDefinition && (
               <button
                 class="btn small"
-                title="Refresh name, description and documentation from the library, and whether a two-pin part takes a shunt. Pins and geometry stay as they are."
+                title="Refresh name, description, documentation and how values are read from the library, and whether a two-pin part takes a shunt. Pins and geometry stay as they are."
                 onClick={() =>
                   void mutate({
                     type: "update_component_metadata",

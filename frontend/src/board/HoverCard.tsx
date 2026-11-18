@@ -18,10 +18,13 @@ import {
 export function HoverCard({
   at,
   detail,
+  extra,
 }: {
   at: { x: number; y: number };
   /** An extra line about the target, such as where it sits on a breadboard. */
   detail?: preact.ComponentChildren;
+  /** Content after everything else, such as a resistor's colour code. */
+  extra?: preact.ComponentChildren;
 }) {
   const target = hover.value;
   const current = design.value;
@@ -143,6 +146,7 @@ export function HoverCard({
     >
       {body}
       {detail && <div class="hc-detail">{detail}</div>}
+      {extra}
     </div>
   );
 }

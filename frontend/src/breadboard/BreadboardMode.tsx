@@ -41,9 +41,12 @@ import {
   design as designSignal,
   hover,
   pinLabels,
+  showBreadboardColorCodes,
   view,
   type HoverTarget,
 } from "../state/store";
+import { Toggle } from "../board/CanvasHud";
+import { ColorCodeRow, ColorCodeStrip } from "../ui/ColorCode";
 import { Icon } from "../ui/Icon";
 import {
   boardMarkings,
@@ -290,6 +293,7 @@ function BreadboardCanvas({ layout }: { layout: BreadboardLayout }) {
             pinLabels={pinLabels.value}
             showValues
             partBands={partBands(layout)}
+            beigeResistors
             overlay={<Jumpers layout={layout} />}
           />
         </svg>
@@ -342,6 +346,7 @@ function BreadboardHover({
   const target = hover.value;
   if (!point || !target) return null;
   let detail: string | undefined;
+  let extra: preact.ComponentChildren;
   if (target.kind === "pin") {
     const hole = pinPosition(scene, target.ref);
     const part = layout.parts.find(
@@ -369,8 +374,10 @@ function BreadboardHover({
         part,
         definition.pins.map((pin) => pinBoardPosition(instance, pin)),
       );
+    const bands = part?.value?.bands;
+    if (bands?.length) extra = <ColorCodeStrip bands={bands} />;
   }
-  return <HoverCard at={point} detail={detail} />;
+  return <HoverCard at={point} detail={detail} extra={extra} />;
 }
 
 const STRIPE: Record<RailPolarity, string> = {
@@ -550,6 +557,34 @@ function Jumpers({ layout }: { layout: BreadboardLayout }) {
 
 // ── Panel ─────────────────────────────────────────────────────────────────
 
+/** A view option: each resistor's colour code, to pick the right one. */
+function ColorCodes({ layout }: { layout: BreadboardLayout }) {
+  const resistors = layout.parts
+    .filter((part) => part.value?.bands?.length)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!resistors.length) return null;
+  const on = showBreadboardColorCodes.value;
+  return (
+    <section class="bb-section bb-color-codes">
+      <Toggle
+        label="Resistor colour codes"
+        hint="The bands to look for, 1% tolerance"
+        value={on}
+        onChange={(value) => (showBreadboardColorCodes.value = value)}
+      />
+      {on &&
+        resistors.map((part) => (
+          <ColorCodeRow
+            key={part.component_id}
+            name={part.name}
+            value={part.value!.display}
+            bands={part.value!.bands!}
+          />
+        ))}
+    </section>
+  );
+}
+
 function BreadboardPanel({ layout }: { layout: BreadboardLayout }) {
   const groups = jumpersByNet(layout);
   const leads = layout.jumpers.filter((jumper) => jumper.kind === "lead");
@@ -597,6 +632,7 @@ function BreadboardPanel({ layout }: { layout: BreadboardLayout }) {
             </ul>
           </section>
         )}
+        <ColorCodes layout={layout} />
         {rails.size > 0 && (
           <section class="bb-section">
             <h3>Rails</h3>

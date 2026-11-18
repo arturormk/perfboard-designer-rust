@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use perfboard_core::{
-    Band::{Black, Brown, Red},
+    Band::{Black, Brown, Red, Violet, Yellow},
     BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, HolePos, OperationId,
     ProjectId, Rotation, ValueKind,
 };
@@ -295,4 +295,48 @@ fn breadboard_parts_carry_their_value() {
     let value = part.value.as_ref().unwrap();
     assert_eq!(value.display, "220 Ω");
     assert_eq!(value.bands, [Red, Red, Black, Black, Brown]);
+}
+
+#[test]
+fn the_project_view_carries_each_parts_reading() {
+    let mut document = document();
+    let resistor = definition(Some("resistance"));
+    let valued = add(&mut document, &resistor, "4k7").unwrap();
+    let bare = add(&mut document, &resistor, "").unwrap();
+    let view = perfboard_project::ProjectView::from_document(&document);
+    let reading = &view.value_readings[&valued];
+    assert_eq!(reading.display, "4.7 kΩ");
+    assert_eq!(reading.bands, [Yellow, Violet, Black, Brown, Brown]);
+    assert!(!view.value_readings.contains_key(&bare));
+}
+
+#[test]
+fn update_metadata_brings_in_the_value_kind_and_tidies_values() {
+    let mut document = document();
+    let old = definition(None);
+    let typed = add(&mut document, &old, "220").unwrap();
+    let odd = add(&mut document, &old, "about 5k").unwrap();
+    assert_eq!(document.design.components[&typed].value, "220");
+
+    // The library's newer copy: same version, now a resistance.
+    let new = definition(Some("resistance"));
+    apply(
+        &mut document,
+        OperationPayload::UpdateComponentMetadata {
+            instance_id: typed,
+            definition: new,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        document.design.component_definitions["part"].value_kind,
+        ValueKind::Resistance
+    );
+    assert_eq!(document.design.components[&typed].value, "220 Ω");
+    assert_eq!(document.design.components[&odd].value, "about 5k");
+    let view = perfboard_project::ProjectView::from_document(&document);
+    assert_eq!(
+        view.value_readings[&typed].bands,
+        [Red, Red, Black, Black, Brown]
+    );
 }

@@ -54,8 +54,13 @@ export interface SceneProps {
   pinLabels?: PinLabelMode;
   /** Show each part's value under its name, where there is room. */
   showValues?: boolean;
-  /** Component ID → resistor colour bands to paint on its body. */
+  /**
+   * Component ID → resistor colour bands to paint on its body. Resistors
+   * listed here are drawn beige, as on the bench, even with no bands.
+   */
   partBands?: ReadonlyMap<string, readonly Band[]>;
+  /** Draw every resistor beige, not only those in `partBands`. */
+  beigeResistors?: boolean;
   showKeepouts?: boolean;
   /**
    * Draw every part's access regions (a connector's open side) even when
@@ -109,6 +114,7 @@ function ComponentBody({
   showKeepouts,
   showAccess = false,
   bands,
+  resistor = false,
 }: {
   instance: ComponentInstance;
   definition: ComponentDefinition;
@@ -120,6 +126,8 @@ function ComponentBody({
   showAccess?: boolean;
   /** Resistor colour bands to paint on the body. */
   bands?: readonly Band[];
+  /** Draw the body as a resistor: beige, so its bands stand out. */
+  resistor?: boolean;
 }) {
   const transform = `translate(${instance.position.x} ${instance.position.y}) rotate(${rotationDegrees(instance.rotation)})`;
   if (definition.kind === "bridge") {
@@ -156,7 +164,12 @@ function ComponentBody({
   });
   return (
     <g
-      class={classes("part", opposite && "opposite", stateClass)}
+      class={classes(
+        "part",
+        opposite && "opposite",
+        resistor && !opposite && "resistor",
+        stateClass,
+      )}
       transform={transform}
       data-component={opposite ? undefined : instance.id}
     >
@@ -188,7 +201,7 @@ function ComponentBody({
           rotation={instance.rotation}
         />
       )}
-      {!opposite && (
+      {!opposite && !resistor && (
         <path
           class="part-notch"
           d={`M ${body.x / pitch} ${body.y / pitch + 0.9} L ${body.x / pitch} ${body.y / pitch + 0.3} Q ${body.x / pitch} ${body.y / pitch} ${body.x / pitch + 0.3} ${body.y / pitch} L ${body.x / pitch + 0.9} ${body.y / pitch} Z`}
@@ -530,6 +543,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
     pinLabels = "numbers",
     showValues = false,
     partBands,
+    beigeResistors = false,
     showKeepouts,
     showAccess,
     hoverable,
@@ -787,6 +801,12 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
               showAccess={showAccess}
               bands={
                 side === "component" ? partBands?.get(instance.id) : undefined
+              }
+              // The Board keeps every part alike; Breadboard draws all
+              // resistors as resistors, Assembly only the current one.
+              resistor={
+                definition.value_kind === "resistance" &&
+                (beigeResistors || Boolean(partBands?.has(instance.id)))
               }
               showKeepouts={Boolean(
                 showKeepouts || selection?.id === instance.id,

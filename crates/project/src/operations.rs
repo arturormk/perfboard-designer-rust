@@ -691,6 +691,7 @@ pub(crate) fn apply_operation_untracked(
             stored.designator.clone_from(&definition.designator);
             stored.description.clone_from(&definition.description);
             stored.documentation.clone_from(&definition.documentation);
+            stored.value_kind = definition.value_kind;
             // A plain two-pin part can become a shuntable jumper, or back, when
             // the library says so. Pins must match exactly, so nets and wires
             // stay valid; any other kind change still needs a new definition.
@@ -711,11 +712,19 @@ pub(crate) fn apply_operation_untracked(
                 })?;
             let definition_id = instance.definition_id.clone();
             let definition_name = stored.name.clone();
-            if !is_jumper {
-                for component in next.design.components.values_mut() {
-                    if component.definition_id == definition_id {
-                        component.shunted = false;
-                    }
+            let value_kind = stored.value_kind;
+            for component in next.design.components.values_mut() {
+                if component.definition_id != definition_id {
+                    continue;
+                }
+                if !is_jumper {
+                    component.shunted = false;
+                }
+                // Values typed before the part had a value kind are tidied
+                // (`220` becomes `220 Ω`); ones that do not read as the kind
+                // stay as typed and are shown as text.
+                if let Ok(value) = normalize_value(value_kind, &component.value) {
+                    component.value = value;
                 }
             }
             affected.extend(

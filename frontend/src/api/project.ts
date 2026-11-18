@@ -1059,6 +1059,8 @@ export interface ProjectView {
   name: string;
   revision: number;
   design: ProjectDocument["design"];
+  /** Component ID → how its value reads (bands, code); valued parts only. */
+  value_readings?: Record<string, ValueReading>;
   /** In the user's order; absent when there are none. */
   review_notes?: ReviewNote[];
   validation: Diagnostic[];

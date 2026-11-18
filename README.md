@@ -128,10 +128,11 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
   Resistors take `4k7`, `4.7k`, `4700` or `4R7` and show `4.7 kΩ`;
   capacitors take `100n`, `0.1u`, `22p` or the code `104` and show `100 nF`;
   other parts take free text such as `1N4148`. A value that cannot be read
-  is refused with a hint. **View → Part values** shows values under the part
-  names on the board (off by default); the hover card always shows them. The
-  Assembly and Breadboard tabs draw resistors with their five-band colour code
-  (1% tolerance). See [ADR 0019](docs/adr/0019-component-values.md).
+  is refused with a hint. A selected resistor's colour code (five bands, 1%
+  tolerance) is drawn under its value, each band named. **View → Part
+  values** shows values under the part names on the board (off by default);
+  the hover card always shows them. The Breadboard tab draws resistors with
+  their bands, and Assembly the one being fitted. See [ADR 0019](docs/adr/0019-component-values.md).
 - **Select** a part hidden under another, such as a resistor under a module, by
   clicking the same spot again: each click selects the next object down.
 - **Tie wires down** with the saddle tool (`S`): click a free hole on each side
@@ -169,7 +170,8 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
   the colour, net, approximate cut length and bends. **Done, next** (Enter)
   ticks the step; ← and → move between steps. Clicking a check measurement
   rings its test points on the board. Part steps name the value and, for
-  resistors, the colour bands to look for; **parts to gather** above the
+  resistors, show the colour code to look for beside the instructions, and
+  the resistor being fitted is drawn beige with its bands; **parts to gather** above the
   steps groups the parts by type and value, and a note names any resistor or
   capacitor still without a value. Checkmarks are kept in the app's
   configuration folder, not in the project; when the design changes, a
@@ -202,8 +204,10 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
   net's wires, listed by net in the panel. More boards are added side by side
   when one is not tall enough, and parts that cannot sit on a board, such as
   2×N headers, go beside it with male–female leads. Access areas such as a
-  Nano's USB end are kept clear. The view is read-only, follows every design
-  change, and checks its own connectivity against the nets; see
+  Nano's USB end are kept clear. Resistors are drawn beige with their bands;
+  hovering one shows its colour code, and **Resistor colour codes** in the
+  panel lists every resistor's bands as a reference. The view is read-only, follows every
+  design change, and checks its own connectivity against the nets; see
   [ADR 0018](docs/adr/0018-breadboard-layout.md).
 
   ![The Breadboard tab showing a capacitive touch module laid out on one breadboard: an Arduino Nano straddling the channel, four screw terminals and six resistors below it, 5V and GND on the rails, and 20 numbered jumpers listed by net on the right](docs/screenshots/breadboard-view.png)

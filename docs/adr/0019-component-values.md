@@ -66,14 +66,25 @@ must see the same values and codes as the UI.
    plan adds the value to the step title, a "Check the colour bands: …" line,
    a `parts` list grouped by type and value (smallest first), and an
    `assembly.value_missing` note for resistors and capacitors without one.
-   Step order does not change.
+   Step order does not change. A colour-code card (the resistor drawn with its
+   bands, each band named with what it stands for) is shown in the right
+   sidebar: in the inspector for a selected resistor, beside a resistor's
+   Assembly step, and in the Breadboard panel as the **Resistor colour codes**
+   option (off by default); hovering a resistor on the breadboard shows it
+   too. On the Breadboard drawing, resistor bodies are beige, as on the bench,
+   so the bands stand out; in Assembly only the resistor being fitted is drawn
+   that way, so it stands out from the rest, which look as on the Board. The project view carries `value_readings` so the
+   Board inspector gets the bands from Rust too.
 
 ## Consequences
 
 - Changing a value changes the component step's fingerprint, so its
   checkmark is cleared: the part on the board is now the wrong one.
 - Existing projects keep showing values as text until their part
-  definitions are refreshed from the library.
+  definitions are refreshed from the library. **Update metadata** adopts the
+  library's value kind and tidies values typed before it (`220` becomes
+  `220 Ω`); the inspector offers it whenever the kinds differ, even at the
+  same definition version.
 - Values written in notes are not migrated.
 - A bare three-digit capacitance is always a code (`100` is 10 pF); the
   normalised display shows the reading at once, so a misreading is easy to

@@ -109,6 +109,8 @@ export const fadeComponents = signal(false);
 export const pinLabels = signal<PinLabelMode>("numbers");
 /** Show part values (10 kΩ, 100 nF) under part names on the board. */
 export const showPartValues = signal(false);
+/** List each resistor's colour code in the Breadboard panel. */
+export const showBreadboardColorCodes = signal(false);
 export const showRatsnest = signal(true);
 export const showChanges = signal(false);
 export const showKeepouts = signal(false);

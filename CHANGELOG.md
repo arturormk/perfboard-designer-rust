@@ -14,9 +14,13 @@ Development line `v0.1.x`: the first public development builds.
   `100 nF`, and a value that cannot be read (such as `2m2` for 2.2 MΩ) is
   refused with a hint; other parts take free text such as `1N4148`. Set it in
   the inspector, or with `set_component_value` from MCP. **View → Part
-  values** shows values on the board (off by default). The Assembly and
-  Breadboard tabs draw resistors with their five-band colour code at 1%
-  tolerance, each part step says which bands to look for, a new parts list
+  values** shows values on the board (off by default). Breadboard draws
+  resistors beige with their five-band colour code at 1% tolerance, and so
+  does Assembly for the resistor being fitted; hovering a resistor on the
+  breadboard shows its code. A colour-code card, with each band named, appears in the
+  inspector when a resistor is selected and beside the instructions when one
+  is fitted in Assembly; the Breadboard panel can list every resistor's code
+  (**Resistor colour codes**). Each part step says which bands to look for, a new parts list
   groups parts by type and value, and a note names resistors and capacitors
   without one. The built-in resistor and capacitor parts declare their value
   kind (`value_kind` in `component.toml`); projects pick it up when a part's

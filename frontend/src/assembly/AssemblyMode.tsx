@@ -9,6 +9,7 @@ import { useSignal, useSignalEffect } from "@preact/signals";
 import { useEffect, useRef } from "preact/hooks";
 import type {
   AssemblyPlan,
+  AssemblyStep,
   Band,
   Side,
   StepKind,
@@ -53,6 +54,7 @@ import {
   wireLabelMap,
 } from "../state/store";
 import { Icon, type IconName } from "../ui/Icon";
+import { ColorCode } from "../ui/ColorCode";
 import { ValueBadge } from "../ui/ValueBadge";
 import {
   axisLabel,
@@ -469,11 +471,14 @@ function StepDetail({ plan: current }: { plan: AssemblyPlan }) {
           <span class={`side-badge ${step.side}`}>{SIDE_NAME[step.side]}</span>
         </p>
         <h2>{step.title}</h2>
-        {step.value && (
-          <p class="step-value">
-            <ValueBadge value={step.value} />
-          </p>
-        )}
+        {step.value &&
+          (step.value.bands?.length ? (
+            <ColorCode bands={step.value.bands} value={step.value.display} />
+          ) : (
+            <p class="step-value">
+              <ValueBadge value={step.value} />
+            </p>
+          ))}
         {status === "changed" && (
           <p class="step-changed">
             This step changed after you marked it done. Check the board against
@@ -593,15 +598,15 @@ function StepDetail({ plan: current }: { plan: AssemblyPlan }) {
 
 // ── Board ─────────────────────────────────────────────────────────────────
 
-/** Component ID → its colour bands, from the plan's component steps. */
-function partBands(current: AssemblyPlan): Map<string, Band[]> {
-  const bands = new Map<string, Band[]>();
-  for (const step of current.steps) {
-    const object = step.objects[0];
-    if (step.kind === "component" && object && step.value?.bands?.length)
-      bands.set(object.id, step.value.bands);
-  }
-  return bands;
+/**
+ * The current step's part and its colour bands: only the resistor being
+ * fitted is drawn beige with bands, so it stands out from the rest.
+ */
+function stepBands(step: AssemblyStep | undefined): Map<string, Band[]> {
+  const object = step?.objects[0];
+  return step?.kind === "component" && object
+    ? new Map([[object.id, step.value?.bands ?? []]])
+    : new Map();
 }
 
 function boardBox(holesX: number, holesY: number): ViewBox {
@@ -708,7 +713,7 @@ function AssemblyCanvas({ plan: current }: { plan: AssemblyPlan }) {
             focusIds={scene.focusIds}
             pinLabels={pinLabels.value}
             showValues
-            partBands={partBands(current)}
+            partBands={stepBands(step)}
             wireLabels={wireLabelMap.value}
             railLabels={railLabelMap.value}
             saddleLabels={saddleLabelMap.value}

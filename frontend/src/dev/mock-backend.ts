@@ -31,7 +31,7 @@ import { mockAssemblyPlan } from "./mock-assembly";
 import { mockBreadboardLayout } from "./mock-breadboard";
 import { nextInstanceName } from "../model/naming";
 import { insertBySeverity } from "../panels/note-order";
-import { mockNormalizeValue } from "./mock-values";
+import { mockNormalizeValue, mockReadValue } from "./mock-values";
 
 type Doc = ProjectDocument;
 interface Entry {
@@ -826,6 +826,12 @@ export async function installMockBackend(): Promise<void> {
     name: doc.name,
     revision: doc.revision,
     design: clone(doc.design),
+    value_readings: Object.fromEntries(
+      Object.values(doc.design.components ?? {}).flatMap((instance) => {
+        const reading = mockReadValue(instance.value);
+        return reading ? [[instance.id, reading]] : [];
+      }),
+    ),
     review_notes: clone(doc.review_notes ?? []),
     notes_generation: notesGeneration,
     unsaved: unsaved(),

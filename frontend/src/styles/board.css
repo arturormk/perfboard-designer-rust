@@ -473,6 +473,13 @@
   opacity: 0.85;
 }
 
+/* Resistors on the Assembly and Breadboard drawings: a beige body, as on
+   the bench, so the colour bands read clearly. */
+.part.resistor .part-body {
+  fill: #d9c08f;
+  stroke: #9c7f50;
+}
+
 .part.hovered .part-body {
   stroke: #8a8f97;
   stroke-width: 0.08;
