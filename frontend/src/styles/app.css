@@ -2013,6 +2013,33 @@ button.pill.batch-toggle.on {
 }
 
 /* ── Review notes ─────────────────────────────────────────────────────── */
+.note-list-bar {
+  display: flex;
+  padding: 0 16px 10px;
+}
+
+.note-list-switch {
+  flex: 1;
+}
+
+.note-list-switch button {
+  display: inline-flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.note-list-count {
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.note-list-switch button.on .note-list-count {
+  color: var(--text-3);
+}
+
 .note-summary {
   display: flex;
   flex-wrap: wrap;

@@ -154,10 +154,13 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
 - **Notes** holds review notes that an agent leaves in the project, in severity
   order until you reorder them. Acknowledge a note, or reply and request a
   review; the tab copies a ready-made request for the agent's chat, and the
-  agent's answer appears under your reply. Notes are saved with the project
+  agent's answer appears under your reply. **Keep as issue** moves a note to
+  the tab's Issues list, which survives later reviews: agents read issues but
+  cannot change or remove them. Notes and issues are saved with the project
   but are not undo steps or part of commits. See
-  [ADR 0015](docs/adr/0015-review-notes.md) and
-  [ADR 0016](docs/adr/0016-review-note-replies.md).
+  [ADR 0015](docs/adr/0015-review-notes.md),
+  [ADR 0016](docs/adr/0016-review-note-replies.md) and
+  [ADR 0020](docs/adr/0020-issues.md).
 - **History** shows each step with its origin. Agent steps are marked in violet
   with the agent's rationale. Commit to create a named checkpoint, compare the
   working copy with any commit (highlighted or side by side), or restore one.

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    Commit, Design, DocumentRevision, HistoryActionResult, NewReviewNote, OperationError,
+    Commit, Design, DocumentRevision, HistoryActionResult, NewReviewNote, NoteList, OperationError,
     OperationOrigin, OperationPayload, OperationRequest, OperationResult, ProjectDocument,
     ReviewNote, ReviewNoteError, ReviewNoteUpdate, RevisionError, SemanticDiff, WorkingChange,
     operations::apply_operation_untracked,
@@ -332,25 +332,33 @@ impl ProjectSession {
         Ok((added, self.event("review_notes", summary)))
     }
 
+    /// Removes notes from `list`. Agents only ever name
+    /// [`NoteList::Notes`]; Issues are the user's (ADR 0020).
     pub fn remove_review_notes(
         &mut self,
+        list: NoteList,
         ids: &[ReviewNoteId],
     ) -> Result<(Vec<ReviewNote>, SessionChangeEvent), SessionError> {
-        let removed = self.document.remove_review_notes(ids)?;
+        let removed = self.document.remove_review_notes(list, ids)?;
         self.notes_generation += 1;
+        let what = match list {
+            NoteList::Notes => "review note",
+            NoteList::Issues => "issue",
+        };
         let summary = match removed.as_slice() {
-            [note] => format!("Removed review note “{}”", note.title),
-            notes => format!("Removed {} review notes", notes.len()),
+            [note] => format!("Removed {what} “{}”", note.title),
+            notes => format!("Removed {} {what}s", notes.len()),
         };
         Ok((removed, self.event("review_notes", summary)))
     }
 
     pub fn move_review_note(
         &mut self,
+        list: NoteList,
         id: ReviewNoteId,
         before: Option<ReviewNoteId>,
     ) -> Result<SessionChangeEvent, SessionError> {
-        let summary = if self.document.move_review_note(id, before)? {
+        let summary = if self.document.move_review_note(list, id, before)? {
             self.notes_generation += 1;
             "Reordered review notes"
         } else {
@@ -377,13 +385,33 @@ impl ProjectSession {
 
     pub fn insert_review_note(
         &mut self,
+        list: NoteList,
         note: ReviewNote,
         index: usize,
     ) -> Result<SessionChangeEvent, SessionError> {
         let summary = format!("Restored review note “{}”", note.title);
-        self.document.insert_review_note(note, index)?;
+        self.document.insert_review_note(list, note, index)?;
         self.notes_generation += 1;
         Ok(self.event("review_notes", summary))
+    }
+
+    /// Moves a note between Notes and Issues (ADR 0020). Editor only.
+    pub fn transfer_review_note(
+        &mut self,
+        id: ReviewNoteId,
+        to: NoteList,
+        before: Option<ReviewNoteId>,
+    ) -> Result<SessionChangeEvent, SessionError> {
+        let summary = if self.document.transfer_review_note(id, to, before)? {
+            self.notes_generation += 1;
+            match to {
+                NoteList::Notes => "Moved an issue back to review notes",
+                NoteList::Issues => "Kept a review note as an issue",
+            }
+        } else {
+            "Review note is unchanged"
+        };
+        Ok(self.event("review_notes", summary.into()))
     }
 
     pub fn restore(

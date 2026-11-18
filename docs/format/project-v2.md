@@ -120,6 +120,16 @@ omitted when empty.
 The field was added after version 2 was introduced and needs no version
 change: readers that predate it ignore it, and drop it when they save.
 
+### Issues
+
+The optional top-level `issues` array holds notes the user moved out of
+`review_notes` to keep across reviews
+([ADR 0020](../adr/0020-issues.md)). Entries have exactly the shape of
+review notes, and a note keeps all its fields when it moves between the two
+arrays. Array order is the display order. A note ID appears in at most one
+of the two arrays. The field is omitted when empty; like `review_notes`,
+readers that predate it ignore it and drop it when they save.
+
 ## Upgrading version 1
 
 A version 1 document is read with its full snapshots, its undo/redo

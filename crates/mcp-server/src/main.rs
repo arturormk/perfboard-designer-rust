@@ -645,6 +645,12 @@ impl PerfboardMcp {
     /// accepts it, or `review_requested` when the human wrote a `reply` and
     /// wants you to review the note again; answer those with
     /// `update_review_note`. Your earlier answer is in `response`.
+    ///
+    /// Also returns `issues`: notes the human moved out of the review notes
+    /// to keep across reviews (known problems, decisions, reminders). They
+    /// are read-only for you: take them into account, do not add review
+    /// notes that repeat them, and mention it in chat if one looks resolved
+    /// or wrong. The `status` filter applies to `review_notes` only.
     #[tool(annotations(
         title = "Get review notes",
         read_only_hint = true,
@@ -664,7 +670,10 @@ impl PerfboardMcp {
                     .filter(|note| input.status.is_none_or(|status| note.status == status))
                     .collect();
                 CallToolResult::structured(json!({
-                    "ok": true, "revision": project.revision, "review_notes": notes
+                    "ok": true,
+                    "revision": project.revision,
+                    "review_notes": notes,
+                    "issues": project.issues,
                 }))
             }
             Ok(other) => unexpected(&other),
@@ -678,7 +687,8 @@ impl PerfboardMcp {
     /// change nothing in the design and are not undo steps. Unlike design
     /// writes this needs no `expected_revision` and leaves the revision as
     /// it is; each note records the revision it describes. Read
-    /// `get_review_notes` first to avoid repeating notes already there.
+    /// `get_review_notes` first to avoid repeating notes or issues already
+    /// there.
     #[tool(annotations(
         title = "Add review notes",
         read_only_hint = false,
@@ -699,7 +709,8 @@ impl PerfboardMcp {
 
     /// Remove review notes by ID, for example ones that are resolved or that
     /// a fresh review replaces. Needs no `expected_revision`. Ask the human
-    /// before removing notes you did not just write.
+    /// before removing notes you did not just write. Issues cannot be
+    /// removed; only the human can.
     #[tool(annotations(
         title = "Remove review notes",
         read_only_hint = false,
@@ -975,6 +986,7 @@ mod tests {
         let get = PerfboardMcp::get_review_notes_tool_attr();
         let schema = serde_json::to_string(&get.input_schema).unwrap();
         assert!(schema.contains("review_requested"));
+        assert!(get.description.unwrap().contains("issues"));
         let moved = PerfboardMcp::move_review_note_tool_attr();
         assert_eq!(moved.annotations.unwrap().destructive_hint, Some(false));
         let schema = serde_json::to_string(&moved.input_schema).unwrap();

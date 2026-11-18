@@ -9,6 +9,13 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- The Notes tab has two lists: **Notes**, the agent's review notes, and
+  **Issues**, notes you keep across reviews. **Keep as issue** on a note
+  moves it to Issues with its reply and the agent's answer; **Back to
+  Notes** returns it. Agents see issues in `get_review_notes` but cannot
+  change, move or remove them, so a fresh review cannot clear what you
+  chose to keep. Issues are saved with the project.
+
 - Bridges are named B1, B2… (definition version 1.2.0) instead of W1, W2…,
   which clashed with the numbering of wires. Bridges already placed keep
   their names; rename them in the inspector if you like.

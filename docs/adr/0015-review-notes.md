@@ -93,7 +93,9 @@ another project or starting a new board asks the same question.
   dragging the grip or with the arrow keys on it. A toast announces notes
   that arrive from an agent.
 - The editor does not author or edit notes. It can acknowledge them and
-  reply to them ([ADR 0016](0016-review-note-replies.md)).
+  reply to them ([ADR 0016](0016-review-note-replies.md)), and keep them in
+  a second list, Issues, that agents cannot change
+  ([ADR 0020](0020-issues.md)).
 
 Limits keep a runaway agent from bloating the file: 500 notes, titles up to
 300 characters, details up to 8000 and 32 object references per note.

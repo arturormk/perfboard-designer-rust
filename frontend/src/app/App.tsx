@@ -258,7 +258,7 @@ function RightPanel() {
           role="tab"
           aria-selected={rightTab.value === "notes"}
           class={rightTab.value === "notes" ? "on" : ""}
-          title="Review notes from your agent"
+          title="Review notes from your agent, and issues you keep"
           onClick={() => (rightTab.value = "notes")}
         >
           Notes

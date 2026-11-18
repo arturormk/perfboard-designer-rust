@@ -38,6 +38,11 @@ export interface ReviewNote {
 }
 /** Longest reply, in characters; the backend enforces it too. */
 export const MAX_NOTE_REPLY_CHARS = 2000;
+/**
+ * The agent's working list, or the notes the user keeps across reviews
+ * (ADR 0020). Agents read Issues but cannot change them.
+ */
+export type NoteList = "notes" | "issues";
 export interface NetConnectivity {
   net_id: string;
   islands: PinRef[][];
@@ -318,6 +323,7 @@ export interface ProjectDocument {
   /** Library layers for new placements (ADR 0014); absent means the default. */
   component_paths?: string[];
   review_notes?: ReviewNote[];
+  issues?: ReviewNote[];
   revision: number;
   design: {
     board: {
@@ -953,10 +959,13 @@ export function renameProject(
  */
 export function removeReviewNote(
   noteId: string,
-): Promise<{ note: ReviewNote; index: number }> {
+): Promise<{ note: ReviewNote; list: NoteList; index: number }> {
   return invoke("remove_review_note", { noteId });
 }
-/** Moves a note in front of `before`, or to the end when it is null. */
+/**
+ * Moves a note in front of `before` in its own list (Notes or Issues), or to
+ * the end when it is null.
+ */
 export function moveReviewNote(
   noteId: string,
   before: string | null,
@@ -973,8 +982,20 @@ export function updateReviewNote(
 export function insertReviewNote(
   note: ReviewNote,
   index: number,
+  list: NoteList = "notes",
 ): Promise<void> {
-  return invoke("insert_review_note", { note, index });
+  return invoke("insert_review_note", { note, index, list });
+}
+/**
+ * Moves a note between Notes and Issues (ADR 0020), in front of `before` in
+ * the target list or at the end when it is null.
+ */
+export function transferReviewNote(
+  noteId: string,
+  list: NoteList,
+  before: string | null = null,
+): Promise<void> {
+  return invoke("transfer_review_note", { noteId, list, before });
 }
 export function restoreProjectCommit(
   expectedRevision: number,
@@ -1063,6 +1084,8 @@ export interface ProjectView {
   value_readings?: Record<string, ValueReading>;
   /** In the user's order; absent when there are none. */
   review_notes?: ReviewNote[];
+  /** Notes the user keeps across reviews (ADR 0020); absent when none. */
+  issues?: ReviewNote[];
   validation: Diagnostic[];
   commits: CommitSummary[];
   head_commit?: string;

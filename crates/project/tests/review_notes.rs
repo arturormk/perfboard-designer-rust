@@ -1,9 +1,9 @@
-//! Review notes (ADR 0015) round-trip through the project file, stay out of
+//! Review notes (ADR 0015) and issues (ADR 0020) round-trip through the project file, stay out of
 //! history, and can be written without an expected revision.
 
 use perfboard_core::{BoardSize, ObjectReference, ProjectId};
 use perfboard_project::{
-    Board, NewReviewNote, OperationRequest, ProjectDocument, ProjectSession, ProjectView,
+    Board, NewReviewNote, NoteList, OperationRequest, ProjectDocument, ProjectSession, ProjectView,
     ReviewNoteSeverity, ReviewNoteStatus, ReviewNoteUpdate,
 };
 
@@ -31,6 +31,7 @@ fn note(severity: ReviewNoteSeverity, title: &str) -> NewReviewNote {
 fn no_notes_are_not_written() {
     let json = serde_json::to_value(document()).unwrap();
     assert!(json.get("review_notes").is_none());
+    assert!(json.get("issues").is_none());
     let read: ProjectDocument = serde_json::from_value(json).unwrap();
     assert_eq!(read.review_notes, Vec::new());
 }
@@ -103,21 +104,25 @@ fn note_writes_leave_the_revision_alone_but_count_as_unsaved() {
     assert!(!session.has_unsaved_changes());
 
     session
-        .move_review_note(added[1].id, Some(added[0].id))
+        .move_review_note(NoteList::Notes, added[1].id, Some(added[0].id))
         .unwrap();
     assert!(session.has_unsaved_changes());
     session.mark_saved("/tmp/notes.perfboard.json".into());
 
     // A move that changes nothing is not unsaved work.
     session
-        .move_review_note(added[1].id, Some(added[0].id))
+        .move_review_note(NoteList::Notes, added[1].id, Some(added[0].id))
         .unwrap();
     assert!(!session.has_unsaved_changes());
 
-    let (removed, _) = session.remove_review_notes(&[added[0].id]).unwrap();
+    let (removed, _) = session
+        .remove_review_notes(NoteList::Notes, &[added[0].id])
+        .unwrap();
     assert_eq!(removed[0].title, "a");
     assert!(session.has_unsaved_changes());
-    session.insert_review_note(removed[0].clone(), 0).unwrap();
+    session
+        .insert_review_note(NoteList::Notes, removed[0].clone(), 0)
+        .unwrap();
     assert_eq!(session.document().review_notes[0].title, "a");
     assert_eq!(session.document().revision, revision);
     assert_eq!(session.view().notes_generation, 4);
@@ -195,4 +200,32 @@ fn a_reply_keeps_the_revision_and_a_response_records_the_current_one() {
     let json = serde_json::to_value(session.document()).unwrap();
     let read: ProjectDocument = serde_json::from_value(json).unwrap();
     assert_eq!(read.review_notes[0], note);
+}
+
+#[test]
+fn issues_round_trip_and_count_as_unsaved() {
+    let mut session = ProjectSession::new(document());
+    let (added, _) = session
+        .add_review_notes(vec![
+            note(ReviewNoteSeverity::Warning, "Bulk capacitor"),
+            note(ReviewNoteSeverity::Info, "Pin 1 marking"),
+        ])
+        .unwrap();
+    session.mark_saved("/tmp/issues.perfboard.json".into());
+    session
+        .transfer_review_note(added[1].id, NoteList::Issues, None)
+        .unwrap();
+    assert!(session.view().unsaved);
+    assert_eq!(
+        session.view().revision.0,
+        0,
+        "moving a note is not a design change"
+    );
+    let json = serde_json::to_value(session.document()).unwrap();
+    assert_eq!(json["issues"][0]["title"], "Pin 1 marking");
+    assert_eq!(json["review_notes"].as_array().unwrap().len(), 1);
+    let read: ProjectDocument = serde_json::from_value(json).unwrap();
+    assert_eq!(&read, session.document());
+    let view = ProjectView::from_document(&read);
+    assert_eq!(view.issues[0].id, added[1].id);
 }

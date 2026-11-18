@@ -13,12 +13,12 @@ use perfboard_core::{
 };
 use perfboard_project::{
     AssemblyPlan, Board, BreadboardLayout, ChangeMarker, Commit, DocumentRevision,
-    HistoryActionResult, OperationError, OperationOrigin, OperationRequest, OperationResult,
-    ProjectDocument, ProjectSession, ReviewNote, ReviewNoteUpdate, RevisionError, RouteAlternative,
-    RouteError, RouteRequest, RoutingCostConfig, SemanticDiff, SessionChangeEvent, SessionError,
-    TransactionRequest, TransactionResult, assembly_plan, breadboard_layout, evaluate_route,
-    load_project, render_design_svg, save_project_atomic, suggest_route,
-    suggest_route_alternatives,
+    HistoryActionResult, NoteList, OperationError, OperationOrigin, OperationRequest,
+    OperationResult, ProjectDocument, ProjectSession, ReviewNote, ReviewNoteError,
+    ReviewNoteUpdate, RevisionError, RouteAlternative, RouteError, RouteRequest, RoutingCostConfig,
+    SemanticDiff, SessionChangeEvent, SessionError, TransactionRequest, TransactionResult,
+    assembly_plan, breadboard_layout, evaluate_route, load_project, render_design_svg,
+    save_project_atomic, suggest_route, suggest_route_alternatives,
 };
 use perfboard_session_ipc::{
     ComponentDocumentation, DocumentationTrust, ProjectRenamed, RenderedDesign, ReviewNotesChanged,
@@ -317,7 +317,7 @@ impl SessionRequestHandler for DesktopSessionHandler {
             SessionRequest::RemoveReviewNotes { note_ids } => {
                 let mut session = self.lock()?;
                 let (notes, event) = session
-                    .remove_review_notes(&note_ids)
+                    .remove_review_notes(NoteList::Notes, &note_ids)
                     .map_err(|error| session_api_error(&error))?;
                 drop(session);
                 self.publish(&event);
@@ -343,7 +343,7 @@ impl SessionRequestHandler for DesktopSessionHandler {
             SessionRequest::MoveReviewNote { note_id, before } => {
                 let mut session = self.lock()?;
                 let event = session
-                    .move_review_note(note_id, before)
+                    .move_review_note(NoteList::Notes, note_id, before)
                     .map_err(|error| session_api_error(&error))?;
                 let notes = session
                     .document()
@@ -732,13 +732,22 @@ fn lock_session<'a>(
     })
 }
 
-/// Deletes a review note and returns it with its position, so the editor
-/// can offer to put it back. Like all review-note writes it needs no
-/// expected revision (ADR 0015).
+/// Deletes a review note or issue and returns it with its list and
+/// position, so the editor can offer to put it back. Like all review-note
+/// writes it needs no expected revision (ADR 0015).
 #[derive(Debug, Serialize)]
 struct RemovedReviewNote {
     note: ReviewNote,
+    list: NoteList,
     index: usize,
+}
+
+/// The list holding a note, for editor commands that act on either list.
+fn list_of_note(session: &ProjectSession, note_id: ReviewNoteId) -> Result<NoteList, CommandError> {
+    session
+        .document()
+        .list_of_note(note_id)
+        .ok_or_else(|| CommandError::from(SessionError::from(ReviewNoteError::NotFound(note_id))))
 }
 
 #[tauri::command]
@@ -749,24 +758,27 @@ fn remove_review_note(
     note_id: ReviewNoteId,
 ) -> Result<RemovedReviewNote, CommandError> {
     let mut session = lock_session(&state)?;
+    let list = list_of_note(&session, note_id)?;
     let index = session
         .document()
-        .review_notes
+        .note_list(list)
         .iter()
         .position(|note| note.id == note_id)
         .unwrap_or_default();
     let (mut removed, event) = session
-        .remove_review_notes(&[note_id])
+        .remove_review_notes(list, &[note_id])
         .map_err(CommandError::from)?;
     drop(session);
     publish(&app, &event);
     Ok(RemovedReviewNote {
         note: removed.remove(0),
+        list,
         index,
     })
 }
 
-/// Moves a review note in front of `before`, or to the end.
+/// Moves a review note or issue in front of `before` in its own list, or
+/// to the end.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
 fn move_review_note(
@@ -776,8 +788,29 @@ fn move_review_note(
     before: Option<ReviewNoteId>,
 ) -> Result<(), CommandError> {
     let mut session = lock_session(&state)?;
+    let list = list_of_note(&session, note_id)?;
     let event = session
-        .move_review_note(note_id, before)
+        .move_review_note(list, note_id, before)
+        .map_err(CommandError::from)?;
+    drop(session);
+    publish(&app, &event);
+    Ok(())
+}
+
+/// Moves a note between Notes and Issues (ADR 0020), in front of `before`
+/// or at the end. Only the editor can do this; agents cannot reach Issues.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn transfer_review_note(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    note_id: ReviewNoteId,
+    list: NoteList,
+    before: Option<ReviewNoteId>,
+) -> Result<(), CommandError> {
+    let mut session = lock_session(&state)?;
+    let event = session
+        .transfer_review_note(note_id, list, before)
         .map_err(CommandError::from)?;
     drop(session);
     publish(&app, &event);
@@ -802,7 +835,7 @@ fn update_review_note(
     Ok(note)
 }
 
-/// Puts a deleted review note back at `index`.
+/// Puts a deleted review note back at `index` in `list` (Notes by default).
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
 fn insert_review_note(
@@ -810,10 +843,11 @@ fn insert_review_note(
     app: tauri::AppHandle,
     note: ReviewNote,
     index: usize,
+    list: Option<NoteList>,
 ) -> Result<(), CommandError> {
     let mut session = lock_session(&state)?;
     let event = session
-        .insert_review_note(note, index)
+        .insert_review_note(list.unwrap_or_default(), note, index)
         .map_err(CommandError::from)?;
     drop(session);
     publish(&app, &event);
@@ -1813,6 +1847,33 @@ fn initial_document() -> ProjectDocument {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// Starts the MCP session host and manages the app's persistent state.
+fn setup_app(
+    app: &mut tauri::App,
+    session: &Arc<Mutex<ProjectSession>>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (registration, listener) =
+        SessionRegistration::bind().map_err(Box::<dyn std::error::Error>::from)?;
+    let grants = Arc::new(LibraryGrants::new(app.path().app_config_dir().ok()));
+    let handler: Arc<dyn SessionRequestHandler> = Arc::new(DesktopSessionHandler {
+        session: Arc::clone(session),
+        grants: Arc::clone(&grants),
+        app: app.handle().clone(),
+    });
+    app.manage(grants);
+    let task_registration = Arc::clone(&registration);
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = perfboard_session_ipc::serve(listener, task_registration, handler).await
+        {
+            eprintln!("Perfboard MCP session host stopped: {error}");
+        }
+    });
+    app.manage(IpcRegistrationState(registration));
+    app.manage(RecentProjects::new(app.path().app_config_dir().ok()));
+    app.manage(AssemblyProgress::new(app.path().app_config_dir().ok()));
+    Ok(())
+}
+
 /// Starts the desktop application and its command bridge.
 ///
 /// # Panics
@@ -1831,29 +1892,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .setup(move |app| {
-            let (registration, listener) =
-                SessionRegistration::bind().map_err(Box::<dyn std::error::Error>::from)?;
-            let grants = Arc::new(LibraryGrants::new(app.path().app_config_dir().ok()));
-            let handler: Arc<dyn SessionRequestHandler> = Arc::new(DesktopSessionHandler {
-                session: Arc::clone(&ipc_session),
-                grants: Arc::clone(&grants),
-                app: app.handle().clone(),
-            });
-            app.manage(grants);
-            let task_registration = Arc::clone(&registration);
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) =
-                    perfboard_session_ipc::serve(listener, task_registration, handler).await
-                {
-                    eprintln!("Perfboard MCP session host stopped: {error}");
-                }
-            });
-            app.manage(IpcRegistrationState(registration));
-            app.manage(RecentProjects::new(app.path().app_config_dir().ok()));
-            app.manage(AssemblyProgress::new(app.path().app_config_dir().ok()));
-            Ok(())
-        })
+        .setup(move |app| setup_app(app, &ipc_session))
         .invoke_handler(tauri::generate_handler![
             get_bootstrap_info,
             get_project,
@@ -1878,6 +1917,7 @@ pub fn run() {
             move_review_note,
             update_review_note,
             insert_review_note,
+            transfer_review_note,
             restore_project_commit,
             compare_project_revisions,
             suggest_project_route,

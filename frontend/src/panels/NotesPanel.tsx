@@ -3,10 +3,15 @@
  * deletes as they address them and drags into the order they want to work in.
  * The user can also acknowledge a note, or reply and send it back to the
  * agent for another look; the agent's answer shows under the reply (ADR 0016).
+ *
+ * Notes worth holding on to across reviews move to a second list, Issues
+ * (ADR 0020). The agent reads Issues but cannot change them, so the cards
+ * there drop the exchange controls and offer a way back to Notes instead.
  */
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
   MAX_NOTE_REPLY_CHARS,
+  type NoteList,
   type ObjectReference,
   type ReviewNote,
   type ReviewNoteSeverity,
@@ -14,12 +19,15 @@ import {
 import {
   answerNote,
   deleteReviewNote,
+  fileNote,
   locateObject,
   moveNote,
 } from "../state/actions";
 import { toast } from "../state/toasts";
 import {
   design,
+  issues,
+  notesList,
   railLabelMap,
   reviewNotes,
   view,
@@ -156,7 +164,7 @@ async function copyReviewPrompt(): Promise<void> {
 }
 
 /** Badge for where the note stands, or nothing for a fresh open note. */
-function NoteStatus({ note }: { note: ReviewNote }) {
+function NoteStatus({ note, list }: { note: ReviewNote; list: NoteList }) {
   if (note.status === "acknowledged")
     return (
       <span class="note-status acknowledged" title="You accepted this note">
@@ -164,7 +172,9 @@ function NoteStatus({ note }: { note: ReviewNote }) {
         Acknowledged
       </span>
     );
-  if (note.status === "review_requested")
+  // The agent cannot answer issues, so a pending request waits until the
+  // note is back in Notes.
+  if (note.status === "review_requested" && list === "notes")
     return (
       <span
         class="note-status requested"
@@ -190,7 +200,8 @@ function NoteExchange({
   onEdit,
 }: {
   note: ReviewNote;
-  onEdit: () => void;
+  /** Absent for issues, whose reply is kept as it was. */
+  onEdit?: () => void;
 }) {
   if (!note.reply && !note.response) return null;
   return (
@@ -200,9 +211,11 @@ function NoteExchange({
           <span class="note-message-head">
             <Icon name="user" size={12} />
             You
-            <button class="note-message-edit" onClick={onEdit}>
-              Edit
-            </button>
+            {onEdit && (
+              <button class="note-message-edit" onClick={onEdit}>
+                Edit
+              </button>
+            )}
           </span>
           <p>{note.reply}</p>
         </div>
@@ -350,6 +363,14 @@ function NoteActions({
         <Icon name="refresh" size={12} />
         Request review
       </button>
+      <button
+        class="note-action note-keep"
+        title="Move to Issues to keep it across reviews. Your agent can read issues but not change or remove them."
+        onClick={() => void fileNote(note.id, "issues")}
+      >
+        <Icon name="keep" size={12} />
+        Keep as issue
+      </button>
       {!note.reply && (
         <button
           class="note-action note-reply"
@@ -364,14 +385,32 @@ function NoteActions({
   );
 }
 
+/** Issues only go back to Notes; the agent cannot act on them here. */
+function IssueActions({ note }: { note: ReviewNote }) {
+  return (
+    <div class="note-actions">
+      <button
+        class="note-action"
+        title="Move back to Notes, where your agent can answer, change or remove it"
+        onClick={() => void fileNote(note.id, "notes")}
+      >
+        <Icon name="undo" size={12} />
+        Back to Notes
+      </button>
+    </div>
+  );
+}
+
 function NoteCard({
   note,
+  list,
   style,
   dragging,
   onGripDown,
   onGripKey,
 }: {
   note: ReviewNote;
+  list: NoteList;
   style?: string;
   dragging: boolean;
   onGripDown: (event: PointerEvent) => void;
@@ -403,10 +442,10 @@ function NoteCard({
             {severity.label}
           </span>
           <NoteRevision revision={note.revision} />
-          <NoteStatus note={note} />
+          <NoteStatus note={note} list={list} />
           <button
             class="icon-btn small note-delete"
-            title="Delete note"
+            title={list === "issues" ? "Delete issue" : "Delete note"}
             aria-label={`Delete “${note.title}”`}
             onClick={() => void deleteReviewNote(note.id)}
           >
@@ -416,21 +455,68 @@ function NoteCard({
         <strong class="note-title">{note.title}</strong>
         {note.detail && <p class="note-detail">{note.detail}</p>}
         {note.objects?.length ? <ObjectChips objects={note.objects} /> : null}
-        {!replying && (
-          <NoteExchange note={note} onEdit={() => setReplying(true)} />
-        )}
-        {replying ? (
+        {list === "issues" ? (
+          <>
+            <NoteExchange note={note} />
+            <IssueActions note={note} />
+          </>
+        ) : replying ? (
           <ReplyEditor note={note} onDone={() => setReplying(false)} />
         ) : (
-          <NoteActions note={note} onReply={() => setReplying(true)} />
+          <>
+            <NoteExchange note={note} onEdit={() => setReplying(true)} />
+            <NoteActions note={note} onReply={() => setReplying(true)} />
+          </>
         )}
       </div>
     </li>
   );
 }
 
+/** Switches the tab between the agent's notes and the issues the user keeps. */
+function ListSwitch({ list }: { list: NoteList }) {
+  const option = (
+    value: NoteList,
+    label: string,
+    count: number,
+    title: string,
+  ) => (
+    <button
+      role="radio"
+      aria-checked={list === value}
+      class={list === value ? "on" : ""}
+      title={title}
+      onClick={() => (notesList.value = value)}
+    >
+      {label}
+      {count > 0 && <span class="note-list-count">{count}</span>}
+    </button>
+  );
+  return (
+    <div
+      class="segmented small note-list-switch"
+      role="radiogroup"
+      aria-label="Show"
+    >
+      {option(
+        "notes",
+        "Notes",
+        reviewNotes.value.length,
+        "Your agent's review notes. It can answer, change and remove them.",
+      )}
+      {option(
+        "issues",
+        "Issues",
+        issues.value.length,
+        "Notes you keep across reviews. Your agent can read them but not change them.",
+      )}
+    </div>
+  );
+}
+
 export function NotesPanel() {
-  const notes = reviewNotes.value;
+  const list = notesList.value;
+  const notes = list === "issues" ? issues.value : reviewNotes.value;
   const listRef = useRef<HTMLUListElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragRef = useRef<Drag | null>(null);
@@ -439,12 +525,17 @@ export function NotesPanel() {
   const counts = new Map<ReviewNoteSeverity, number>();
   for (const note of notes)
     counts.set(note.severity, (counts.get(note.severity) ?? 0) + 1);
-  const requested = notes.filter(
+  // Issues are past the exchange with the agent, so they show no progress.
+  const exchange = list === "notes" ? notes : [];
+  const requested = exchange.filter(
     (note) => note.status === "review_requested",
   ).length;
-  const acknowledged = notes.filter(
+  const acknowledged = exchange.filter(
     (note) => note.status === "acknowledged",
   ).length;
+
+  // A drag belongs to the list it started in.
+  useEffect(() => setDrag(null), [list]);
 
   const listTop = () => listRef.current?.getBoundingClientRect().top ?? 0;
 
@@ -587,6 +678,9 @@ export function NotesPanel() {
   return (
     <div class={`panel-body${drag ? " note-drag-active" : ""}`}>
       <section class="panel-section">
+        <div class="note-list-bar">
+          <ListSwitch list={list} />
+        </div>
         {notes.length ? (
           <div class="note-summary">
             {SEVERITIES.filter((severity) => counts.get(severity)).map(
@@ -608,13 +702,24 @@ export function NotesPanel() {
               </span>
             )}
           </div>
+        ) : list === "issues" ? (
+          <div class="all-clear notes-empty">
+            <Icon name="keep" size={22} />
+            <strong>No issues kept</strong>
+            <p>
+              Use “Keep as issue” on a note to move it here. Issues stay with
+              the project across reviews; your agent can read them but not
+              change or remove them.
+            </p>
+          </div>
         ) : (
           <div class="all-clear notes-empty">
             <Icon name="agent" size={22} />
             <strong>No review notes</strong>
             <p>
               Ask your agent to review the project. Its findings appear here,
-              saved with the project, for you to delete as you address them.
+              saved with the project, for you to delete as you address them or
+              keep as issues.
             </p>
           </div>
         )}
@@ -636,6 +741,7 @@ export function NotesPanel() {
             <NoteCard
               key={note.id}
               note={note}
+              list={list}
               style={styleFor(index)}
               dragging={drag?.id === note.id}
               onGripDown={startDrag(index)}

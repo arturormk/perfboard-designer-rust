@@ -62,6 +62,9 @@ pub struct ProjectView {
     /// Review notes in the user's order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub review_notes: Vec<ReviewNote>,
+    /// Notes the user keeps across reviews (ADR 0020), in their order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub issues: Vec<ReviewNote>,
     pub validation: Vec<Diagnostic>,
     /// Commits in chronological order.
     pub commits: Vec<CommitSummary>,
@@ -154,6 +157,7 @@ impl ProjectView {
             design: document.design.clone(),
             value_readings: value_readings(&document.design),
             review_notes: document.review_notes.clone(),
+            issues: document.issues.clone(),
             validation: document.validation.clone(),
             commits,
             head_commit: document.head_commit,

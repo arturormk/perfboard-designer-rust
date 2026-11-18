@@ -69,6 +69,8 @@ struct StoredDocumentOut<'a> {
     component_paths: Option<&'a [String]>,
     #[serde(skip_serializing_if = "<[ReviewNote]>::is_empty")]
     review_notes: &'a [ReviewNote],
+    #[serde(skip_serializing_if = "<[ReviewNote]>::is_empty")]
+    issues: &'a [ReviewNote],
     revision: DocumentRevision,
     design: &'a Design,
     #[serde(skip_serializing_if = "<[Diagnostic]>::is_empty")]
@@ -96,6 +98,8 @@ struct StoredDocumentIn {
     component_paths: Option<Vec<String>>,
     #[serde(default)]
     review_notes: Vec<ReviewNote>,
+    #[serde(default)]
+    issues: Vec<ReviewNote>,
     revision: DocumentRevision,
     design: Design,
     #[serde(default)]
@@ -139,6 +143,7 @@ impl Serialize for ProjectDocument {
             name: &self.name,
             component_paths: self.component_paths.as_deref(),
             review_notes: &self.review_notes,
+            issues: &self.issues,
             revision: self.revision,
             design: &self.design,
             validation: &self.validation,
@@ -312,6 +317,7 @@ impl StoredDocumentIn {
             name: self.name,
             component_paths: self.component_paths,
             review_notes: self.review_notes,
+            issues: self.issues,
             revision: self.revision,
             design: self.design,
             validation: self.validation,

@@ -26,6 +26,7 @@ import {
   pickProjectPath,
   redoProject,
   removeReviewNote,
+  transferReviewNote,
   updateReviewNote,
   restoreProjectCommit,
   saveProject,
@@ -36,6 +37,7 @@ import {
   type ComponentDefinition,
   type ElectricalNet,
   type HolePos,
+  type NoteList,
   type ObjectReference,
   type OperationPayload,
   type PinRef,
@@ -82,6 +84,7 @@ import {
   leftOpen,
   leftTab,
   libraryDetails,
+  notesList,
   pendingRoute,
   rightOpen,
   problemCounts,
@@ -247,14 +250,17 @@ function announceNewNotes(
   next: ProjectView,
 ): void {
   const notes = next.review_notes ?? [];
+  // Issues are the user's (ADR 0020); one moved back to Notes is not news.
+  const issueIds = (next.issues ?? []).map((note) => note.id);
   const responses = new Map(
     notes.map((note) => [note.id, note.response ?? ""]),
   );
   if (!knownNoteIds || !previous || previous.project_id !== next.project_id) {
-    knownNoteIds = new Set(notes.map((note) => note.id));
+    knownNoteIds = new Set([...notes.map((note) => note.id), ...issueIds]);
     knownResponses = responses;
     return;
   }
+  for (const id of issueIds) knownNoteIds.add(id);
   // Only agents write responses, so a new one is the agent answering.
   const answered = notes.filter(
     (note) =>
@@ -269,7 +275,7 @@ function announceNewNotes(
       answered.length === 1
         ? `The agent answered “${answered[0]!.title}”`
         : `The agent answered ${answered.length} review notes`,
-      { actions: [{ label: "Show", run: showNotes }] },
+      { actions: [{ label: "Show", run: () => showNotes() }] },
     );
   // Only agents add notes; the editor only removes, moves and restores them.
   const fresh = notes.filter((note) => !knownNoteIds!.has(note.id));
@@ -287,14 +293,15 @@ function announceNewNotes(
         : fresh.length === 1
           ? undefined
           : "See the Notes tab.",
-      actions: [{ label: "Show", run: showNotes }],
+      actions: [{ label: "Show", run: () => showNotes() }],
     },
   );
 }
 
-export function showNotes(): void {
+export function showNotes(list: NoteList = "notes"): void {
   rightOpen.value = true;
   rightTab.value = "notes";
+  notesList.value = list;
 }
 
 export function showHistory(): void {
@@ -435,14 +442,14 @@ async function guarded<T>(
 /** Deletes a review note, offering to put it back. */
 export async function deleteReviewNote(noteId: string): Promise<void> {
   try {
-    const { note, index } = await removeReviewNote(noteId);
+    const { note, list, index } = await removeReviewNote(noteId);
     await refresh();
     toast("info", `Deleted “${note.title}”`, {
       actions: [
         {
           label: "Undo",
           run: () =>
-            void insertReviewNote(note, index)
+            void insertReviewNote(note, index, list)
               .then(refresh)
               .catch((error: unknown) =>
                 toast("error", "Could not restore the note", {
@@ -499,22 +506,80 @@ export async function moveNote(
   before: string | null,
 ): Promise<void> {
   const current = view.peek();
-  if (current?.review_notes)
+  if (current) {
+    const key = current.issues?.some((note) => note.id === noteId)
+      ? "issues"
+      : "review_notes";
     view.value = {
       ...current,
-      review_notes: reordered(
-        current.review_notes,
-        (note) => note.id,
-        noteId,
-        before,
-      ),
+      [key]: reordered(current[key] ?? [], (note) => note.id, noteId, before),
     };
+  }
   try {
     await moveReviewNote(noteId, before);
   } catch (error) {
     toast("error", "Could not move the note", { detail: errorMessage(error) });
   }
   await refresh();
+}
+
+/**
+ * Moves a note to the other list (ADR 0020): from Notes to Issues to keep
+ * it across reviews, or back to Notes to discuss it with the agent again.
+ * It lands at the end of the target list; Undo puts it back where it was.
+ */
+export async function fileNote(noteId: string, to: NoteList): Promise<void> {
+  const current = view.peek();
+  const fromKey = to === "issues" ? "review_notes" : "issues";
+  const source = current?.[fromKey] ?? [];
+  const index = source.findIndex((note) => note.id === noteId);
+  const note = source[index];
+  if (!current || !note) return;
+  // Undo puts it in front of the note that followed it.
+  const nextId = source[index + 1]?.id ?? null;
+  const toKey = to === "issues" ? "issues" : "review_notes";
+  view.value = {
+    ...current,
+    [fromKey]: source.filter((item) => item.id !== noteId),
+    [toKey]: [...(current[toKey] ?? []), note],
+  };
+  try {
+    await transferReviewNote(noteId, to);
+  } catch (error) {
+    toast("error", "Could not move the note", { detail: errorMessage(error) });
+    await refresh();
+    return;
+  }
+  await refresh();
+  const back: NoteList = to === "issues" ? "notes" : "issues";
+  toast(
+    "info",
+    to === "issues"
+      ? `Kept “${note.title}” in Issues`
+      : `Moved “${note.title}” back to Notes`,
+    {
+      detail:
+        to === "issues"
+          ? "Your agent can read issues but not change them."
+          : "Your agent can answer and change it again.",
+      actions: [
+        { label: "Show", run: () => showNotes(to) },
+        {
+          label: "Undo",
+          run: () =>
+            void transferReviewNote(noteId, back, nextId)
+              .catch(() => transferReviewNote(noteId, back))
+              .then(refresh)
+              .catch((error: unknown) =>
+                toast("error", "Could not move the note back", {
+                  detail: errorMessage(error),
+                }),
+              ),
+        },
+      ],
+      durationMs: 6000,
+    },
+  );
 }
 
 /**

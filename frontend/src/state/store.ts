@@ -11,6 +11,7 @@ import type {
   ComponentLibrary,
   Diagnostic,
   NetConnectivity,
+  NoteList,
   RecentProject,
   PinRef,
   ProjectView,
@@ -150,6 +151,10 @@ export const design = computed(() => view.value?.design);
 export const reviewNotes = computed<ReviewNote[]>(
   () => view.value?.review_notes ?? [],
 );
+/** Notes the user keeps across reviews (ADR 0020), in their order. */
+export const issues = computed<ReviewNote[]>(() => view.value?.issues ?? []);
+/** Which list the Notes tab shows. */
+export const notesList = signal<NoteList>("notes");
 /** The design's validation plus component library problems (ADR 0014). */
 export const diagnostics = computed<Diagnostic[]>(() => [
   ...(view.value?.validation ?? []),

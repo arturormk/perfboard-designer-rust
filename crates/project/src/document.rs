@@ -41,6 +41,9 @@ pub struct ProjectDocument {
     /// Review notes, in the user's order (ADR 0015). Metadata like the name:
     /// outside the design and its history.
     pub review_notes: Vec<crate::ReviewNote>,
+    /// Notes the user keeps across reviews (ADR 0020), in their order.
+    /// Agents read them but cannot change them.
+    pub issues: Vec<crate::ReviewNote>,
     pub revision: DocumentRevision,
     pub design: Design,
     pub validation: Vec<Diagnostic>,
@@ -160,6 +163,7 @@ impl ProjectDocument {
             name: name.into(),
             component_paths: None,
             review_notes: Vec::new(),
+            issues: Vec::new(),
             revision: DocumentRevision::default(),
             working_base: None,
             design,
@@ -314,6 +318,7 @@ impl ProjectDocument {
                 name: self.name.clone(),
                 component_paths: None,
                 review_notes: Vec::new(),
+                issues: Vec::new(),
                 revision: self.revision,
                 design: design.clone(),
                 validation: Vec::new(),

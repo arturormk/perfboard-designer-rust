@@ -24,6 +24,7 @@ import type {
   RouteProposal,
   SemanticDiff,
   TerminalRef,
+  NoteList,
   ReviewNote,
 } from "../api/project";
 import { pinPosition, type Design } from "../model/geometry";
@@ -782,6 +783,32 @@ export async function installMockBackend(): Promise<void> {
     notesGeneration += 1;
     emit("review_notes");
   };
+  // Notes and the issues the user keeps (ADR 0020).
+  const noteList = (list: NoteList): ReviewNote[] =>
+    list === "issues" ? (doc.issues ??= []) : (doc.review_notes ??= []);
+  const listOf = (id: string): NoteList => {
+    if (doc.review_notes?.some((note) => note.id === id)) return "notes";
+    if (doc.issues?.some((note) => note.id === id)) return "issues";
+    throw new Error(`review note ${id} was not found`);
+  };
+  /** Moves a note, from either list, into `list` in front of `before`. */
+  const placeNote = (list: NoteList, id: string, before: string | null) => {
+    const from = noteList(listOf(id));
+    const moving = from.splice(
+      from.findIndex((note) => note.id === id),
+      1,
+    )[0]!;
+    const target = noteList(list);
+    const at =
+      before === null
+        ? target.length
+        : target.findIndex((note) => note.id === before);
+    if (at < 0) {
+      from.push(moving);
+      throw new Error(`review note ${before} was not found`);
+    }
+    target.splice(at, 0, moving);
+  };
   // Lets browser previews play the window manager: `__perfboardRequestClose()`.
   const previewWindow = window as unknown as Record<string, unknown>;
   previewWindow.__perfboardRequestClose = () => {
@@ -833,6 +860,7 @@ export async function installMockBackend(): Promise<void> {
       }),
     ),
     review_notes: clone(doc.review_notes ?? []),
+    ...(doc.issues?.length ? { issues: clone(doc.issues) } : {}),
     notes_generation: notesGeneration,
     unsaved: unsaved(),
     validation: validation(doc.design),
@@ -1062,25 +1090,20 @@ export async function installMockBackend(): Promise<void> {
       return { id };
     },
     remove_review_note: ({ noteId }) => {
-      const notes = doc.review_notes ?? [];
+      const list = listOf(noteId as string);
+      const notes = noteList(list);
       const index = notes.findIndex((note) => note.id === noteId);
-      if (index < 0) throw new Error(`review note ${noteId} was not found`);
       const [note] = notes.splice(index, 1);
       noteChanged();
-      return { note, index };
+      return { note, list, index };
     },
     move_review_note: ({ noteId, before }) => {
-      const notes = doc.review_notes ?? [];
-      const moving = notes.find((note) => note.id === noteId);
-      if (!moving) throw new Error(`review note ${noteId} was not found`);
-      const rest = notes.filter((note) => note.id !== noteId);
-      const at =
-        before === null
-          ? rest.length
-          : rest.findIndex((note) => note.id === before);
-      if (at < 0) throw new Error(`review note ${before} was not found`);
-      rest.splice(at, 0, moving);
-      doc.review_notes = rest;
+      const list = listOf(noteId as string);
+      placeNote(list, noteId as string, before as string | null);
+      noteChanged();
+    },
+    transfer_review_note: ({ noteId, list, before }) => {
+      placeNote(list as NoteList, noteId as string, before as string | null);
       noteChanged();
     },
     update_review_note: ({ noteId, update }) => {
@@ -1101,10 +1124,12 @@ export async function installMockBackend(): Promise<void> {
       noteChanged();
       return note;
     },
-    insert_review_note: ({ note, index }) => {
-      const notes = doc.review_notes ?? [];
-      notes.splice(index as number, 0, note as ReviewNote);
-      doc.review_notes = notes;
+    insert_review_note: ({ note, index, list }) => {
+      noteList((list as NoteList | undefined) ?? "notes").splice(
+        index as number,
+        0,
+        note as ReviewNote,
+      );
       noteChanged();
     },
     rename_project: ({ expectedRevision, name }) => {

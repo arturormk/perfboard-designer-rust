@@ -29,7 +29,7 @@ pub use document::{
     SchemaVersion,
 };
 pub use notes::{
-    NewReviewNote, ReviewNote, ReviewNoteError, ReviewNoteSeverity, ReviewNoteStatus,
+    NewReviewNote, NoteList, ReviewNote, ReviewNoteError, ReviewNoteSeverity, ReviewNoteStatus,
     ReviewNoteUpdate,
 };
 pub use operations::{

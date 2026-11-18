@@ -5,6 +5,11 @@
 //! review, which the agent answers with a response the next time it is asked
 //! to look at the notes (ADR 0016).
 //!
+//! The user can keep notes worth holding on to in a second list, Issues
+//! (ADR 0020). Agents read Issues but cannot change them: every agent write
+//! names [`NoteList::Notes`], and only the editor can name
+//! [`NoteList::Issues`] or move notes between the lists.
+//!
 //! Notes are project metadata, like the name: they live outside the design,
 //! so they are neither undo steps nor part of commits. Writes act on note IDs
 //! rather than on a revision, because notes cannot conflict with design
@@ -19,7 +24,7 @@ use thiserror::Error;
 
 use crate::{DocumentRevision, ProjectDocument};
 
-/// Most notes a project keeps.
+/// Most notes a project keeps in each list.
 pub const MAX_REVIEW_NOTES: usize = 500;
 /// Longest title, in characters.
 pub const MAX_NOTE_TITLE_CHARS: usize = 300;
@@ -29,6 +34,29 @@ pub const MAX_NOTE_DETAIL_CHARS: usize = 8000;
 pub const MAX_NOTE_OBJECTS: usize = 32;
 /// Longest reply or response, in characters.
 pub const MAX_NOTE_REPLY_CHARS: usize = 2000;
+
+/// The two lists a note can be in (ADR 0020).
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum NoteList {
+    /// The agent's working list: it adds, answers, reorders and removes
+    /// notes here.
+    #[default]
+    Notes,
+    /// Notes the user keeps across reviews. Agents can read them; only the
+    /// user changes them.
+    Issues,
+}
+
+impl NoteList {
+    #[must_use]
+    pub const fn other(self) -> Self {
+        match self {
+            Self::Notes => Self::Issues,
+            Self::Issues => Self::Notes,
+        }
+    }
+}
 
 /// How much a note matters, most severe first.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -145,7 +173,7 @@ pub struct NewReviewNote {
     pub objects: Vec<ObjectReference>,
 }
 
-#[derive(Debug, Error, Eq, PartialEq)]
+#[derive(Clone, Debug, Error, Eq, PartialEq)]
 pub enum ReviewNoteError {
     #[error("a review note needs a title")]
     BlankTitle,
@@ -157,8 +185,12 @@ pub enum ReviewNoteError {
     TooManyObjects,
     #[error("a project keeps at most {MAX_REVIEW_NOTES} review notes")]
     TooManyNotes,
+    #[error("a project keeps at most {MAX_REVIEW_NOTES} issues")]
+    TooManyIssues,
     #[error("review note {0} was not found")]
     NotFound(ReviewNoteId),
+    #[error("review note {0} is in the user's Issues list; only the user can change or move it")]
+    InIssues(ReviewNoteId),
     #[error("review note {0} already exists")]
     DuplicateId(ReviewNoteId),
     #[error("at least one review note is required")]
@@ -220,6 +252,30 @@ impl ReviewNote {
 }
 
 impl ProjectDocument {
+    /// The notes in `list`, in the user's order.
+    #[must_use]
+    pub fn note_list(&self, list: NoteList) -> &[ReviewNote] {
+        match list {
+            NoteList::Notes => &self.review_notes,
+            NoteList::Issues => &self.issues,
+        }
+    }
+
+    fn note_list_mut(&mut self, list: NoteList) -> &mut Vec<ReviewNote> {
+        match list {
+            NoteList::Notes => &mut self.review_notes,
+            NoteList::Issues => &mut self.issues,
+        }
+    }
+
+    /// The list holding the note with this ID, if any.
+    #[must_use]
+    pub fn list_of_note(&self, id: ReviewNoteId) -> Option<NoteList> {
+        [NoteList::Notes, NoteList::Issues]
+            .into_iter()
+            .find(|list| self.note_list(*list).iter().any(|note| note.id == id))
+    }
+
     /// Adds notes and returns them with their IDs. All or none are added.
     ///
     /// Each note goes in front of the first note that is less severe, or at
@@ -258,85 +314,125 @@ impl ProjectDocument {
         Ok(added)
     }
 
-    /// Removes the notes with these IDs and returns them. All must exist.
+    /// Removes the notes with these IDs from `list` and returns them. All
+    /// must be in that list.
     ///
     /// # Errors
-    /// Returns [`ReviewNoteError::NotFound`] for the first unknown ID; nothing
+    /// Returns [`ReviewNoteError::NotFound`] (or
+    /// [`ReviewNoteError::InIssues`]) for the first ID not in `list`; nothing
     /// is removed then.
     pub fn remove_review_notes(
         &mut self,
+        list: NoteList,
         ids: &[ReviewNoteId],
     ) -> Result<Vec<ReviewNote>, ReviewNoteError> {
         if ids.is_empty() {
             return Err(ReviewNoteError::Empty);
         }
-        if let Some(missing) = ids
-            .iter()
-            .find(|id| !self.review_notes.iter().any(|note| note.id == **id))
-        {
-            return Err(ReviewNoteError::NotFound(*missing));
+        for id in ids {
+            self.note_index(list, *id)?;
         }
-        let (removed, kept) = std::mem::take(&mut self.review_notes)
+        let (removed, kept) = std::mem::take(self.note_list_mut(list))
             .into_iter()
             .partition(|note| ids.contains(&note.id));
-        self.review_notes = kept;
+        *self.note_list_mut(list) = kept;
         Ok(removed)
     }
 
-    /// Moves a note in front of `before`, or to the end when `before` is
-    /// `None`. Returns whether the order changed.
+    /// Moves a note within `list` in front of `before`, or to the end when
+    /// `before` is `None`. Returns whether the order changed.
     ///
     /// # Errors
-    /// Returns [`ReviewNoteError::NotFound`] when either note is missing.
+    /// Returns [`ReviewNoteError::NotFound`] (or
+    /// [`ReviewNoteError::InIssues`]) when either note is not in `list`.
     pub fn move_review_note(
         &mut self,
+        list: NoteList,
         id: ReviewNoteId,
         before: Option<ReviewNoteId>,
     ) -> Result<bool, ReviewNoteError> {
-        let from = self.note_index(id)?;
+        let from = self.note_index(list, id)?;
         if let Some(before) = before {
-            self.note_index(before)?;
+            self.note_index(list, before)?;
         }
         if before == Some(id) {
             return Ok(false);
         }
-        let note = self.review_notes.remove(from);
+        let note = self.note_list_mut(list).remove(from);
         let to = match before {
-            Some(before) => self.note_index(before)?,
-            None => self.review_notes.len(),
+            Some(before) => self.note_index(list, before)?,
+            None => self.note_list(list).len(),
         };
-        self.review_notes.insert(to, note);
+        self.note_list_mut(list).insert(to, note);
         Ok(to != from)
     }
 
-    /// Puts back a note that was removed, at `index` (clamped to the end).
-    /// Used to undo a deletion in the editor.
+    /// Moves a note into list `to`, in front of `before` or at the end, from
+    /// whichever list holds it. The note itself is unchanged: its status,
+    /// reply, response and revision go with it. Returns whether anything
+    /// moved.
     ///
     /// # Errors
-    /// Returns [`ReviewNoteError`] when a note with that ID exists, the note
-    /// is invalid or the project is full.
+    /// Returns [`ReviewNoteError`] when the note or `before` is missing, or
+    /// the target list is full.
+    pub fn transfer_review_note(
+        &mut self,
+        id: ReviewNoteId,
+        to: NoteList,
+        before: Option<ReviewNoteId>,
+    ) -> Result<bool, ReviewNoteError> {
+        let from = self.list_of_note(id).ok_or(ReviewNoteError::NotFound(id))?;
+        if from == to {
+            return self.move_review_note(to, id, before);
+        }
+        if let Some(before) = before {
+            self.note_index(to, before)?;
+        }
+        if self.note_list(to).len() >= MAX_REVIEW_NOTES {
+            return Err(match to {
+                NoteList::Notes => ReviewNoteError::TooManyNotes,
+                NoteList::Issues => ReviewNoteError::TooManyIssues,
+            });
+        }
+        let index = self.note_index(from, id)?;
+        let note = self.note_list_mut(from).remove(index);
+        let at = match before {
+            Some(before) => self.note_index(to, before)?,
+            None => self.note_list(to).len(),
+        };
+        self.note_list_mut(to).insert(at, note);
+        Ok(true)
+    }
+
+    /// Puts back a note that was removed, into `list` at `index` (clamped
+    /// to the end). Used to undo a deletion in the editor.
+    ///
+    /// # Errors
+    /// Returns [`ReviewNoteError`] when a note with that ID exists in either
+    /// list, the note is invalid or the list is full.
     pub fn insert_review_note(
         &mut self,
+        list: NoteList,
         note: ReviewNote,
         index: usize,
     ) -> Result<(), ReviewNoteError> {
-        if self
-            .review_notes
-            .iter()
-            .any(|existing| existing.id == note.id)
-        {
+        if self.list_of_note(note.id).is_some() {
             return Err(ReviewNoteError::DuplicateId(note.id));
         }
-        if self.review_notes.len() >= MAX_REVIEW_NOTES {
-            return Err(ReviewNoteError::TooManyNotes);
+        if self.note_list(list).len() >= MAX_REVIEW_NOTES {
+            return Err(match list {
+                NoteList::Notes => ReviewNoteError::TooManyNotes,
+                NoteList::Issues => ReviewNoteError::TooManyIssues,
+            });
         }
         let note = note.normalized()?;
-        let index = index.min(self.review_notes.len());
-        self.review_notes.insert(index, note);
+        let notes = self.note_list_mut(list);
+        let index = index.min(notes.len());
+        notes.insert(index, note);
         Ok(())
     }
 
-    /// Applies `update` to a note and returns the note as it now is, plus
+    /// Applies `update` to a note in the Notes list and returns the note as it now is, plus
     /// whether anything changed. The note is left alone when the result
     /// would be invalid.
     ///
@@ -355,7 +451,7 @@ impl ProjectDocument {
         if update.is_empty() {
             return Err(ReviewNoteError::EmptyUpdate);
         }
-        let index = self.note_index(id)?;
+        let index = self.note_index(NoteList::Notes, id)?;
         let current = &self.review_notes[index];
         let mut next = current.clone();
         let reviewed = update.severity.is_some()
@@ -389,11 +485,17 @@ impl ProjectDocument {
         Ok((next, changed))
     }
 
-    fn note_index(&self, id: ReviewNoteId) -> Result<usize, ReviewNoteError> {
-        self.review_notes
+    fn note_index(&self, list: NoteList, id: ReviewNoteId) -> Result<usize, ReviewNoteError> {
+        self.note_list(list)
             .iter()
             .position(|note| note.id == id)
-            .ok_or(ReviewNoteError::NotFound(id))
+            .ok_or_else(|| {
+                if list == NoteList::Notes && self.list_of_note(id) == Some(NoteList::Issues) {
+                    ReviewNoteError::InIssues(id)
+                } else {
+                    ReviewNoteError::NotFound(id)
+                }
+            })
     }
 }
 
@@ -479,7 +581,7 @@ mod tests {
             .add_review_notes(vec![new_note(Critical, "c1"), new_note(Info, "i1")], 0)
             .unwrap();
         document
-            .move_review_note(added[1].id, Some(added[0].id))
+            .move_review_note(NoteList::Notes, added[1].id, Some(added[0].id))
             .unwrap();
         assert_eq!(titles(&document), ["i1", "c1"]);
         document
@@ -519,19 +621,35 @@ mod tests {
             .iter()
             .map(|note| note.id)
             .collect();
-        assert!(document.move_review_note(ids[2], Some(ids[0])).unwrap());
+        assert!(
+            document
+                .move_review_note(NoteList::Notes, ids[2], Some(ids[0]))
+                .unwrap()
+        );
         assert_eq!(titles(&document), ["c", "a", "b"]);
-        assert!(document.move_review_note(ids[2], None).unwrap());
+        assert!(
+            document
+                .move_review_note(NoteList::Notes, ids[2], None)
+                .unwrap()
+        );
         assert_eq!(titles(&document), ["a", "b", "c"]);
-        assert!(!document.move_review_note(ids[0], Some(ids[1])).unwrap());
-        assert!(!document.move_review_note(ids[1], Some(ids[1])).unwrap());
+        assert!(
+            !document
+                .move_review_note(NoteList::Notes, ids[0], Some(ids[1]))
+                .unwrap()
+        );
+        assert!(
+            !document
+                .move_review_note(NoteList::Notes, ids[1], Some(ids[1]))
+                .unwrap()
+        );
         let unknown = ReviewNoteId::new();
         assert_eq!(
-            document.move_review_note(unknown, None),
+            document.move_review_note(NoteList::Notes, unknown, None),
             Err(ReviewNoteError::NotFound(unknown))
         );
         assert_eq!(
-            document.move_review_note(ids[0], Some(unknown)),
+            document.move_review_note(NoteList::Notes, ids[0], Some(unknown)),
             Err(ReviewNoteError::NotFound(unknown))
         );
         assert_eq!(titles(&document), ["a", "b", "c"]);
@@ -657,19 +775,124 @@ mod tests {
                 0,
             )
             .unwrap();
-        let removed = document.remove_review_notes(&[added[1].id]).unwrap();
+        let removed = document
+            .remove_review_notes(NoteList::Notes, &[added[1].id])
+            .unwrap();
         assert_eq!(titles(&document), ["a", "c"]);
-        document.insert_review_note(removed[0].clone(), 1).unwrap();
+        document
+            .insert_review_note(NoteList::Notes, removed[0].clone(), 1)
+            .unwrap();
         assert_eq!(titles(&document), ["a", "b", "c"]);
         assert_eq!(
-            document.insert_review_note(removed[0].clone(), 0),
+            document.insert_review_note(NoteList::Notes, removed[0].clone(), 0),
             Err(ReviewNoteError::DuplicateId(added[1].id))
         );
         let unknown = ReviewNoteId::new();
         assert_eq!(
-            document.remove_review_notes(&[added[0].id, unknown]),
+            document.remove_review_notes(NoteList::Notes, &[added[0].id, unknown]),
             Err(ReviewNoteError::NotFound(unknown))
         );
         assert_eq!(document.review_notes.len(), 3);
+    }
+    #[test]
+    fn notes_move_to_issues_and_back_unchanged() {
+        let mut document = document();
+        let added = document
+            .add_review_notes(
+                ["a", "b", "c"]
+                    .map(|title| new_note(ReviewNoteSeverity::Warning, title))
+                    .into(),
+                0,
+            )
+            .unwrap();
+        document
+            .update_review_note(
+                added[1].id,
+                ReviewNoteUpdate {
+                    status: Some(ReviewNoteStatus::Acknowledged),
+                    reply: Some("Will add it".into()),
+                    ..ReviewNoteUpdate::default()
+                },
+            )
+            .unwrap();
+        let kept = document.review_notes[1].clone();
+        assert!(
+            document
+                .transfer_review_note(added[1].id, NoteList::Issues, None)
+                .unwrap()
+        );
+        assert_eq!(titles(&document), ["a", "c"]);
+        assert_eq!(document.issues, std::slice::from_ref(&kept));
+        assert_eq!(document.list_of_note(kept.id), Some(NoteList::Issues));
+        assert!(
+            document
+                .transfer_review_note(added[0].id, NoteList::Issues, Some(kept.id))
+                .unwrap()
+        );
+        assert_eq!(document.issues[0].title, "a");
+        assert!(
+            document
+                .transfer_review_note(kept.id, NoteList::Notes, Some(added[2].id))
+                .unwrap()
+        );
+        assert_eq!(titles(&document), ["b", "c"]);
+        assert_eq!(document.review_notes[0], kept);
+        assert_eq!(document.revision.0, 0);
+    }
+
+    #[test]
+    fn notes_writes_cannot_touch_issues() {
+        let mut document = document();
+        let added = document
+            .add_review_notes(
+                ["a", "b"]
+                    .map(|title| new_note(ReviewNoteSeverity::Info, title))
+                    .into(),
+                0,
+            )
+            .unwrap();
+        let issue = added[0].id;
+        document
+            .transfer_review_note(issue, NoteList::Issues, None)
+            .unwrap();
+        let before = document.issues.clone();
+        let blocked = ReviewNoteError::InIssues(issue);
+        assert_eq!(
+            document.remove_review_notes(NoteList::Notes, &[issue]),
+            Err(blocked.clone())
+        );
+        assert_eq!(
+            document.move_review_note(NoteList::Notes, issue, None),
+            Err(blocked.clone())
+        );
+        assert_eq!(
+            document.move_review_note(NoteList::Notes, added[1].id, Some(issue)),
+            Err(blocked.clone())
+        );
+        assert_eq!(
+            document
+                .update_review_note(
+                    issue,
+                    ReviewNoteUpdate {
+                        response: Some("x".into()),
+                        ..ReviewNoteUpdate::default()
+                    }
+                )
+                .map(|_| ()),
+            Err(blocked)
+        );
+        assert_eq!(document.issues, before);
+        assert_eq!(titles(&document), ["b"]);
+        let removed = document
+            .remove_review_notes(NoteList::Issues, &[issue])
+            .unwrap();
+        assert_eq!(
+            document.insert_review_note(NoteList::Notes, removed[0].clone(), 0),
+            Ok(())
+        );
+        assert_eq!(
+            document.insert_review_note(NoteList::Issues, removed[0].clone(), 0),
+            Err(ReviewNoteError::DuplicateId(issue))
+        );
     }
 }

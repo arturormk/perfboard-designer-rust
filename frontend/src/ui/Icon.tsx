@@ -55,6 +55,8 @@ const PATHS = {
   panelLeft: "M4 4h16v16H4z M9 4v16",
   panelRight: "M4 4h16v16H4z M15 4v16",
   tag: "M3 12V4h8l10 10-8 8z M7.5 7.5v.01",
+  // A bookmark: notes the user keeps as issues (ADR 0020).
+  keep: "M7 3h10v18l-5-4-5 4z",
   spark:
     "M12 2v4 M12 18v4 M4.9 4.9l2.8 2.8 M16.3 16.3l2.8 2.8 M2 12h4 M18 12h4 M4.9 19.1l2.8-2.8 M16.3 7.7l2.8-2.8",
   board:
