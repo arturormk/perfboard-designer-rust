@@ -561,10 +561,12 @@ fn headers() -> Vec<Part> {
 /// Screw terminal blocks on the 5.08 mm pitch: pins on every other hole. The
 /// block reaches a whole hole past the end pins and a whole hole in front and
 /// behind, so it covers every hole around its pins: X P X P X seen along the
-/// row. Blocks butted end to end share nothing and still keep the pitch.
+/// row. Small blocks interlock: butted end to end, they keep the pitch and
+/// cover one hole at each end of the whole run, so the larger sizes stand in
+/// for such runs (a footprint never depends on its neighbours). The family
+/// stops at 8 positions.
 fn screw_terminals() -> Vec<Part> {
-    [2, 3, 4, 5]
-        .into_iter()
+    (2..=8)
         .map(|positions: i32| {
             let pins = (1..=positions)
                 .map(|number| numbered_pin(usize::try_from(number).unwrap(), 2 * (number - 1), 0))
@@ -597,12 +599,10 @@ fn screw_terminals() -> Vec<Part> {
                 }],
                 readme: readme(
                     &name,
-                    &[
-                        &format!(
-                            "A PCB screw terminal block with {positions} positions on the 5.08 mm pitch, so its pins use every other hole. It covers every hole around its pins: the holes between them, the hole beyond each end pin, and the rows in front of and behind them."
-                        ),
-                        "Wires enter from the south side (positive y). That side needs room for the wires and a screwdriver; it may overhang the board edge.",
-                    ],
+                    &screw_terminal_readme(positions)
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>(),
                 ),
             });
             // 1.2.0: the block covers the hole beyond each end pin after all
@@ -611,6 +611,31 @@ fn screw_terminals() -> Vec<Part> {
             terminal
         })
         .collect()
+}
+
+/// The README paragraphs of a screw terminal. From 4 positions up, the part
+/// also stands for a run of smaller blocks butted together.
+fn screw_terminal_readme(positions: i32) -> Vec<String> {
+    let mut paragraphs = vec![format!(
+        "A PCB screw terminal block with {positions} positions on the 5.08 mm pitch, so its pins use every other hole. It covers every hole around its pins: the holes between them, the hole beyond each end pin, and the rows in front of and behind them."
+    )];
+    let run = match positions {
+        4 => Some("two 2-position blocks"),
+        5 => Some("a 2-position and a 3-position block"),
+        6 => Some("three 2-position blocks, or two 3-position ones"),
+        7 => Some("two 2-position blocks and a 3-position one"),
+        8 => Some("four 2-position blocks"),
+        _ => None,
+    };
+    if let Some(run) = run {
+        paragraphs.push(format!(
+            "Screw terminal blocks are made to interlock: butted end to end, any number of them keep the 5.08 mm pitch, so their pins take alternating holes and the run covers only one hole at each end, like a single block. Use this part for {run} side by side. Placed as separate parts they could not sit that close: each claims the hole beyond its own end pins, so neighbouring blocks would overlap on the hole between them. A part's footprint does not change with its neighbours."
+        ));
+    }
+    paragraphs.push(
+        "Wires enter from the south side (positive y). That side needs room for the wires and a screwdriver; it may overhang the board edge.".to_owned(),
+    );
+    paragraphs
 }
 
 fn generated() -> Vec<Part> {
