@@ -9,6 +9,12 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Screw terminals cover the hole beyond each end pin again (definition
+  version 1.2.0): seen along the row a block takes X P X P X, so two blocks
+  butted together keep the 5.08 mm pitch without sharing a hole. A new
+  4-position block joins the 2-, 3- and 5-position ones. Projects keep the
+  definitions they embed until you update them.
+
 - Parts have a value. Resistors and capacitors understand theirs: `4k7`,
   `4.7k` and `4700` all become `4.7 kΩ`, `0.1u` and the code `104` become
   `100 nF`, and a value that cannot be read (such as `2m2` for 2.2 MΩ) is
