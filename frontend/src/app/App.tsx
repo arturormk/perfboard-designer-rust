@@ -14,6 +14,7 @@ import { Dialogs } from "../shell/Dialogs";
 import { openDialog, openDialogKind } from "../shell/dialogs";
 import { StatusBar } from "../shell/StatusBar";
 import { Toasts } from "../shell/Toasts";
+import { PanelResizer, leftPanelStyle } from "../shell/PanelResizer";
 import { ToolRail, activateTool } from "../shell/ToolRail";
 import { TopBar } from "../shell/TopBar";
 import { Welcome } from "../shell/Welcome";
@@ -314,14 +315,17 @@ export function App() {
     !view.value.commits.length;
 
   return (
-    <div class={`app mode-${appMode.value}`}>
+    <div class={`app mode-${appMode.value}`} style={leftPanelStyle()}>
       <TopBar />
       {appMode.value === "board" ? (
         <main
           class={`workspace${leftOpen.value ? "" : " no-left"}${rightOpen.value ? "" : " no-right"}`}
         >
           {leftOpen.value ? (
-            <LeftPanel />
+            <>
+              <LeftPanel />
+              <PanelResizer />
+            </>
           ) : (
             <button
               class="panel-reveal left"

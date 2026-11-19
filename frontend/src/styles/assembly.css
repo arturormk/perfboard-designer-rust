@@ -1,5 +1,6 @@
 /* ── Assembly mode (ADR 0012) ───────────────────────────────────────────── */
 .assembly {
+  position: relative;
   display: grid;
   grid-template-columns: var(--panel-left-w) minmax(0, 1fr) 360px;
   min-height: 0;

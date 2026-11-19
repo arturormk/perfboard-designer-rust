@@ -26,6 +26,7 @@ import {
 import { BOARD_MARGIN, PAD_RADIUS, viewX } from "../model/geometry";
 import { wireColorCss, wireColorName } from "../model/naming";
 import { confirmAction, openDialogKind } from "../shell/dialogs";
+import { PanelResizer } from "../shell/PanelResizer";
 import {
   checkmarks,
   completeAndAdvance,
@@ -173,6 +174,7 @@ export function AssemblyMode() {
   return (
     <main class="assembly">
       <StepList plan={current} />
+      <PanelResizer />
       <section class="canvas-area assembly-canvas" aria-label="Board">
         <AssemblyCanvas plan={current} />
       </section>
