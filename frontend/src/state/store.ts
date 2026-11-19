@@ -119,6 +119,13 @@ export const splitCompare = signal(false);
 
 export const leftTab = signal<"parts" | "nets" | "history">("parts");
 /**
+ * The parts library's search text and scroll offset. They live here, not in
+ * the panel, so they survive the panel closing, a tab switch or a mode change:
+ * placing several parts of one kind should not mean finding it again each time.
+ */
+export const libraryQuery = signal("");
+export const libraryScroll = signal(0);
+/**
  * The Welcome card stays hidden once the user closes it or creates or opens a
  * project: an empty board after a deliberate choice is not a first visit.
  */

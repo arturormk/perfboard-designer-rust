@@ -9,6 +9,10 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- The parts library keeps its search text and scroll position when you switch
+  to Nets or History, hide the left panel or change modes, so placing several
+  parts of the same kind no longer means finding it again each time.
+
 - Parts can be placed, dragged and nudged off the board on any side, not only
   to the right and below, so a new part can be parked beside the board and
   rotated before it goes on. Hole coordinates are now signed (ADR 0021);

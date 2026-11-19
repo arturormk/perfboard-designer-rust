@@ -1,4 +1,5 @@
 import { useSignal } from "@preact/signals";
+import { useLayoutEffect, useRef } from "preact/hooks";
 import type { ComponentDefinition } from "../api/project";
 import { refreshLibrary, select, focusOn } from "../state/actions";
 import {
@@ -6,6 +7,8 @@ import {
   hover,
   library,
   libraryDetails,
+  libraryQuery,
+  libraryScroll,
   placing,
   selection,
   tool,
@@ -82,7 +85,12 @@ export function PartThumb({
 }
 
 export function PartsPanel() {
-  const query = useSignal("");
+  const query = libraryQuery;
+  const listRef = useRef<HTMLUListElement>(null);
+  // Put the list back where it was when the panel last showed it.
+  useLayoutEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = libraryScroll.peek();
+  }, []);
   const openGroups = useSignal<Record<string, boolean>>({});
   const current = design.value;
   const needle = query.value.trim().toLowerCase();
@@ -134,7 +142,13 @@ export function PartsPanel() {
             }
           />
         </div>
-        <ul class="library-list">
+        <ul
+          class="library-list"
+          ref={listRef}
+          onScroll={(event) =>
+            (libraryScroll.value = (event.target as HTMLUListElement).scrollTop)
+          }
+        >
           {definitions.map((definition) => {
             const bridge = definition.kind === "bridge";
             const provenance = partProvenance(details, definition.id);
