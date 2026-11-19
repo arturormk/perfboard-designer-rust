@@ -43,7 +43,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) {
 }
 
 fn fixture(
-    points: &[(&str, u32, u32)],
+    points: &[(&str, i32, i32)],
 ) -> (ProjectDocument, BTreeMap<String, ComponentInstanceId>) {
     let mut document = ProjectDocument::new(
         ProjectId::new(),

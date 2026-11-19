@@ -159,8 +159,8 @@ function handleKey(event: KeyboardEvent): void {
     if (delta) {
       event.preventDefault();
       const position = {
-        x: Math.max(0, instance.position.x + delta[0]),
-        y: Math.max(0, instance.position.y + delta[1]),
+        x: instance.position.x + delta[0],
+        y: instance.position.y + delta[1],
       };
       void mutate({
         type: "move_component",

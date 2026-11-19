@@ -9,6 +9,13 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Parts can be placed, dragged and nudged off the board on any side, not only
+  to the right and below, so a new part can be parked beside the board and
+  rotated before it goes on. Hole coordinates are now signed (ADR 0021);
+  positions left of or above the board are negative. Existing projects open
+  unchanged, but a project with a part parked left of or above the board
+  will not open in older builds.
+
 - The Notes tab has two lists: **Notes**, the agent's review notes, and
   **Issues**, notes you keep across reviews. **Keep as issue** on a note
   moves it to Issues with its reply and the agent's answer; **Back to

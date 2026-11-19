@@ -87,14 +87,14 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
     svg.push_str("</g>");
     for instance in document.design.components.values() {
         let x = if side == Side::Solder {
-            board.size.intervals_x() - instance.position.x
+            f64::from(board.size.intervals_x()) - f64::from(instance.position.x)
         } else {
-            instance.position.x
+            f64::from(instance.position.x)
         };
         let _ = write!(
             svg,
             r#"<text class="label" x="{}" y="{}">{}</text>"#,
-            f64::from(x) + 0.4,
+            x + 0.4,
             f64::from(instance.position.y) + 1.2,
             escape(&instance.name)
         );

@@ -83,7 +83,7 @@ impl Fixture {
         assembly_plan(self.design(), self.document.revision)
     }
 
-    fn part(&mut self, definition: &str, name: &str, x: u32, y: u32) -> ComponentInstanceId {
+    fn part(&mut self, definition: &str, name: &str, x: i32, y: i32) -> ComponentInstanceId {
         let id = ComponentInstanceId::new();
         self.document.design.components.insert(
             id,

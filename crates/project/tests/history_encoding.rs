@@ -21,7 +21,7 @@ fn definition() -> ComponentDefinition {
     .unwrap()
 }
 
-fn add(session: &mut ProjectSession, name: &str, x: u32, y: u32) {
+fn add(session: &mut ProjectSession, name: &str, x: i32, y: i32) {
     let definition = definition();
     session
         .apply(OperationRequest {
@@ -51,7 +51,7 @@ fn add(session: &mut ProjectSession, name: &str, x: u32, y: u32) {
 
 /// A commit, further edits, and one undone edit so both stacks and the
 /// working base are populated.
-fn session_with_history(edits: u32) -> ProjectSession {
+fn session_with_history(edits: i32) -> ProjectSession {
     let mut session = ProjectSession::new(ProjectDocument::new(
         ProjectId::new(),
         "History",

@@ -421,9 +421,7 @@ impl Board {
         {
             return Err(DocumentError::InvalidBoardFeatures);
         }
-        let inside = |position: perfboard_core::HolePos| {
-            position.x < self.size.holes_x() && position.y < self.size.holes_y()
-        };
+        let inside = |position| self.size.contains_hole(position);
         if self
             .features
             .mounting_holes

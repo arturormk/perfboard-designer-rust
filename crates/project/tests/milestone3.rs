@@ -25,7 +25,7 @@ fn document() -> ProjectDocument {
     )
 }
 
-fn add_payload(id: ComponentInstanceId, name: &str, x: u32) -> OperationPayload {
+fn add_payload(id: ComponentInstanceId, name: &str, x: i32) -> OperationPayload {
     let definition = definition();
     OperationPayload::AddComponent {
         instance: ComponentInstance {

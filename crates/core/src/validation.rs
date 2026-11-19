@@ -250,7 +250,7 @@ mod tests {
         ComponentDefinition::from_toml(source).unwrap()
     }
 
-    fn instance(definition_id: &str, x: u32, y: u32) -> ComponentInstance {
+    fn instance(definition_id: &str, x: i32, y: i32) -> ComponentInstance {
         ComponentInstance {
             id: ComponentInstanceId::new(),
             definition_id: definition_id.into(),

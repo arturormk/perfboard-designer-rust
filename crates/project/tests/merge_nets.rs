@@ -29,7 +29,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) -> Result<()
 
 const PIN: &str = "schema_version=1\nid='pin'\ndefinition_version='1'\nname='Pin'\nallowed_rotations=['deg0']\n[body]\nx=-0.2\ny=-0.2\nwidth=0.4\nheight=0.4\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0";
 
-fn place(document: &mut ProjectDocument, x: u32) -> PinRef {
+fn place(document: &mut ProjectDocument, x: i32) -> PinRef {
     let definition = ComponentDefinition::from_toml(PIN).unwrap();
     let id = ComponentInstanceId::new();
     apply(

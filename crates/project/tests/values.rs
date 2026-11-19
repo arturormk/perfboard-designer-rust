@@ -42,7 +42,7 @@ fn definition(kind: Option<&str>) -> ComponentDefinition {
     ComponentDefinition::from_toml(&toml).unwrap()
 }
 
-fn instance(definition: &ComponentDefinition, value: &str, x: u32) -> ComponentInstance {
+fn instance(definition: &ComponentDefinition, value: &str, x: i32) -> ComponentInstance {
     ComponentInstance {
         id: ComponentInstanceId::new(),
         definition_id: definition.id.clone(),
@@ -69,7 +69,7 @@ fn add(
     definition: &ComponentDefinition,
     value: &str,
 ) -> Result<ComponentInstanceId, String> {
-    let x = 1 + 3 * u32::try_from(document.design.components.len()).unwrap();
+    let x = 1 + 3 * i32::try_from(document.design.components.len()).unwrap();
     let instance = instance(definition, value, x);
     let id = instance.id;
     apply(

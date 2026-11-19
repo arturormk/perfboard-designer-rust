@@ -6,13 +6,13 @@ use thiserror::Error;
     Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, JsonSchema,
 )]
 pub struct HolePos {
-    pub x: u32,
-    pub y: u32,
+    pub x: i32,
+    pub y: i32,
 }
 
 impl HolePos {
     #[must_use]
-    pub const fn new(x: u32, y: u32) -> Self {
+    pub const fn new(x: i32, y: i32) -> Self {
         Self { x, y }
     }
 
@@ -103,8 +103,8 @@ pub enum GeometryError {
     EmptyBoard,
     #[error("position ({x}, {y}) is outside the {holes_x} x {holes_y} board")]
     HoleOutsideBoard {
-        x: u32,
-        y: u32,
+        x: i32,
+        y: i32,
         holes_x: u32,
         holes_y: u32,
     },
@@ -152,13 +152,20 @@ impl BoardSize {
         self.holes_y - 1
     }
 
+    /// Whether `position` is a hole of this board.
+    #[must_use]
+    pub fn contains_hole(self, position: HolePos) -> bool {
+        u32::try_from(position.x).is_ok_and(|x| x < self.holes_x)
+            && u32::try_from(position.y).is_ok_and(|y| y < self.holes_y)
+    }
+
     /// Mirrors a canonical hole for solder-side presentation.
     ///
     /// # Errors
     ///
     /// Returns [`GeometryError::HoleOutsideBoard`] for a position outside the board.
     pub fn mirror_hole(self, position: HolePos) -> Result<HolePos, GeometryError> {
-        if position.x >= self.holes_x || position.y >= self.holes_y {
+        if !self.contains_hole(position) {
             return Err(GeometryError::HoleOutsideBoard {
                 x: position.x,
                 y: position.y,
@@ -166,7 +173,10 @@ impl BoardSize {
                 holes_y: self.holes_y,
             });
         }
-        Ok(HolePos::new(self.intervals_x() - position.x, position.y))
+        // A board is far narrower than `i32::MAX` holes.
+        #[allow(clippy::cast_possible_wrap)]
+        let last = self.intervals_x() as i32;
+        Ok(HolePos::new(last - position.x, position.y))
     }
 
     /// Mirrors a canonical half-grid route position for solder-side presentation.

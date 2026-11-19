@@ -32,7 +32,7 @@ fn jumper_toml() -> String {
     HEADER.replacen("schema_version=1\n", "schema_version=1\nkind='jumper'\n", 1)
 }
 
-fn place(document: &mut ProjectDocument, toml: &str, x: u32) -> ComponentInstanceId {
+fn place(document: &mut ProjectDocument, toml: &str, x: i32) -> ComponentInstanceId {
     let definition = ComponentDefinition::from_toml(toml).unwrap();
     let id = ComponentInstanceId::new();
     apply(

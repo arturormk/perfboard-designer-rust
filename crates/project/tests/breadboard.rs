@@ -240,7 +240,7 @@ fn timer_circuit_is_laid_out_soundly() {
     ));
     let isp = placement(&layout, "ISP");
     assert_eq!(isp.placement, PartPlacement::OffBoard);
-    assert!(isp.position.x >= layout.geometry.off_board_x);
+    assert!(i64::from(isp.position.x) >= i64::from(layout.geometry.off_board_x));
     assert!(
         layout
             .warnings
@@ -484,8 +484,9 @@ fn rail_holes_come_in_groups_of_five() {
     // No jumper is plugged into a row the rails leave out.
     for jumper in &layout.jumpers {
         for end in [jumper.from, jumper.to] {
-            if [0, 1, 16, 17].contains(&(end.x % 19)) && end.x < 19 * layout.board_count {
-                assert!(is_rail_row(end.y), "jumper {} at {end:?}", jumper.number);
+            let (x, y) = (u32::try_from(end.x).unwrap(), u32::try_from(end.y).unwrap());
+            if [0, 1, 16, 17].contains(&(x % 19)) && x < 19 * layout.board_count {
+                assert!(is_rail_row(y), "jumper {} at {end:?}", jumper.number);
             }
         }
     }
@@ -523,11 +524,7 @@ fn access_of(design: &Design, layout: &BreadboardLayout, name: &str) -> Vec<Hole
         for x in area.min.x..=area.max.x {
             for y in area.min.y..=area.max.y {
                 let (rx, ry) = part.rotation.rotate_local((x, y));
-                let gx = u32::try_from(i64::from(part.position.x) + i64::from(rx));
-                let gy = u32::try_from(i64::from(part.position.y) + i64::from(ry));
-                if let (Ok(gx), Ok(gy)) = (gx, gy) {
-                    holes.push(HolePos::new(gx, gy));
-                }
+                holes.push(HolePos::new(part.position.x + rx, part.position.y + ry));
             }
         }
     }
@@ -579,10 +576,7 @@ fn a_part_does_not_sit_in_another_part_access_area() {
         let definition = &b.design.component_definitions[&part.definition_id];
         for pin in &definition.pins {
             let (x, y) = part.rotation.rotate_local((pin.x, pin.y));
-            let at = HolePos::new(
-                u32::try_from(i64::from(part.position.x) + i64::from(x)).unwrap(),
-                u32::try_from(i64::from(part.position.y) + i64::from(y)).unwrap(),
-            );
+            let at = HolePos::new(part.position.x + x, part.position.y + y);
             assert!(!access.contains(&at), "{other} pin in {name}'s access area");
         }
     }

@@ -43,8 +43,8 @@ pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
             ConstraintKind::ReservedArea { area, .. } => {
                 if area.min.x > area.max.x
                     || area.min.y > area.max.y
-                    || area.max.x >= design.board.size.holes_x()
-                    || area.max.y >= design.board.size.holes_y()
+                    || !design.board.size.contains_hole(area.min)
+                    || !design.board.size.contains_hole(area.max)
                 {
                     return Err("constraint area is outside the board".into());
                 }
@@ -53,8 +53,8 @@ pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
                 if !component(*component_id)
                     || area.min.x > area.max.x
                     || area.min.y > area.max.y
-                    || area.max.x >= design.board.size.holes_x()
-                    || area.max.y >= design.board.size.holes_y()
+                    || !design.board.size.contains_hole(area.min)
+                    || !design.board.size.contains_hole(area.max)
                 {
                     return Err("assembly-access constraint is invalid".into());
                 }
@@ -122,12 +122,12 @@ pub(crate) fn diagnostics(design: &Design) -> Vec<Diagnostic> {
                 max_edge_distance_holes,
             } => {
                 let point = design.components[component_id].position;
-                let distance = point
-                    .x
-                    .min(point.y)
-                    .min(design.board.size.intervals_x() - point.x)
-                    .min(design.board.size.intervals_y() - point.y);
-                distance > *max_edge_distance_holes
+                let (x, y) = (i64::from(point.x), i64::from(point.y));
+                let distance = x
+                    .min(y)
+                    .min(i64::from(design.board.size.intervals_x()) - x)
+                    .min(i64::from(design.board.size.intervals_y()) - y);
+                distance > i64::from(*max_edge_distance_holes)
             }
             ConstraintKind::WireSide { net_id, side } => design
                 .wires

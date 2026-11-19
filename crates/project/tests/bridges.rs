@@ -30,7 +30,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) -> Result<()
 const PIN: &str = "schema_version=1\nid='pin'\ndefinition_version='1'\nname='Pin'\nallowed_rotations=['deg0']\n[body]\nx=-0.2\ny=-0.2\nwidth=0.4\nheight=0.4\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0";
 const BRIDGE: &str = "schema_version=1\nkind='bridge'\nid='bridge'\ndefinition_version='1'\nname='Bridge'\nallowed_rotations=['deg0']\n[body]\nx=0\ny=-0.2\nwidth=2.54\nheight=0.4\n[[pins]]\nid='a'\nnumber='A'\nname='A'\nx=0\ny=0\n[[pins]]\nid='b'\nnumber='B'\nname='B'\nx=1\ny=0";
 
-fn place(document: &mut ProjectDocument, toml: &str, x: u32) -> ComponentInstanceId {
+fn place(document: &mut ProjectDocument, toml: &str, x: i32) -> ComponentInstanceId {
     let definition = ComponentDefinition::from_toml(toml).unwrap();
     let id = ComponentInstanceId::new();
     apply(
@@ -204,7 +204,7 @@ fn a_bridge_still_wired_to_another_net_is_a_short() {
 /// either face: a bridge end is soldered in its hole, so both faces reach it.
 #[test]
 fn a_wire_can_end_on_a_bridge_joined_to_its_net_from_either_side() {
-    for (chain, side) in [1u32, 2]
+    for (chain, side) in [1i32, 2]
         .into_iter()
         .flat_map(|chain| [Side::Solder, Side::Component].map(|side| (chain, side)))
     {

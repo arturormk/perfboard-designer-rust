@@ -21,7 +21,7 @@ pub(crate) fn validate_structure(design: &Design) -> Result<(), String> {
             return Err("saddle end holes must be different".into());
         }
         for hole in [saddle.start, saddle.end] {
-            if hole.x >= size.holes_x() || hole.y >= size.holes_y() {
+            if !size.contains_hole(hole) {
                 return Err("saddle hole lies outside the board".into());
             }
         }
@@ -180,12 +180,12 @@ pub(crate) fn diagnostics(design: &Design) -> Vec<Diagnostic> {
 }
 
 /// Moves both end holes by a whole-hole offset, failing when either would
-/// leave the non-negative coordinate range.
+/// leave the coordinate range.
 pub(crate) fn translate(saddle: &mut Saddle, offset_x: i64, offset_y: i64) -> Option<()> {
     let shift = |hole: HolePos| {
         Some(HolePos::new(
-            u32::try_from(i64::from(hole.x).checked_add(offset_x)?).ok()?,
-            u32::try_from(i64::from(hole.y).checked_add(offset_y)?).ok()?,
+            i32::try_from(i64::from(hole.x).checked_add(offset_x)?).ok()?,
+            i32::try_from(i64::from(hole.y).checked_add(offset_y)?).ok()?,
         ))
     };
     saddle.start = shift(saddle.start)?;

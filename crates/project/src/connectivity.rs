@@ -157,7 +157,7 @@ fn junction_rules(design: &Design, result: &mut Vec<Diagnostic>) {
                 junction.id.to_string(),
             ));
         }
-        if junction.position.x >= board.holes_x() || junction.position.y >= board.holes_y() {
+        if !board.contains_hole(junction.position) {
             result.push(rule(
                 "route.off_board",
                 "Junction lies outside the board".into(),

@@ -27,7 +27,7 @@ fn apply(document: &mut ProjectDocument, payload: OperationPayload) -> Result<()
     .map_err(|error| error.to_string())
 }
 
-fn saddle(side: Side, start: (u32, u32), end: (u32, u32)) -> Saddle {
+fn saddle(side: Side, start: (i32, i32), end: (i32, i32)) -> Saddle {
     Saddle {
         id: SaddleId::new(),
         side,

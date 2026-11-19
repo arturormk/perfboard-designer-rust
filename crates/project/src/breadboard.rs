@@ -308,8 +308,25 @@ type Point = (i64, i64);
 
 fn hole(point: Point) -> HolePos {
     HolePos::new(
-        u32::try_from(point.0).unwrap_or(0),
-        u32::try_from(point.1).unwrap_or(0),
+        i32::try_from(point.0.max(0)).unwrap_or(i32::MAX),
+        i32::try_from(point.1.max(0)).unwrap_or(i32::MAX),
+    )
+}
+
+/// A breadboard hole from its column and row; both are far below `i32::MAX`.
+fn bb_hole(column: u32, row: u32) -> HolePos {
+    HolePos::new(
+        i32::try_from(column).unwrap_or(i32::MAX),
+        i32::try_from(row).unwrap_or(i32::MAX),
+    )
+}
+
+/// A laid-out hole's column and row. Layouts never go negative; a negative
+/// coordinate maps past every board, so it matches no strip or rail.
+fn bb_coords(hole: HolePos) -> (u32, u32) {
+    (
+        u32::try_from(hole.x).unwrap_or(u32::MAX),
+        u32::try_from(hole.y).unwrap_or(u32::MAX),
     )
 }
 
@@ -318,18 +335,20 @@ fn point(hole: HolePos) -> Point {
 }
 
 fn strip_of(hole: HolePos) -> Option<Strip> {
-    let board = hole.x / BOARD_STRIDE;
-    let lane = Lane::of_column(hole.x % BOARD_STRIDE)?;
-    (hole.y < BREADBOARD_ROWS).then_some((board, lane, hole.y))
+    let (x, y) = bb_coords(hole);
+    let board = x / BOARD_STRIDE;
+    let lane = Lane::of_column(x % BOARD_STRIDE)?;
+    (y < BREADBOARD_ROWS).then_some((board, lane, y))
 }
 
 fn rail_of(hole: HolePos) -> Option<(u32, RailSlot)> {
-    let slot = RailSlot::from_column(hole.x % BOARD_STRIDE)?;
-    is_rail_row(hole.y).then_some((hole.x / BOARD_STRIDE, slot))
+    let (x, y) = bb_coords(hole);
+    let slot = RailSlot::from_column(x % BOARD_STRIDE)?;
+    is_rail_row(y).then_some((x / BOARD_STRIDE, slot))
 }
 
 fn strip_hole(strip: Strip, column: u32) -> HolePos {
-    HolePos::new(strip.0 * BOARD_STRIDE + column, strip.2)
+    bb_hole(strip.0 * BOARD_STRIDE + column, strip.2)
 }
 
 /// A strip's centre, for distances.
@@ -1245,7 +1264,7 @@ impl<'a> Planner<'a> {
                 .find(|slot| slot.lane() == Lane::Right)
                 .or_else(|| slots.first().copied());
             let Some(slot) = slot else { continue };
-            match self.take_rail_hole(board, slot, pin.y) {
+            match self.take_rail_hole(board, slot, bb_coords(pin).1) {
                 Some(to) => {
                     self.used_rails.insert((index, board, slot));
                     self.jumpers.push((index, JumperKind::Lead, pin, to));
@@ -1430,7 +1449,7 @@ impl<'a> Planner<'a> {
         let found = rail_rows()
             .map(|r| rail_hole(board, slot, r))
             .filter(|h| !self.used.contains(h))
-            .min_by_key(|h| (h.y.abs_diff(row), h.y))?;
+            .min_by_key(|h| (bb_coords(*h).1.abs_diff(row), h.y))?;
         self.used.insert(found);
         Some(found)
     }
@@ -1625,7 +1644,7 @@ impl<'a> Planner<'a> {
 }
 
 fn rail_hole(board: u32, slot: RailSlot, row: u32) -> HolePos {
-    HolePos::new(board * BOARD_STRIDE + slot.column(), row)
+    bb_hole(board * BOARD_STRIDE + slot.column(), row)
 }
 
 fn component_ref(id: ComponentInstanceId) -> ObjectReference {
@@ -1638,14 +1657,15 @@ fn component_ref(id: ComponentInstanceId) -> ObjectReference {
 /// Breadboard notation for a hole: `e12`, `left − rail, row 7`; prefixed
 /// with the board (`B2 e12`) when there are several.
 fn hole_label(h: HolePos, multi: bool) -> String {
-    let board = h.x / BOARD_STRIDE;
-    let column = h.x % BOARD_STRIDE;
+    let (x, y) = bb_coords(h);
+    let board = x / BOARD_STRIDE;
+    let column = x % BOARD_STRIDE;
     let prefix = if multi {
         format!("B{} ", board + 1)
     } else {
         String::new()
     };
-    let row = h.y + 1;
+    let row = y + 1;
     if let Some(slot) = RailSlot::from_column(column) {
         let side = match slot.lane() {
             Lane::Left => "left",
@@ -1700,7 +1720,8 @@ fn union(parent: &mut BTreeMap<HolePos, HolePos>, a: HolePos, b: HolePos) {
 pub fn verify_breadboard_layout(design: &Design, layout: &BreadboardLayout) -> Vec<String> {
     let mut problems = Vec::new();
     let boards_end = layout.board_count * BOARD_STRIDE;
-    let on_board = |h: HolePos| h.x < boards_end && (strip_of(h).is_some() || rail_of(h).is_some());
+    let on_board =
+        |h: HolePos| bb_coords(h).0 < boards_end && (strip_of(h).is_some() || rail_of(h).is_some());
 
     // Pin positions and covered holes of every laid-out part.
     let mut pin_at: BTreeMap<PinRef, HolePos> = BTreeMap::new();

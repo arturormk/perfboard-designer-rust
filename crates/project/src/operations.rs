@@ -456,7 +456,7 @@ fn check_saddle(
     if saddle.start == saddle.end
         || [saddle.start, saddle.end]
             .iter()
-            .any(|hole| hole.x >= size.holes_x() || hole.y >= size.holes_y())
+            .any(|hole| !size.contains_hole(*hole))
     {
         return Err(OperationError::InvalidSaddle);
     }
@@ -516,11 +516,11 @@ pub(crate) fn apply_operation_untracked(
             let translate_hole = |point: &mut HolePos| -> Result<(), OperationError> {
                 let x = i64::from(point.x)
                     .checked_add(*offset_x)
-                    .and_then(|value| u32::try_from(value).ok())
+                    .and_then(|value| i32::try_from(value).ok())
                     .ok_or(OperationError::BoardResizeOutOfRange)?;
                 let y = i64::from(point.y)
                     .checked_add(*offset_y)
-                    .and_then(|value| u32::try_from(value).ok())
+                    .and_then(|value| i32::try_from(value).ok())
                     .ok_or(OperationError::BoardResizeOutOfRange)?;
                 *point = HolePos::new(x, y);
                 Ok(())
@@ -1648,7 +1648,7 @@ mod tests {
         .unwrap()
     }
 
-    fn point_instance(definition: &ComponentDefinition, x: u32) -> ComponentInstance {
+    fn point_instance(definition: &ComponentDefinition, x: i32) -> ComponentInstance {
         ComponentInstance {
             id: ComponentInstanceId::new(),
             definition_id: definition.id.clone(),
@@ -1786,7 +1786,7 @@ mod tests {
         )
     }
 
-    fn add_unnamed(document: &mut ProjectDocument, definition: &ComponentDefinition, x: u32) {
+    fn add_unnamed(document: &mut ProjectDocument, definition: &ComponentDefinition, x: i32) {
         let mut instance = point_instance(definition, x);
         instance.name = " ".into();
         let request = operation(

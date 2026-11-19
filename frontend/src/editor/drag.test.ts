@@ -22,9 +22,9 @@ describe("snapped component dragging", () => {
     ).toEqual({ x: 5, y: 4 });
   });
 
-  it("keeps the component origin at non-negative board coordinates", () => {
+  it("lets the component leave the board to the left and above", () => {
     expect(
       snappedDragPosition({ x: 1, y: 1 }, { x: 2, y: 2 }, { x: -5, y: -4 }),
-    ).toEqual({ x: 0, y: 0 });
+    ).toEqual({ x: -6, y: -5 });
   });
 });
