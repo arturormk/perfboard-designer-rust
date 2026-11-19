@@ -9,6 +9,10 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Hovering over a bridge end that shares its hole with a part's pin shows that
+  pin in the tooltip and status bar (its number, name, part and net), not
+  the bridge end.
+
 - The parts library keeps its search text and scroll position when you switch
   to Nets or History, hide the left panel or change modes, so placing several
   parts of the same kind no longer means finding it again each time.

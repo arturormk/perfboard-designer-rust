@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  bridgeEndAt,
+  describedPin,
   netForWireStart,
   netsAtPin,
   parsePinKey,
@@ -25,6 +27,46 @@ describe("pin hit testing", () => {
       { component_id: "b1", pin_id: "a" },
     ]);
     expect(pinsAt(design, { x: 9, y: 7 })).toEqual([]);
+  });
+
+  it("describes the part pin under a bridge end, not the bridge", () => {
+    const design = testDesign();
+    expect(describedPin(design, { component_id: "b1", pin_id: "a" })).toEqual(
+      { component_id: "r1", pin_id: "b" },
+    );
+    // A part's own pin is described as itself.
+    expect(describedPin(design, { component_id: "r1", pin_id: "b" })).toEqual(
+      { component_id: "r1", pin_id: "b" },
+    );
+  });
+
+  it("finds the bridge end under the pointer", () => {
+    const design = testDesign();
+    expect(bridgeEndAt(design, "b1", { x: 3.1, y: 0.9 })).toEqual({
+      component_id: "b1",
+      pin_id: "a",
+    });
+    // Mid-span, and on a part that is not a bridge, there is no end.
+    const [a, b] = ["a", "b"].map((pin_id) => {
+      const instance = design.components!.b1!;
+      const pin = design.component_definitions![instance.definition_id]!.pins.find(
+        (item) => item.id === pin_id,
+      )!;
+      return { x: instance.position.x + pin.x, y: instance.position.y + pin.y };
+    });
+    expect(
+      bridgeEndAt(design, "b1", { x: (a!.x + b!.x) / 2, y: (a!.y + b!.y) / 2 }),
+    ).toBeUndefined();
+    expect(bridgeEndAt(design, "r1", { x: 3, y: 1 })).toBeUndefined();
+  });
+
+  it("keeps a bridge end that sits alone in its hole", () => {
+    const design = testDesign();
+    const bridge = design.components!.b1!;
+    bridge.position = { x: 9, y: 7 };
+    expect(describedPin(design, { component_id: "b1", pin_id: "a" })).toEqual(
+      { component_id: "b1", pin_id: "a" },
+    );
   });
 
   it("only lets bridges take wires on the solder side", () => {

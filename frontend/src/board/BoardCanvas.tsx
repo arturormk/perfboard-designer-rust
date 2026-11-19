@@ -89,6 +89,8 @@ import {
   snappedRoutePoint,
 } from "../editor/wire-routing";
 import {
+  bridgeEndAt,
+  describedPin,
   netForWireStart,
   netsAtPin,
   parsePinKey,
@@ -1162,9 +1164,25 @@ export function BoardCanvas() {
     const saddleEl = element.closest<SVGElement>("[data-saddle]");
     const partEl = element.closest<SVGElement>("[data-component]");
     const airEl = element.closest<SVGElement>("[data-airwire]");
+    const current = designSignal.peek();
+    // Over the end of a bridge, describe the pin it is soldered to: the
+    // bridge's ends are drawn as part of its body, so they carry no data-pin.
+    const point =
+      partEl && !pinEl && !airEl && svgRef.current
+        ? clientToCanonical(svgRef.current, event.clientX, event.clientY)
+        : undefined;
+    const bridgeEnd =
+      current && point
+        ? bridgeEndAt(current, partEl!.dataset.component!, point)
+        : undefined;
+    const pinRef = pinEl ? parsePinKey(pinEl.dataset.pin!) : bridgeEnd;
     let next: HoverTarget | null = null;
-    if (pinEl) next = { kind: "pin", ref: parsePinKey(pinEl.dataset.pin!) };
-    else if (airEl) {
+    if (pinRef) {
+      next = {
+        kind: "pin",
+        ref: current ? describedPin(current, pinRef) : pinRef,
+      };
+    } else if (airEl) {
       const airwire = airwires.peek()[Number(airEl.dataset.airwire)];
       if (airwire) next = { kind: "airwire", netId: airwire.netId };
     } else if (saddleEl)

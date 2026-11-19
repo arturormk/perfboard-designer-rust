@@ -29,6 +29,48 @@ export function pinsAt(design: Design, point: Point): PinRef[] {
 }
 
 /**
+ * The pin worth describing when the pointer is over `ref`. A bridge end says
+ * nothing useful by itself, so if a part's pin shares its hole, that pin is
+ * described instead. Any other pin, or a bridge end alone in its hole, is
+ * returned unchanged.
+ */
+export function describedPin(design: Design, ref: PinRef): PinRef {
+  const instance = design.components?.[ref.component_id];
+  if (!isBridge(definitionOf(design, instance))) return ref;
+  const pin = definitionOf(design, instance)!.pins.find(
+    (item) => item.id === ref.pin_id,
+  );
+  if (!instance || !pin) return ref;
+  const underlying = pinsAt(design, pinBoardPosition(instance, pin)).find(
+    (candidate) =>
+      !isBridge(definitionOf(design, design.components?.[candidate.component_id])),
+  );
+  return underlying ?? ref;
+}
+
+/**
+ * The end of bridge `componentId` under the board point `point`, if the
+ * point lies within `radius` holes of one. Bridge ends are drawn as part of
+ * the bridge's body, so the pointer over one hits the bridge, not a pin.
+ */
+export function bridgeEndAt(
+  design: Design,
+  componentId: string,
+  point: Point,
+  radius = 0.35,
+): PinRef | undefined {
+  const instance = design.components?.[componentId];
+  const definition = definitionOf(design, instance);
+  if (!instance || !isBridge(definition)) return undefined;
+  for (const pin of definition!.pins) {
+    const end = pinBoardPosition(instance, pin);
+    if (Math.hypot(end.x - point.x, end.y - point.y) <= radius)
+      return { component_id: componentId, pin_id: pin.id };
+  }
+  return undefined;
+}
+
+/**
  * Chooses the terminal a dragged wire end should attach to: the current one
  * if still under the pointer, otherwise a pin already on the wire's net,
  * otherwise any pin at that hole.
