@@ -291,6 +291,30 @@ fn permanent_example_contains_four_complete_manual_routes() {
 }
 
 #[test]
+fn a_new_net_cannot_take_an_existing_net_name() {
+    let mut document = fixture();
+    let define = |document: &mut ProjectDocument, name: &str| {
+        apply(
+            document,
+            OperationPayload::DefineNet {
+                net: ElectricalNet {
+                    id: NetId::new(),
+                    name: name.into(),
+                    state: ConnectionState::Accepted,
+                    pins: BTreeSet::new(),
+                    notes: String::new(),
+                },
+            },
+        )
+    };
+    define(&mut document, "SENSOR-OUT-STEP-1").unwrap();
+    let before = document.design.nets.len();
+    assert!(define(&mut document, "SENSOR-OUT-STEP-1").is_err());
+    assert!(define(&mut document, " sensor-out-step-1 ").is_err());
+    assert_eq!(document.design.nets.len(), before);
+}
+
+#[test]
 fn nets_can_be_renamed_to_unique_non_empty_names() {
     let mut document = fixture();
     let define = |document: &mut ProjectDocument, name: &str| {

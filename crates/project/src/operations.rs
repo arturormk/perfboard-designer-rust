@@ -924,6 +924,15 @@ pub(crate) fn apply_operation_untracked(
             if next.design.nets.contains_key(&net.id) {
                 return Err(OperationError::DuplicateNet);
             }
+            let name = net.name.trim();
+            if next
+                .design
+                .nets
+                .values()
+                .any(|other| other.name.trim().eq_ignore_ascii_case(name))
+            {
+                return Err(OperationError::NetNameTaken(name.to_owned()));
+            }
             next.design.nets.insert(net.id, net.clone());
             let before = next.design.nets.clone();
             for pin in &net.pins {

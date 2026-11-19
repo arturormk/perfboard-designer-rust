@@ -9,6 +9,11 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- A new net can no longer take the name of an existing one (case and
+  surrounding spaces are ignored, as when renaming). Before, defining a net
+  twice made a second, empty net with the same name, which was then reported
+  as having fewer than two pins while the real net looked complete.
+
 - Bridges can be made on the component side: a part's lead bent flat across
   the holes instead of a solder-side link. Use the bridge tool (**B**) while
   viewing the component side, or switch an existing bridge under **Made on**

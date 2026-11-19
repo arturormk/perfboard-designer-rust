@@ -1139,6 +1139,13 @@ export async function createNet(
   state: ElectricalNet["state"] = "accepted",
   pins: PinRef[] = [],
 ): Promise<string | undefined> {
+  const clash = Object.values(design.peek()?.nets ?? {}).find(
+    (other) => other.name.trim().toUpperCase() === name.trim().toUpperCase(),
+  );
+  if (clash) {
+    toast("info", `Another net is already named ${clash.name}`);
+    return undefined;
+  }
   const id = crypto.randomUUID();
   const ok = await mutate(
     { type: "define_net", net: { id, name, state, pins, notes: "" } },
