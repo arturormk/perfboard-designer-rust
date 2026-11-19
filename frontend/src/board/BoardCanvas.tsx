@@ -10,6 +10,7 @@ import type {
   ComponentDefinition,
   ElectricalNet,
   Rotation,
+  Side,
   TerminalRef,
 } from "../api/project";
 import {
@@ -51,6 +52,8 @@ import {
   showPartValues,
   showRatsnest,
   side,
+  mirrorSolder,
+  viewFlipped,
   splitCompare,
   tool,
   view,
@@ -190,6 +193,16 @@ function clientToCanonical(
   return { x: point.x, y: point.y };
 }
 
+/**
+ * The side whose left-right orientation view space follows: the solder side
+ * reads right-to-left unless it is mirrored, in which case it lines up with
+ * the component side.
+ */
+function viewSide(track = false): Side {
+  const flipped = track ? viewFlipped.value : viewFlipped.peek();
+  return flipped ? "solder" : "component";
+}
+
 function clientToView(
   svg: SVGSVGElement,
   clientX: number,
@@ -267,7 +280,9 @@ export function BoardCanvas() {
     const box = viewBox.value;
     const target = designSignal.value;
     if (!box || !target) return 100;
-    return Math.round((contentViewBox(target, side.value)[2] / box[2]) * 100);
+    return Math.round(
+      (contentViewBox(target, viewSide(true))[2] / box[2]) * 100,
+    );
   });
 
   const current = designSignal.value;
@@ -292,14 +307,14 @@ export function BoardCanvas() {
     const target = designSignal.peek();
     if (!request || !target) return;
     if (request.nonce < 0) {
-      viewBox.value = contentViewBox(target, side.peek());
+      viewBox.value = contentViewBox(target, viewSide());
       return;
     }
-    const left = viewX(request.x, target.board.holes_x, side.peek());
+    const left = viewX(request.x, target.board.holes_x, viewSide());
     const right = viewX(
       request.x + request.width,
       target.board.holes_x,
-      side.peek(),
+      viewSide(),
     );
     const pad = 3;
     const width = Math.max(request.width + pad * 2, 10);
@@ -314,13 +329,14 @@ export function BoardCanvas() {
     if (request) zoomCenter(request.factor);
   });
 
-  // Mirror the camera when flipping sides so the same region stays in view.
-  const lastSide = useRef(side.peek());
+  // Mirror the camera when the view flips (changing sides, or mirroring the
+  // solder side) so the same region stays in view.
+  const lastFlipped = useRef(viewFlipped.peek());
   useSignalEffect(() => {
-    const currentSide = side.value;
+    const flipped = viewFlipped.value;
     const target = designSignal.peek();
     const box = viewBox.peek();
-    if (lastSide.current !== currentSide && target && box) {
+    if (lastFlipped.current !== flipped && target && box) {
       const [x, y, width, height] = box;
       viewBox.value = [
         target.board.holes_x - 1 - (x + width),
@@ -329,7 +345,7 @@ export function BoardCanvas() {
         height,
       ];
     }
-    lastSide.current = currentSide;
+    lastFlipped.current = flipped;
   });
 
   useEffect(() => {
@@ -482,7 +498,7 @@ export function BoardCanvas() {
   }
 
   if (!current) return <div class="canvas-empty">Loading board…</div>;
-  if (!viewBox.peek()) viewBox.value = contentViewBox(current, side.peek());
+  if (!viewBox.peek()) viewBox.value = contentViewBox(current, viewSide());
   const target = current;
   const board = target.board;
   const maxX2 = (board.holes_x - 1) * 2;
@@ -1279,7 +1295,7 @@ export function BoardCanvas() {
         active.handle,
         dx,
         dy,
-        side.peek() === "solder",
+        viewFlipped.peek(),
       );
       if (plan) gesture.value = { ...active, plan, dx, dy };
     }
@@ -1637,6 +1653,7 @@ export function BoardCanvas() {
 
   const sceneProps = {
     side: side.value,
+    mirrored: mirrorSolder.value,
     pinLabels: pinLabels.value,
     fade: fadeComponents.value,
     wireLabels: wireLabelMap.value,
@@ -1742,7 +1759,7 @@ export function BoardCanvas() {
         </svg>
         <CanvasHud
           onZoom={zoomCenter}
-          onFit={() => (viewBox.value = contentViewBox(target, side.peek()))}
+          onFit={() => (viewBox.value = contentViewBox(target, viewSide()))}
           zoomPercent={zoomPercent}
           wireDrafting={Boolean(wireDraft.value)}
           railDrafting={Boolean(railDraft.value)}

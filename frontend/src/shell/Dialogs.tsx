@@ -309,6 +309,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ["S", "Saddle (wire tie) tool"],
   ["R", "Rotate selected part (or part being placed)"],
   ["F", "Flip to the other board side"],
+  ["M", "Solder side: mirror it, or see it from below"],
   ["Arrows", "Nudge selected part by one hole"],
   ["Delete", "Remove selection"],
   ["Esc", "Cancel / deselect"],

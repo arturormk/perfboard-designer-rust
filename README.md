@@ -140,8 +140,12 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
   soldered into both holes; it belongs to no net, so its holes must stay clear
   of pins, wires, rails and junctions, and the router avoids them.
 - **Component side / Solder side** switches the face. The solder side is
-  mirrored, as seen when the board is flipped; only the presentation is
-  mirrored and stored coordinates stay canonical.
+  shown from below, as when the board is turned over. Press `M` (or click the
+  tag under the switch) to mirror it instead: every hole stays where it is on
+  the component side, so a part or wire is at the same spot on both faces, and
+  all labels read backwards so the mirror view is never mistaken for the real
+  underside. Only the presentation changes; stored coordinates stay
+  canonical.
 - **Problems** lists validation findings with advice; clicking one frames the
   object. Manual edits may temporarily leave a part out of bounds or
   overlapping; the edit is kept and reported until resolved. An edit is refused

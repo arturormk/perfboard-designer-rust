@@ -10,6 +10,7 @@ import {
   problemCounts,
   rightTab,
   side,
+  mirrorSolder,
   tool,
   view,
 } from "../state/store";
@@ -73,7 +74,9 @@ export function StatusBar() {
           <span class="status-side">
             {side.value === "component"
               ? "Component side"
-              : "Solder side · mirrored"}
+              : mirrorSolder.value
+                ? "Solder side · mirrored"
+                : "Solder side · from below"}
           </span>
         </>
       )}

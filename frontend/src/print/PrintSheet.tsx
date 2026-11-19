@@ -219,7 +219,7 @@ export function PrintSheet() {
             <figcaption>
               {face === "component"
                 ? "Component side"
-                : "Solder side (mirrored, as seen when flipped)"}
+                : "Solder side (seen from below, as when flipped)"}
             </figcaption>
           </figure>
         ))}

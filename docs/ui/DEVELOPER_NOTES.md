@@ -81,8 +81,13 @@ src/
   `fromRoute`.
 - The solder side is a presentation transform only:
   `translate(holes_x-1 0) scale(-1 1)` on the geometry group. Text is drawn
-  outside that group at `viewX(x)`, so it is never mirrored. Stored
-  coordinates are always canonical.
+  outside that group at `viewX(x)`, so it stays readable in the from-below
+  view. With `mirrorSolder` on, `BoardScene` wraps the whole scene, text
+  included, in the same flip once more: geometry lands on its component-side
+  positions and labels read backwards. Pointer mapping uses the geometry
+  group's CTM, so it follows; view-space math (camera, fit, resize, arrow
+  nudges) goes through `viewFlipped`, not `side`. Stored coordinates are
+  always canonical.
 - Bridges are components with `kind: "bridge"` on the solder side.
 
 ## Conventions

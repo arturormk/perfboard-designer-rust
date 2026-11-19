@@ -106,6 +106,22 @@ export const placing = signal<ComponentDefinition | null>(null);
 export const busy = signal<string | null>(null);
 
 export const side = signal<Side>("component");
+/**
+ * Show the solder side as a mirror image instead of as seen from below: every
+ * hole stays where it is on the component side, so a part or wire can be
+ * found at the same spot on both faces. Labels are mirrored too, so the view
+ * cannot be mistaken for the real underside.
+ */
+export const mirrorSolder = signal(
+  localStorage.getItem("perfboard.mirrorSolder") === "1",
+);
+mirrorSolder.subscribe((on) =>
+  localStorage.setItem("perfboard.mirrorSolder", on ? "1" : "0"),
+);
+/** Whether view space runs right-to-left: the solder side seen from below. */
+export const viewFlipped = computed(
+  () => side.value === "solder" && !mirrorSolder.value,
+);
 export const fadeComponents = signal(false);
 export const pinLabels = signal<PinLabelMode>("numbers");
 /** Show part values (10 kΩ, 100 nF) under part names on the board. */

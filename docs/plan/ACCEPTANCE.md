@@ -235,8 +235,10 @@ version, the package type, and any step that fails.
   inventory and route a connection of its length: the suggestion uses it.
   Make two wires cross on the same side: the crossing is shown and listed in
   Problems, and choosing which goes on top is recorded.
-- **M9. Both sides.** Flip to the solder side (**F**): the board is mirrored,
-  and solder-side wires are drawn on it.
+- **M9. Both sides.** Flip to the solder side (**F**): the board is shown
+  from below, and solder-side wires are drawn on it. Press **M**: the solder
+  side is mirrored, parts and wires sit where they are on the component side,
+  and every label reads backwards. Press **M** again to return.
 - **M10. History.** Commit. Move a part and delete a wire, then compare with
   the commit: the differences are shown. Undo both changes. Make another
   change, commit, then restore the first commit.

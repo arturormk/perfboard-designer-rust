@@ -9,6 +9,13 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- The solder side can be mirrored (**M**, or the tag under the side switch).
+  In the mirror view each part and wire stays where it is on the component
+  side, so you can switch faces without hunting for the matching spot, and
+  every label reads backwards so the view cannot be mistaken for the real
+  underside. The usual solder view is now labelled "from below" rather than
+  "mirrored", since it shows the board as it looks when turned over.
+
 - Hovering over a bridge end that shares its hole with a part's pin shows that
   pin in the tooltip and status bar (its number, name, part and net), not
   the bridge end.

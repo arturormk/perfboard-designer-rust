@@ -747,14 +747,14 @@ function AssemblyCanvas({ plan: current }: { plan: AssemblyPlan }) {
                 onClick={() => (shownSide.value = face)}
                 title={
                   face === "solder"
-                    ? "Solder side, seen from below (mirrored)"
+                    ? "Solder side, seen from below"
                     : "Component side, seen from above"
                 }
               >
                 {SIDE_NAME[face]}
               </button>
             ))}
-            {side === "solder" && <span class="mirror-tag">mirrored</span>}
+            {side === "solder" && <span class="mirror-tag">from below</span>}
           </div>
         </div>
         <div class="hud hud-bottom-left">

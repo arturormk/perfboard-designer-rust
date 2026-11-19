@@ -187,6 +187,22 @@
   white-space: nowrap;
 }
 
+button.mirror-tag {
+  border: 1px solid transparent;
+  color: var(--text-2);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+button.mirror-tag:hover {
+  border-color: rgb(255 255 255 / 18%);
+}
+
+button.mirror-tag.on {
+  color: var(--copper);
+  border-color: var(--copper);
+}
+
 .tool-options {
   display: flex;
   flex-wrap: wrap;

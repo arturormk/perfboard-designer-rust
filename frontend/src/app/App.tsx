@@ -41,6 +41,8 @@ import {
   rightTab,
   selection,
   side,
+  mirrorSolder,
+  viewFlipped,
   view,
   welcomeDismissed,
   zoomRequest,
@@ -114,6 +116,10 @@ function handleKey(event: KeyboardEvent): void {
     case "F":
       side.value = side.value === "component" ? "solder" : "component";
       return;
+    case "m":
+    case "M":
+      mirrorSolder.value = !mirrorSolder.value;
+      return;
     case "0":
       focusBoard();
       return;
@@ -150,8 +156,8 @@ function handleKey(event: KeyboardEvent): void {
       return;
     }
     const step: Record<string, [number, number]> = {
-      ArrowLeft: [side.value === "solder" ? 1 : -1, 0],
-      ArrowRight: [side.value === "solder" ? -1 : 1, 0],
+      ArrowLeft: [viewFlipped.value ? 1 : -1, 0],
+      ArrowRight: [viewFlipped.value ? -1 : 1, 0],
       ArrowUp: [0, -1],
       ArrowDown: [0, 1],
     };

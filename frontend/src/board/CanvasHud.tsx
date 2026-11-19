@@ -18,6 +18,7 @@ import {
   showPartValues,
   showRatsnest,
   side,
+  mirrorSolder,
   splitCompare,
   tool,
   view,
@@ -103,11 +104,28 @@ function SideSwitch() {
         aria-checked={current === "solder"}
         class={current === "solder" ? "on" : ""}
         onClick={() => (side.value = "solder")}
-        title="Solder side, seen from below (mirrored)"
+        title={
+          mirrorSolder.value
+            ? "Solder side, mirrored: holes line up with the component side"
+            : "Solder side, seen from below"
+        }
       >
         Solder<span class="wide-only"> side</span>
       </button>
-      {current === "solder" && <span class="mirror-tag">mirrored</span>}
+      {current === "solder" && (
+        <button
+          class={`mirror-tag${mirrorSolder.value ? " on" : ""}`}
+          aria-pressed={mirrorSolder.value}
+          onClick={() => (mirrorSolder.value = !mirrorSolder.value)}
+          title={
+            mirrorSolder.value
+              ? "Mirrored: holes line up with the component side and labels read backwards. Click to see the solder side from below (M)"
+              : "Seen from below, as when the board is turned over. Click to mirror it so holes line up with the component side (M)"
+          }
+        >
+          {mirrorSolder.value ? "mirrored" : "from below"}
+        </button>
+      )}
     </div>
   );
 }

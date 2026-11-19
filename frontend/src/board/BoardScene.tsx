@@ -2,8 +2,10 @@
  * Declarative SVG scene for one face of the board.
  *
  * Geometry is drawn in canonical board units inside a group that mirrors the
- * solder side; text is drawn outside that group at mirrored positions so it
- * stays readable. Interactive elements carry `data-*` attributes that the
+ * solder side, as seen from below; text is drawn outside that group at
+ * mirrored positions so it stays readable. With `mirrored`, the whole solder
+ * scene, text included, is flipped once more: holes line up with the
+ * component side and every label reads backwards, as in a mirror. Interactive elements carry `data-*` attributes that the
  * canvas uses for hit-testing; the scene itself has no event handlers.
  */
 import type { ComponentChildren } from "preact";
@@ -87,6 +89,11 @@ export interface SceneProps {
   overlay?: ComponentChildren;
   /** Extra content in view space (readable text). */
   viewOverlay?: ComponentChildren;
+  /**
+   * Show the solder side as a mirror image: holes at their component-side
+   * positions, labels drawn backwards. No effect on the component side.
+   */
+  mirrored?: boolean;
 }
 
 function points(vertices: Array<{ x2: number; y2: number }>): string {
@@ -497,12 +504,11 @@ function SaddleShape({
  * rebuild every part, wire and pad.
  */
 export function BoardScene(props: SceneProps) {
-  const { overlay, viewOverlay, ...layerProps } = props;
+  const { overlay, viewOverlay, mirrored, ...layerProps } = props;
   const { design, side, mode, fade, emphasisNetId } = props;
-  const mirror =
-    side === "solder"
-      ? `translate(${design.board.holes_x - 1} 0) scale(-1 1)`
-      : undefined;
+  const flip = `translate(${design.board.holes_x - 1} 0) scale(-1 1)`;
+  const mirror = side === "solder" ? flip : undefined;
+  const mirrorAll = side === "solder" && mirrored;
   return (
     <g
       class={classes(
@@ -511,14 +517,17 @@ export function BoardScene(props: SceneProps) {
         `mode-${mode}`,
         fade && "faded",
         emphasisNetId && "has-emphasis",
+        mirrorAll && "mirrored",
       )}
     >
-      <SceneLayers {...layerProps} />
-      {overlay && (
-        <g class="geometry" transform={mirror}>
-          {overlay}
-        </g>
-      )}
+      <g class="mirror" transform={mirrorAll ? flip : undefined}>
+        <SceneLayers {...layerProps} />
+        {overlay && (
+          <g class="geometry" transform={mirror}>
+            {overlay}
+          </g>
+        )}
+      </g>
       {viewOverlay && <g class="labels">{viewOverlay}</g>}
     </g>
   );
