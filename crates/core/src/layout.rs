@@ -28,4 +28,11 @@ pub struct ComponentInstance {
     /// definition's kind is `jumper`; a shunted jumper joins its two pins.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub shunted: bool,
+    /// Whether a bridge is made on the component side, by laying a part's
+    /// lead across the holes, rather than on the solder side. Only
+    /// meaningful when the definition's kind is `bridge`. Such a bridge is
+    /// still a conductor and takes up the holes it passes through; the
+    /// assembly plan folds it into the step of the part whose lead it is.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub component_side: bool,
 }

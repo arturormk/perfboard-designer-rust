@@ -162,6 +162,7 @@ pub fn validate_design_placements(
             });
         }
     }
+    diagnostics.extend(lead_bridge_conflicts(definitions, instances));
     for (id, instance) in instances {
         let Some(definition) = definitions.get(&instance.definition_id) else {
             continue;
@@ -201,6 +202,58 @@ pub fn validate_design_placements(
             .then(left.message.cmp(&right.message))
     });
     diagnostics.dedup();
+    diagnostics
+}
+
+/// Pins sitting in a hole that a component-side bridge's lead passes over.
+///
+/// A component-side bridge is a part's lead laid across the board, so a hole
+/// shared by two such bridges has the lead lying over it and cannot take a
+/// pin. The holes where a run of them starts and ends can: one holds the
+/// lead's own pin, the other is where the lead goes through to be soldered.
+fn lead_bridge_conflicts(
+    definitions: &BTreeMap<String, ComponentDefinition>,
+    instances: &BTreeMap<ComponentInstanceId, ComponentInstance>,
+) -> Vec<Diagnostic> {
+    let mut ends = BTreeMap::<(i64, i64), Vec<ComponentInstanceId>>::new();
+    for (id, instance) in instances {
+        let Some(definition) = definitions.get(&instance.definition_id) else {
+            continue;
+        };
+        if definition.kind != ComponentKind::Bridge || !instance.component_side {
+            continue;
+        }
+        for pin in &definition.pins {
+            ends.entry(transform(instance, LocalPos::new(pin.x, pin.y)))
+                .or_default()
+                .push(*id);
+        }
+    }
+    let mut diagnostics = Vec::new();
+    for (id, instance) in instances {
+        let Some(definition) = definitions.get(&instance.definition_id) else {
+            continue;
+        };
+        if definition.kind == ComponentKind::Bridge {
+            continue;
+        }
+        for pin in &definition.pins {
+            let point = transform(instance, LocalPos::new(pin.x, pin.y));
+            if let Some(bridges) = ends.get(&point).filter(|bridges| bridges.len() > 1) {
+                let mut objects = vec![object(*id)];
+                objects.extend(bridges.iter().map(|bridge| object(*bridge)));
+                diagnostics.push(Diagnostic {
+                    code: DiagnosticCode("placement.lead_bridge_over_pin".into()),
+                    severity: DiagnosticSeverity::Error,
+                    message: format!(
+                        "{} has pin {} in a hole that a component-side bridge's lead passes over",
+                        instance.name, pin.number
+                    ),
+                    objects,
+                });
+            }
+        }
+    }
     diagnostics
 }
 
@@ -261,6 +314,7 @@ mod tests {
             properties: BTreeMap::new(),
             notes: String::new(),
             shunted: false,
+            component_side: false,
         }
     }
 
@@ -287,6 +341,42 @@ mod tests {
             &instances,
         );
         assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    }
+
+    #[test]
+    fn component_side_bridge_lead_cannot_pass_over_a_pin() {
+        // A lead bridged (0,1)-(1,1)-(2,1) lies over hole (1,1).
+        let part = definition(
+            "schema_version=1\nid='part'\ndefinition_version='1'\nname='Part'\nallowed_rotations=['deg0']\n[body]\nx=-1\ny=-1\nwidth=2\nheight=2\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0",
+        );
+        let bridge = definition(
+            "schema_version=1\nkind='bridge'\nid='bridge'\ndefinition_version='1'\nname='Bridge'\nallowed_rotations=['deg0']\n[body]\nx=0\ny=-0.2\nwidth=2.54\nheight=0.4\n[[pins]]\nid='a'\nnumber='A'\nname='A'\nx=0\ny=0\n[[pins]]\nid='b'\nnumber='B'\nname='B'\nx=1\ny=0",
+        );
+        let codes = |component_side: bool, pin_x: i32| {
+            let mut first = instance(&bridge.id, 0, 1);
+            let mut second = instance(&bridge.id, 1, 1);
+            first.component_side = component_side;
+            second.component_side = component_side;
+            let placed = instance(&part.id, pin_x, 1);
+            validate_design_placements(
+                BoardSize::new(4, 4).unwrap(),
+                &BoardFeatures::default(),
+                &BTreeMap::from([
+                    (part.id.clone(), part.clone()),
+                    (bridge.id.clone(), bridge.clone()),
+                ]),
+                &BTreeMap::from([(first.id, first), (second.id, second), (placed.id, placed)]),
+            )
+            .into_iter()
+            .map(|item| item.code.0)
+            .collect::<Vec<_>>()
+        };
+        assert_eq!(codes(true, 1), ["placement.lead_bridge_over_pin"]);
+        // The run's ends may hold a pin: the lead's own, or where it goes in.
+        assert_eq!(codes(true, 0), [] as [String; 0]);
+        assert_eq!(codes(true, 2), [] as [String; 0]);
+        // Solder-side bridges are soldered over the pads.
+        assert_eq!(codes(false, 1), [] as [String; 0]);
     }
 
     #[test]

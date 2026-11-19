@@ -47,6 +47,7 @@ fn place(document: &mut ProjectDocument, toml: &str, x: i32) -> ComponentInstanc
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
+                component_side: false,
             },
         },
     )
@@ -428,4 +429,123 @@ fn a_transaction_is_checked_only_at_its_end() {
         error.to_string().to_lowercase().contains("short"),
         "{error}"
     );
+}
+
+fn place_bridge(document: &mut ProjectDocument, x: i32) -> ComponentInstanceId {
+    let id = place(document, BRIDGE, x);
+    apply(
+        document,
+        OperationPayload::SetBridgeSide {
+            instance_id: id,
+            side: Side::Component,
+        },
+    )
+    .unwrap();
+    id
+}
+
+/// A pin at hole 0 whose lead runs over holes 1 and 2 on the component side
+/// (two component-side bridges) into a solder bridge from hole 2 to hole 3,
+/// where another pin sits.
+#[test]
+fn component_side_bridges_are_made_with_the_owning_parts_lead() {
+    let mut document = ProjectDocument::new(
+        ProjectId::new(),
+        "lead bridges",
+        Board::new("board", BoardSize::new(8, 4).unwrap(), 2.54),
+    );
+    let owner = place(&mut document, PIN, 0);
+    let first = place_bridge(&mut document, 0);
+    let second = place_bridge(&mut document, 1);
+    let solder = place(&mut document, BRIDGE, 2);
+    let far = place(&mut document, PIN, 3);
+    net(&mut document, "X", &[pin(owner, "p"), pin(far, "p")]);
+    assert!(
+        document.design.components[&first].component_side,
+        "the operation moves the bridge to the component side"
+    );
+
+    // The bridges are copper: the net is complete without a wire.
+    let connectivity = perfboard_project::net_connectivity(&document.design);
+    assert_eq!(connectivity[0].islands.len(), 1, "{connectivity:?}");
+
+    let plan = perfboard_project::assembly_plan(&document.design, document.revision);
+    let step_of = |id: ComponentInstanceId| {
+        plan.steps
+            .iter()
+            .position(|step| {
+                step.objects
+                    .iter()
+                    .any(|object| object.id == id.to_string())
+            })
+            .unwrap()
+    };
+    // No step of their own: they are part of the pin's step.
+    assert_eq!(step_of(first), step_of(owner));
+    assert_eq!(step_of(second), step_of(owner));
+    let owner_step = &plan.steps[step_of(owner)];
+    let text = owner_step.instructions.join(" ");
+    assert!(text.contains("over (1, 0)"), "{text}");
+    assert!(text.contains("through (2, 0)"), "{text}");
+    assert!(text.contains("lead's end at (2, 0)"), "{text}");
+    // The solder bridge joins the lead's end, so it comes after.
+    assert!(step_of(solder) > step_of(owner));
+    assert!(
+        plan.steps[step_of(solder)]
+            .after
+            .iter()
+            .any(|dependency| dependency.step_id == owner_step.id),
+        "{:?}",
+        plan.steps[step_of(solder)].after
+    );
+    assert!(
+        plan.warnings
+            .iter()
+            .all(|w| w.code != "assembly.lead_bridge_unattached")
+    );
+}
+
+#[test]
+fn a_component_side_bridge_with_no_lead_gets_its_own_step_and_a_warning() {
+    let mut document = ProjectDocument::new(
+        ProjectId::new(),
+        "lone lead bridge",
+        Board::new("board", BoardSize::new(8, 4).unwrap(), 2.54),
+    );
+    let lone = place_bridge(&mut document, 4);
+    let plan = perfboard_project::assembly_plan(&document.design, document.revision);
+    let step = plan
+        .steps
+        .iter()
+        .find(|step| {
+            step.objects
+                .iter()
+                .any(|object| object.id == lone.to_string())
+        })
+        .unwrap();
+    assert_eq!(step.side, Side::Component);
+    assert!(
+        plan.warnings
+            .iter()
+            .any(|w| w.code == "assembly.lead_bridge_unattached")
+    );
+}
+
+#[test]
+fn only_bridges_change_side() {
+    let mut document = ProjectDocument::new(
+        ProjectId::new(),
+        "not a bridge",
+        Board::new("board", BoardSize::new(8, 4).unwrap(), 2.54),
+    );
+    let part = place(&mut document, PIN, 0);
+    let error = apply(
+        &mut document,
+        OperationPayload::SetBridgeSide {
+            instance_id: part,
+            side: Side::Component,
+        },
+    )
+    .unwrap_err();
+    assert!(error.contains("not a bridge"), "{error}");
 }

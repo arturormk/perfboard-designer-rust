@@ -198,6 +198,9 @@ export interface ComponentInstance {
   notes?: string;
   /** A fitted shunt on a `jumper` part joins its two pins. */
   shunted?: boolean;
+  /** A `bridge` made on the component side, by laying a part's lead across
+   * the holes, instead of a solder-side link. */
+  component_side?: boolean;
 }
 export type Side = "component" | "solder";
 export type ConnectionState = "proposed" | "accepted";
@@ -452,6 +455,7 @@ export type OperationPayload =
       notes: string;
     }
   | { type: "set_jumper_shunt"; instance_id: string; shunted: boolean }
+  | { type: "set_bridge_side"; instance_id: string; side: Side }
   | { type: "set_component_value"; instance_id: string; value: string }
   | { type: "define_net"; net: ElectricalNet }
   | { type: "remove_net"; net_id: string }

@@ -140,6 +140,21 @@ function ComponentBody({
   if (definition.kind === "bridge") {
     const [a, b] = definition.pins;
     if (!a || !b) return null;
+    if (instance.component_side) {
+      // Made with a part's lead laid across the holes: drawn as a thin lead,
+      // not a soldered link.
+      return (
+        <g
+          class={classes("bridge", "lead", opposite && "opposite", stateClass)}
+          transform={transform}
+          data-component={opposite ? undefined : instance.id}
+        >
+          <line class="bridge-hit" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+          <line class="bridge-casing" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+          <line class="bridge-wire" x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+        </g>
+      );
+    }
     return (
       <g
         class={classes("bridge", opposite && "opposite", stateClass)}
@@ -595,7 +610,11 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
     .map((instance) => {
       const definition = definitions[instance.definition_id];
       return definition
-        ? { instance, definition, ownSide: componentSide(definition) }
+        ? {
+            instance,
+            definition,
+            ownSide: componentSide(definition, instance),
+          }
         : undefined;
     })
     .filter((item): item is NonNullable<typeof item> => Boolean(item));
@@ -641,6 +660,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
               !design.components?.[instance.id] &&
               componentSide(
                 removedFrom.component_definitions?.[instance.definition_id],
+                instance,
               ) === side,
           ),
           wires: Object.values(removedFrom.wires ?? {}).filter(

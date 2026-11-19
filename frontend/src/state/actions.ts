@@ -911,7 +911,10 @@ export function sideOf(target: Design, item: Selection): Side | undefined {
   if (item.kind === "rail") return target.rails?.[item.id]?.side;
   if (item.kind === "saddle") return target.saddles?.[item.id]?.side;
   if (item.kind === "component")
-    return componentSide(definitionOf(target, target.components?.[item.id]));
+    return componentSide(
+      definitionOf(target, target.components?.[item.id]),
+      target.components?.[item.id],
+    );
   return undefined;
 }
 
@@ -1022,6 +1025,8 @@ export async function addBridge(from: Point, to: Point): Promise<void> {
         rotation,
         properties: {},
         notes: "",
+        // On the component side the bridge is made with a part's lead.
+        ...(side.peek() === "component" ? { component_side: true } : {}),
       },
     },
     { failure: "Could not place the bridge" },

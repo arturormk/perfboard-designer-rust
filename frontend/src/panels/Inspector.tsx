@@ -358,7 +358,7 @@ function ComponentInspector({
             }
           />
         }
-        subtitle={`${definition?.name ?? instance.definition_id}${bridge ? " · solder side" : ""}`}
+        subtitle={`${definition?.name ?? instance.definition_id}${bridge ? (instance.component_side ? " · component side" : " · solder side") : ""}`}
         onFocus={() => focusOn({ kind: "component", id: instance.id })}
       />
 
@@ -427,6 +427,38 @@ function ComponentInspector({
           Drag on the board, or use arrow keys to nudge one hole.
         </p>
       </Section>
+
+      {bridge && (
+        <Section title="Made on">
+          <div class="segmented">
+            {(["solder", "component"] as const).map((value) => {
+              const on =
+                (value === "component") === Boolean(instance.component_side);
+              return (
+                <button
+                  key={value}
+                  class={on ? "on" : ""}
+                  onClick={() => {
+                    if (on) return;
+                    void mutate({
+                      type: "set_bridge_side",
+                      instance_id: instance.id,
+                      side: value,
+                    });
+                  }}
+                >
+                  {value === "solder" ? "Solder side" : "Component side"}
+                </button>
+              );
+            })}
+          </div>
+          <p class="field-note">
+            {instance.component_side
+              ? "Made with a part's lead, bent flat across the holes. It still takes up both holes. The assembly plan makes it in that part's step."
+              : "A bare link or solder bridge between the pads, made after the parts are soldered."}
+          </p>
+        </Section>
+      )}
 
       {jumper && definition && (
         <Section title="Shunt">

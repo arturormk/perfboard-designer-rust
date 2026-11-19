@@ -59,6 +59,14 @@ copper, and the join is reported as a `circuit.shunt_joins_nets` advisory.
 `get_net_connectivity` lists, per net, the other nets it currently reaches
 through shunts (`joined_nets`, transitively) and the jumpers doing it
 (`shunts`). It is set with `set_jumper_shunt`, which refuses parts of other kinds.
+`component_side` marks a `bridge` made on the component side, with a part's
+lead bent flat across its two holes, rather than a solder-side link; it is set
+with `set_bridge_side` (`side`: `component` or `solder`), which refuses parts
+of other kinds, and is cleared on non-bridge parts when they are added. It
+conducts like any bridge. A hole shared by two component-side bridges has the
+lead lying over it, so a part's pin there is reported as
+`placement.lead_bridge_over_pin`. The assembly plan makes a run of them in the
+step of the first part with a pin in one of its holes.
 `update_component_metadata` also adopts a library change between `standard`
 and `jumper` when the pins are identical; going back to `standard` clears
 `shunted`. A cached `validation` array is stored when non-empty and

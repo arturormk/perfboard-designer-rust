@@ -42,6 +42,7 @@ fn add(session: &mut ProjectSession, name: &str, x: i32, y: i32) {
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,
+                    component_side: false,
                 },
                 definition,
             },

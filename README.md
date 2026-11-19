@@ -123,7 +123,10 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
   route, then accept or discard it, or press `1` to `5` to preview alternatives
   (a different path, fewest bends, shortest, the other side). Each click while
   drawing adds one straight segment, at any angle. Bridges (`B`) and rails
-  (`L`) have their own tools.
+  (`L`) have their own tools. A bridge placed on the solder side is a bare
+  link; one placed on the component side (drawn as a thin gray lead) means
+  "bend a part's lead across these holes" and is made in that part's
+  assembly step. The inspector moves a bridge between the two.
 - **Values**: give a part its value in the inspector's Value field.
   Resistors take `4k7`, `4.7k`, `4700` or `4R7` and show `4.7 kΩ`;
   capacitors take `100n`, `0.1u`, `22p` or the code `104` and show `100 nF`;

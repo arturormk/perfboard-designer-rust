@@ -85,11 +85,25 @@ export function isJumper(definition: ComponentDefinition | undefined): boolean {
   return definition?.kind === "jumper" && definition.pins.length === 2;
 }
 
-/** The board face a component is installed on. Bridges are solder-side links. */
+/**
+ * The board face a component is drawn on. Bridges are solder-side links
+ * unless made on the component side, by laying a part's lead across holes.
+ */
 export function componentSide(
   definition: ComponentDefinition | undefined,
+  instance?: Pick<ComponentInstance, "component_side">,
 ): Side {
-  return isBridge(definition) ? "solder" : "component";
+  return isBridge(definition) && !instance?.component_side
+    ? "solder"
+    : "component";
+}
+
+/** A bridge made on the component side, with a part's lead. */
+export function isLeadBridge(
+  definition: ComponentDefinition | undefined,
+  instance: Pick<ComponentInstance, "component_side"> | undefined,
+): boolean {
+  return isBridge(definition) && Boolean(instance?.component_side);
 }
 
 export function pinBoardPosition(

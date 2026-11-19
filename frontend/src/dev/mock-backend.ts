@@ -345,6 +345,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
     case "set_jumper_shunt":
       d.components![op.instance_id]!.shunted = op.shunted;
       return;
+    case "set_bridge_side":
+      d.components![op.instance_id]!.component_side = op.side === "component";
+      return;
     case "set_component_value":
       d.components![op.instance_id]!.value = mockNormalizeValue(op.value);
       return;

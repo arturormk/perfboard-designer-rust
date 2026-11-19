@@ -51,6 +51,7 @@ fn fixture() -> ProjectDocument {
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,
+                    component_side: false,
                 },
             },
         )

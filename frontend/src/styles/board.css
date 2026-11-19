@@ -935,6 +935,30 @@ button.mirror-tag.on {
   display: none;
 }
 
+/* A component-side bridge: a part's lead laid across the holes. Gray and
+   thinner than a solder-side link, like a lead, with no solder joints. */
+.bridge.lead .bridge-casing {
+  stroke: rgb(20 22 24 / 70%);
+  stroke-width: 0.17;
+}
+
+.bridge.lead .bridge-wire {
+  stroke: #8d9298;
+  stroke-width: 0.1;
+}
+
+.bridge.lead .bridge-hit {
+  stroke-width: 0.5;
+}
+
+.bridge.lead.hovered .bridge-wire {
+  stroke: #b4b9bf;
+}
+
+.bridge.lead.selected .bridge-wire {
+  stroke: var(--copper-strong);
+}
+
 /* Unrouted connections */
 .airwire {
   cursor: pointer;

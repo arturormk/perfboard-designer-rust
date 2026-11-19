@@ -9,6 +9,18 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Bridges can be made on the component side: a part's lead bent flat across
+  the holes instead of a solder-side link. Use the bridge tool (**B**) while
+  viewing the component side, or switch an existing bridge under **Made on**
+  in the inspector. They are drawn thin and gray, like a lead, still conduct
+  and take up the holes they cover (a pin in a hole the lead passes over is
+  an error). The bridge tool no longer flips to the solder side; it places
+  on the face you are viewing. In the assembly plan a run of component-side
+  bridges has no step of its own: the step of the part with a pin at its
+  start says to leave that lead long, bend it over the holes and push it
+  through the last one, and a solder-side bridge continuing from there comes
+  after. A run with no part at either end gets its own step and a warning.
+
 - The solder side can be mirrored (**M**, or the tag under the side switch).
   In the mirror view each part and wire stays where it is on the component
   side, so you can switch faces without hunting for the matching spot, and

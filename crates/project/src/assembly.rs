@@ -309,6 +309,116 @@ fn is_bridge(definition: &ComponentDefinition) -> bool {
     definition.kind == ComponentKind::Bridge
 }
 
+/// A bridge made on the solder side: a bare link or solder bridge.
+fn is_solder_bridge(instance: &ComponentInstance, definition: &ComponentDefinition) -> bool {
+    is_bridge(definition) && !instance.component_side
+}
+
+/// A run of touching component-side bridges, made by one part's lead.
+struct LeadRun {
+    /// Positions in `Context::components` of the bridges in the run.
+    bridges: Vec<usize>,
+    /// The part whose lead forms the run, and the number of that pin.
+    owner: Option<(usize, String)>,
+    /// The holes the lead covers, from its pin's hole to where it goes in.
+    path: Vec<RoutePos>,
+}
+
+/// Groups component-side bridges into runs and finds the part each run
+/// belongs to: the first part (in plan order) with a pin in one of its holes.
+fn lead_runs(context: &Context<'_>) -> Vec<LeadRun> {
+    let design = context.design;
+    let ends: Vec<(usize, [RoutePos; 2])> = context
+        .components
+        .iter()
+        .enumerate()
+        .filter(|(_, (instance, definition))| is_bridge(definition) && instance.component_side)
+        .filter_map(|(position, (instance, definition))| {
+            let mut holes = definition.pins.iter().filter_map(|pin| {
+                pin_position(
+                    design,
+                    &PinRef {
+                        component_id: instance.id,
+                        pin_id: pin.id.clone(),
+                    },
+                )
+            });
+            Some((position, [holes.next()?, holes.next()?]))
+        })
+        .collect();
+    let mut seen = vec![false; ends.len()];
+    let mut runs = Vec::new();
+    for start in 0..ends.len() {
+        if seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        let mut members = vec![start];
+        let mut cursor = 0;
+        while cursor < members.len() {
+            let [a, b] = ends[members[cursor]].1;
+            cursor += 1;
+            for (other, (_, [c, d])) in ends.iter().enumerate() {
+                if !seen[other] && [a, b].iter().any(|hole| hole == c || hole == d) {
+                    seen[other] = true;
+                    members.push(other);
+                }
+            }
+        }
+        let holes: BTreeSet<RoutePos> = members.iter().flat_map(|&m| ends[m].1).collect();
+        let owner = context
+            .components
+            .iter()
+            .enumerate()
+            .filter(|(_, (_, definition))| !is_bridge(definition))
+            .find_map(|(position, (instance, definition))| {
+                definition.pins.iter().find_map(|pin| {
+                    let hole = pin_position(
+                        design,
+                        &PinRef {
+                            component_id: instance.id,
+                            pin_id: pin.id.clone(),
+                        },
+                    )?;
+                    holes
+                        .contains(&hole)
+                        .then(|| (position, pin.number.clone(), hole))
+                })
+            });
+        // Walk the run from the owner's pin (or a free end) along its links.
+        let degree = |hole: &RoutePos| {
+            members
+                .iter()
+                .filter(|&&m| ends[m].1.contains(hole))
+                .count()
+        };
+        let first = owner.as_ref().map_or_else(
+            || {
+                holes
+                    .iter()
+                    .copied()
+                    .find(|hole| degree(hole) == 1)
+                    .unwrap_or_else(|| *holes.first().expect("a run has holes"))
+            },
+            |(_, _, hole)| *hole,
+        );
+        let path = walk_run(
+            &members.iter().map(|&m| ends[m].1).collect::<Vec<_>>(),
+            first,
+        );
+        let mut bridges: Vec<usize> = members.iter().map(|&m| ends[m].0).collect();
+        bridges.sort_by(|&a, &b| {
+            natural_cmp(&context.components[a].0.name, &context.components[b].0.name)
+        });
+        runs.push(LeadRun {
+            bridges,
+            owner: owner.map(|(position, number, _)| (position, number)),
+            path,
+        });
+    }
+    runs
+}
+
 /// `(x, y)` in holes, with `.5` for points between holes.
 fn hole_text(point: RoutePos) -> String {
     let coordinate = |value: i64| {
@@ -503,7 +613,18 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
         id,
     };
 
+    // Component-side bridges are a part's lead: they are made in that part's
+    // step, which then also covers the holes the lead runs over.
+    let runs = lead_runs(&context);
+    let lead_owner: BTreeMap<usize, usize> = runs
+        .iter()
+        .filter_map(|run| run.owner.as_ref().map(|(owner, _)| (run, *owner)))
+        .flat_map(|(run, owner)| run.bridges.iter().map(move |&bridge| (bridge, owner)))
+        .collect();
     for (position, (instance, definition)) in context.components.iter().enumerate() {
+        if lead_owner.contains_key(&position) {
+            continue;
+        }
         let holes: Vec<RoutePos> = definition
             .pins
             .iter()
@@ -520,7 +641,11 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
         let (y, x) = top_left(&holes);
         let rect = body_rect(instance, definition, pitch);
         let (kind, side, priority) = if is_bridge(definition) {
-            (StepKind::Bridge, Side::Solder, (5, 0, y, x))
+            if instance.component_side {
+                (StepKind::Bridge, Side::Component, (2, u64::MAX, y, x))
+            } else {
+                (StepKind::Bridge, Side::Solder, (5, 0, y, x))
+            }
         } else {
             // Smaller footprints first: low parts are soldered while the board
             // can still lie flat on its face.
@@ -546,6 +671,24 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
             ),
             holes,
         });
+    }
+    for run in &runs {
+        let Some((owner, _)) = run.owner else {
+            continue;
+        };
+        let node = index_of[&Target::Component(owner)];
+        for &bridge in &run.bridges {
+            index_of.insert(Target::Component(bridge), node);
+            nodes[node].objects.push(reference(
+                "component",
+                context.components[bridge].0.id.to_string(),
+            ));
+        }
+        for hole in &run.path {
+            if !nodes[node].holes.contains(hole) {
+                nodes[node].holes.push(*hole);
+            }
+        }
     }
     for (position, wire) in context.wires.iter().enumerate() {
         let (y, x) = top_left(&wire.vertices);
@@ -697,8 +840,8 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
     }
 
     // A bridge is the solder joint for everything that ends in its holes.
-    for (position, (_, definition)) in context.components.iter().enumerate() {
-        if !is_bridge(definition) {
+    for (position, (instance, definition)) in context.components.iter().enumerate() {
+        if !is_solder_bridge(instance, definition) {
             continue;
         }
         let bridge = index_of[&Target::Component(position)];
@@ -897,6 +1040,31 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
     let mut placed = vec![false; count];
     let mut order: Vec<usize> = Vec::with_capacity(count);
     let mut warnings: Vec<AssemblyWarning> = Vec::new();
+    for run in runs.iter().filter(|run| run.owner.is_none()) {
+        let names: Vec<&str> = run
+            .bridges
+            .iter()
+            .map(|&bridge| context.components[bridge].0.name.as_str())
+            .collect();
+        warnings.push(AssemblyWarning {
+            code: "assembly.lead_bridge_unattached".into(),
+            message: format!(
+                "{} {} on the component side but no part has a pin in {} holes, so no lead \
+                 can make {}. The plan uses a bare lead offcut; move a pin onto one end, or \
+                 move {} to the solder side.",
+                names.join(", "),
+                if names.len() == 1 { "is" } else { "are" },
+                if names.len() == 1 { "its" } else { "their" },
+                if names.len() == 1 { "it" } else { "them" },
+                if names.len() == 1 { "it" } else { "them" },
+            ),
+            objects: run
+                .bridges
+                .iter()
+                .map(|&bridge| reference("component", context.components[bridge].0.id.to_string()))
+                .collect(),
+        });
+    }
     while order.len() < count {
         let next = if let Some(Reverse((_, index))) = ready.pop() {
             index
@@ -1038,7 +1206,20 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
                 if node.kind == StepKind::Bridge {
                     bridge_text(node, instance)
                 } else {
-                    component_text(node, instance, definition)
+                    let position = context
+                        .components
+                        .iter()
+                        .position(|(other, _)| other.id == instance.id)
+                        .expect("component node");
+                    let leads: Vec<&LeadRun> = runs
+                        .iter()
+                        .filter(|run| {
+                            run.owner
+                                .as_ref()
+                                .is_some_and(|(owner, _)| *owner == position)
+                        })
+                        .collect();
+                    component_text(&context, node, instance, definition, &leads)
                 }
             }
             StepKind::Wire => {
@@ -1054,7 +1235,7 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
                     .components
                     .iter()
                     .enumerate()
-                    .filter(|(_, (_, definition))| is_bridge(definition))
+                    .filter(|(_, (instance, definition))| is_solder_bridge(instance, definition))
                     .filter(|(position, _)| {
                         let holes = &nodes[index_of[&Target::Component(*position)]].holes;
                         [wire.vertices.first(), wire.vertices.last()]
@@ -1271,9 +1452,11 @@ fn rotation_text(rotation: perfboard_core::Rotation) -> &'static str {
 }
 
 fn component_text(
+    context: &Context<'_>,
     node: &Node,
     instance: &ComponentInstance,
     definition: &ComponentDefinition,
+    leads: &[&LeadRun],
 ) -> (String, Vec<String>) {
     let first = definition.pins.first();
     let value = read_value(definition.value_kind, &instance.value);
@@ -1292,9 +1475,25 @@ fn component_text(
         ),
         _ => format!("Insert {} on the component side.", instance.name),
     });
-    instructions.push(match definition.pins.len() {
-        1 => "Solder its pin on the solder side.".into(),
-        count => format!("Solder its {count} pins on the solder side."),
+    for run in leads {
+        instructions.push(lead_run_text(context, run));
+    }
+    let lead_ends: Vec<String> = leads
+        .iter()
+        .filter_map(|run| run.path.last().filter(|_| run.path.len() > 1))
+        .map(|hole| hole_text(*hole))
+        .collect();
+    let pins = match definition.pins.len() {
+        1 => "its pin".to_string(),
+        count => format!("its {count} pins"),
+    };
+    instructions.push(match lead_ends.as_slice() {
+        [] => format!("Solder {pins} on the solder side."),
+        [end] => format!("Solder {pins} and the lead's end at {end} on the solder side."),
+        ends => format!(
+            "Solder {pins} and the leads' ends at {} on the solder side.",
+            ends.join(", ")
+        ),
     });
     if definition.kind == ComponentKind::Jumper {
         instructions.push(if instance.shunted {
@@ -1408,8 +1607,73 @@ fn parts_list(context: &Context<'_>) -> Vec<PartsListEntry> {
     parts.into_iter().map(|(_, _, entry)| entry).collect()
 }
 
+/// The holes of a run of links in the order a lead laid from `first` meets
+/// them.
+fn walk_run(links: &[[RoutePos; 2]], first: RoutePos) -> Vec<RoutePos> {
+    let mut path = vec![first];
+    let mut used = vec![false; links.len()];
+    let mut stack = vec![first];
+    while let Some(hole) = stack.pop() {
+        for (index, &[a, b]) in links.iter().enumerate() {
+            if used[index] || (a != hole && b != hole) {
+                continue;
+            }
+            used[index] = true;
+            let next = if a == hole { b } else { a };
+            if !path.contains(&next) {
+                path.push(next);
+            }
+            stack.push(hole);
+            stack.push(next);
+            break;
+        }
+    }
+    path
+}
+
+/// How to lay a part's lead across the holes of a component-side bridge run.
+fn lead_run_text(context: &Context<'_>, run: &LeadRun) -> String {
+    let names: Vec<&str> = run
+        .bridges
+        .iter()
+        .map(|&bridge| context.components[bridge].0.name.as_str())
+        .collect();
+    let number = run.owner.as_ref().map_or("", |(_, number)| number.as_str());
+    let over: Vec<String> = run.path[1..run.path.len().saturating_sub(1)]
+        .iter()
+        .map(|hole| hole_text(*hole))
+        .collect();
+    let end = run
+        .path
+        .last()
+        .map_or_else(String::new, |hole| hole_text(*hole));
+    let route = if over.is_empty() {
+        String::new()
+    } else {
+        format!(" over {}", over.join(", "))
+    };
+    format!(
+        "Leave pin {number}'s lead long: bend it flat on the component side{route} and push it \
+         through {end}. It forms {}.",
+        names.join(" and ")
+    )
+}
+
 fn bridge_text(node: &Node, instance: &ComponentInstance) -> (String, Vec<String>) {
     let holes: Vec<String> = node.holes.iter().map(|hole| hole_text(*hole)).collect();
+    if instance.component_side {
+        return (
+            format!("Bridge {}", instance.name),
+            vec![
+                format!(
+                    "On the component side, lay a bare lead offcut from {} and push its ends \
+                     through.",
+                    holes.join(" to ")
+                ),
+                "Solder both ends on the solder side.".into(),
+            ],
+        );
+    }
     (
         format!("Bridge {}", instance.name),
         vec![

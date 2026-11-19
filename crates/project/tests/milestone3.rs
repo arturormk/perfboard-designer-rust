@@ -38,6 +38,7 @@ fn add_payload(id: ComponentInstanceId, name: &str, x: i32) -> OperationPayload 
             properties: BTreeMap::new(),
             notes: String::new(),
             shunted: false,
+            component_side: false,
         },
         definition,
     }

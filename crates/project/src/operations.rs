@@ -91,6 +91,13 @@ pub enum OperationPayload {
         instance_id: ComponentInstanceId,
         shunted: bool,
     },
+    /// Moves a bridge to the `component` side, where it is made by laying a
+    /// part's lead across the holes, or back to the `solder` side, where it
+    /// is a bare link or solder bridge. Either way it joins its two holes.
+    SetBridgeSide {
+        instance_id: ComponentInstanceId,
+        side: Side,
+    },
     /// Sets a part's value: free text, or for resistor and capacitor
     /// definitions a resistance (`4k7`, `4.7k`, `4R7`) or capacitance
     /// (`100n`, `0.1u`, `104`) that is checked and stored normalised
@@ -323,6 +330,8 @@ pub enum OperationError {
     MergeProposedNet,
     #[error("component is not a two-pin jumper")]
     NotAJumper,
+    #[error("component is not a bridge")]
+    NotABridge,
     #[error("jumper inventory entry was not found")]
     JumperInventoryNotFound,
     #[error("locked wire requires an explicit route replacement operation")]
@@ -644,6 +653,9 @@ pub(crate) fn apply_operation_untracked(
                 return Err(OperationError::RotationNotAllowed);
             }
             let mut instance = instance.clone();
+            if definition.kind != ComponentKind::Bridge {
+                instance.component_side = false;
+            }
             if instance.name.trim().is_empty() {
                 instance.name = definition.next_instance_name(
                     next.design
@@ -857,6 +869,31 @@ pub(crate) fn apply_operation_untracked(
                 "{} shunt on {}",
                 if *shunted { "Fitted" } else { "Removed" },
                 instance.name
+            )
+        }
+        OperationPayload::SetBridgeSide { instance_id, side } => {
+            let instance = next
+                .design
+                .components
+                .get_mut(instance_id)
+                .ok_or(OperationError::InstanceNotFound)?;
+            let is_bridge = next
+                .design
+                .component_definitions
+                .get(&instance.definition_id)
+                .is_some_and(|definition| definition.kind == ComponentKind::Bridge);
+            if !is_bridge {
+                return Err(OperationError::NotABridge);
+            }
+            instance.component_side = *side == Side::Component;
+            affected.insert(*instance_id);
+            format!(
+                "Moved {} to the {} side",
+                instance.name,
+                match side {
+                    Side::Component => "component",
+                    Side::Solder => "solder",
+                }
             )
         }
         OperationPayload::SetComponentValue { instance_id, value } => {
@@ -1659,6 +1696,7 @@ mod tests {
             properties: BTreeMap::new(),
             notes: String::new(),
             shunted: false,
+            component_side: false,
         }
     }
 

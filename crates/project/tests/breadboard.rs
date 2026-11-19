@@ -65,6 +65,7 @@ impl Builder {
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
+                component_side: false,
             },
         );
         self.design
@@ -88,6 +89,7 @@ impl Builder {
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
+                component_side: false,
             },
         );
         self.design

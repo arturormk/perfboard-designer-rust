@@ -75,6 +75,7 @@ fn fixture() -> (ProjectDocument, [ComponentInstanceId; 2], NetId) {
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,
+                    component_side: false,
                 },
             },
         )

@@ -260,8 +260,9 @@ function ToolOptions(props: {
       <div class="tool-options">
         <strong>Bridge</strong>
         <span class="hint">
-          Click a hole, then a neighbouring hole · bridges are solder-side links
-          installed last
+          Click a hole, then a neighbouring hole · on the solder side a bridge
+          is a bare link installed last; on the component side it is a part's
+          lead laid across the holes
         </span>
       </div>
     );

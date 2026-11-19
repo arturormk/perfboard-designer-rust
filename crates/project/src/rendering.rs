@@ -21,7 +21,7 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
     let height = f64::from(board.size.intervals_y()) + padding * 2.0;
     let _ = write!(
         svg,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.shunt{{fill:#1b1b1b;stroke:#e0c060;stroke-width:.08}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.lead{{stroke:#a3a7ab;stroke-width:.12}}.shunt{{fill:#1b1b1b;stroke:#e0c060;stroke-width:.08}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
         escape(&board.name),
         side
     );
@@ -135,8 +135,12 @@ fn render_component(
         let end = &definition.pins[1];
         let _ = write!(
             svg,
-            r#"<line class="bridge" x1="{}" y1="{}" x2="{}" y2="{}"/>"#,
-            start.x, start.y, end.x, end.y,
+            r#"<line class="bridge{}" x1="{}" y1="{}" x2="{}" y2="{}"/>"#,
+            if instance.component_side { " lead" } else { "" },
+            start.x,
+            start.y,
+            end.x,
+            end.y,
         );
     } else {
         let _ = write!(

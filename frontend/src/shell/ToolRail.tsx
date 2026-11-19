@@ -13,8 +13,6 @@ const TOOLS: Array<{ id: Tool; icon: IconName; label: string; key: string }> = [
 export function activateTool(next: Tool): void {
   placing.value = null;
   tool.value = next;
-  // Bridges are solder-side links; show the face they live on.
-  if (next === "bridge") side.value = "solder";
 }
 
 export function ToolRail() {

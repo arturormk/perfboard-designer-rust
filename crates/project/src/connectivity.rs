@@ -1097,6 +1097,7 @@ mod tests {
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,
+                    component_side: false,
                 },
             );
         }
@@ -1169,6 +1170,7 @@ mod tests {
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
+                component_side: false,
             },
         );
         let mut wire = Wire {
@@ -1251,6 +1253,7 @@ mod tests {
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
+                component_side: false,
             },
         );
         let net_id = NetId::new();

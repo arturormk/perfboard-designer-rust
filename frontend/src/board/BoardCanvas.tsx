@@ -66,6 +66,7 @@ import {
   adjacentHoles,
   bodyBounds,
   bridgeRotation,
+  componentSide,
   definitionOf,
   nextRotation,
   pinBoardPosition,
@@ -1111,7 +1112,7 @@ export function BoardCanvas() {
     const definition = definitionOf(target, instance);
     if (!instance) return;
     select({ kind: "component", id: componentId });
-    const ownSide = definition?.kind === "bridge" ? "solder" : "component";
+    const ownSide = componentSide(definition, instance);
     if (ownSide !== side.peek()) return;
     gesture.value = {
       kind: "move",

@@ -69,6 +69,7 @@ fn fixture(
                     properties: BTreeMap::new(),
                     notes: String::new(),
                     shunted: false,
+                    component_side: false,
                 },
             },
         );
@@ -394,6 +395,7 @@ fn solder_side_routes_may_pass_beneath_a_component_body_but_not_its_pins() {
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
+                component_side: false,
             },
         },
     );
@@ -459,6 +461,7 @@ fn component_side_routes_may_pass_beneath_an_elevated_body() {
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
+                component_side: false,
             },
         },
     );

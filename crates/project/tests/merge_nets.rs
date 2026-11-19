@@ -46,6 +46,7 @@ fn place(document: &mut ProjectDocument, x: i32) -> PinRef {
                 properties: BTreeMap::new(),
                 notes: String::new(),
                 shunted: false,
+                component_side: false,
             },
         },
     )
