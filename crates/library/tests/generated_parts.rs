@@ -76,10 +76,12 @@ fn numbered_pin(number: usize, x: i32, y: i32) -> PinDefinition {
     )
 }
 
+/// The two leads of an unpolarized part. Their names are just their numbers:
+/// "Terminal 1" said nothing more and crowded the board's pin labels.
 fn terminals(pitch_holes: i32) -> Vec<PinDefinition> {
     vec![
-        pin("terminal_1", "1", "Terminal 1", 0, 0),
-        pin("terminal_2", "2", "Terminal 2", pitch_holes, 0),
+        pin("terminal_1", "1", "1", 0, 0),
+        pin("terminal_2", "2", "2", pitch_holes, 0),
     ]
 }
 
@@ -251,8 +253,14 @@ fn with_value(mut part: Part, kind: ValueKind) -> Part {
     part
 }
 
+/// 1.2.0: the leads are named 1 and 2 instead of Terminal 1 and Terminal 2.
+fn with_numbered_terminals(mut part: Part) -> Part {
+    part.definition.definition_version = "1.2.0".into();
+    part
+}
+
 fn passives() -> Vec<Part> {
-    let mut parts = vec![with_value(
+    let mut parts = vec![with_numbered_terminals(with_value(
         part(Spec {
             folder: "resistor-standing",
             name: "1/4 Watt, standing",
@@ -270,9 +278,9 @@ fn passives() -> Vec<Part> {
             ),
         }),
         ValueKind::Resistance,
-    )];
+    ))];
     for (holes, millimetres) in [(1, "2.54"), (2, "5.08")] {
-        parts.push(with_value(part(Spec {
+        parts.push(with_numbered_terminals(with_value(part(Spec {
             folder: &format!("capacitor-ceramic-{}mm", millimetres.replace('.', "-")),
             name: &format!("Ceramic capacitor, {millimetres} mm"),
             designator: "C",
@@ -292,7 +300,7 @@ fn passives() -> Vec<Part> {
                     CAPACITANCE_NOTE,
                 ],
             ),
-        }), ValueKind::Capacitance));
+        }), ValueKind::Capacitance)));
     }
     // Diameter, the hole spacing used, and the lead spacing it stands in for.
     for (diameter, label, holes, leads) in [

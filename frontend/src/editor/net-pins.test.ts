@@ -39,6 +39,16 @@ describe("net pin labels", () => {
     ).toBe("R1 · 1 (A)");
   });
 
+  it("does not repeat a pin name that is just its number", () => {
+    const numbered = structuredClone(design);
+    const resistor = numbered.component_definitions?.resistor;
+    if (resistor)
+      resistor.pins = [{ id: "a", number: "1", name: "1", x: 0, y: 0 }];
+    expect(
+      netPinLabel(numbered, { component_id: "component_1", pin_id: "a" }),
+    ).toBe("R1 · 1");
+  });
+
   it("falls back to stable IDs when component metadata is unavailable", () => {
     expect(
       netPinLabel(design, { component_id: "missing", pin_id: "unknown" }),

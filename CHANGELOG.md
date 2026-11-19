@@ -13,6 +13,12 @@ Development line `v0.1.x`: the first public development builds.
   to Nets or History, hide the left panel or change modes, so placing several
   parts of the same kind no longer means finding it again each time.
 
+- Resistor and ceramic capacitor leads are named **1** and **2** instead of
+  "Terminal 1" and "Terminal 2", so pin labels on the board stay short. The
+  standing resistor and both ceramic capacitors move to version 1.2.0, the
+  3- and 4-hole resistors to 1.3.0. Pin ids are unchanged, so existing
+  connections still hold.
+
 - Parts can be placed, dragged and nudged off the board on any side, not only
   to the right and below, so a new part can be parked beside the board and
   rotated before it goes on. Hole coordinates are now signed (ADR 0021);

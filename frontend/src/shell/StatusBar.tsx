@@ -40,7 +40,8 @@ export function StatusBar() {
   if (target?.kind === "pin" && current) {
     const label = pinDisplay(current, target.ref);
     const net = netOfPin(current, target.ref);
-    hoverText = `${label.component} · pin ${label.pin} ${label.pinName}${net ? ` · ${net.name}` : ""}`;
+    const pinName = label.pinName === label.pin ? "" : ` ${label.pinName}`;
+    hoverText = `${label.component} · pin ${label.pin}${pinName}${net ? ` · ${net.name}` : ""}`;
   }
   const counts = problemCounts.value;
   const state = engine.value;

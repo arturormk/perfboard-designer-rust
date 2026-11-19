@@ -13,5 +13,7 @@ export function netPinLabel(design: ProjectDesign, pinRef: PinRef): string {
   const componentLabel = component?.name ?? pinRef.component_id;
   if (!pin) return `${componentLabel} · pin ${pinRef.pin_id}`;
 
+  // A pin named just by its number (such as a resistor lead) needs no repeat.
+  if (pin.name === pin.number) return `${componentLabel} · ${pin.number}`;
   return `${componentLabel} · ${pin.number} (${pin.name})`;
 }

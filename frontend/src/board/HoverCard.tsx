@@ -41,7 +41,7 @@ export function HoverCard({
       <>
         <div class="hc-title">
           <span class="hc-pin">{pin.number}</span>
-          <strong>{pin.name}</strong>
+          {pin.name !== pin.number && <strong>{pin.name}</strong>}
         </div>
         <div class="hc-sub">{instance.name}</div>
         {(pin.functions?.length || pin.aliases?.length) && (
