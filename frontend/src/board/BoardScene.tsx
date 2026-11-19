@@ -1127,7 +1127,7 @@ const VALUE_CHAR_WIDTH = 0.2;
  */
 export const TEXT_CENTER_DY = "0.35em";
 
-function partLabel(
+export function partLabel(
   name: string,
   value: string | undefined,
   bounds: { x: number; y: number; width: number; height: number },
@@ -1141,7 +1141,13 @@ function partLabel(
   const vertical = bounds.height > bounds.width * 1.6 && bounds.width < 3.5;
   const room = (vertical ? bounds.height : bounds.width) - 0.6;
   const maxChars = Math.floor(room / LABEL_CHAR_WIDTH);
-  if (!force && (maxChars < 5 || Math.min(bounds.width, bounds.height) < 0.9))
+  // A short body still gets its label when the whole name fits; only a name
+  // that would have to be cut down to a few characters is left out.
+  if (
+    !force &&
+    ((maxChars < 5 && name.length > maxChars) ||
+      Math.min(bounds.width, bounds.height) < 0.9)
+  )
     return undefined;
   const text =
     !force && name.length > maxChars
