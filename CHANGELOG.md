@@ -9,6 +9,14 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Diodes are drawn with their cathode band and electrolytic capacitors with
+  a `+` by the positive lead, on every drawing: the editor (both sides, faint
+  on the side opposite the part), assembly, breadboard, printed sheets, the
+  component designer preview and the agent's rendered design. The mark comes
+  from the pin IDs (`cathode`/`anode`, `positive`/`negative`), so library
+  parts that follow that naming get it too; it replaces the corner notch on
+  those parts.
+
 - A part's pins can be renamed for that part only: click a name in the
   inspector's **Pins** table and type, such as `TRIG` for pin 2 of one 555
   while another 555 keeps its names. A renamed pin shows in copper with a

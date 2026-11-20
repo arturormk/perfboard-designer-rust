@@ -489,6 +489,37 @@ button.mirror-tag.on {
   opacity: 0.85;
 }
 
+/* Polarity: a diode's cathode band, an electrolytic's plus sign. */
+.polarity-band {
+  fill: #c9ccd1;
+  opacity: 0.92;
+}
+
+.polarity-plus {
+  fill: none;
+  stroke: #e9ebee;
+  stroke-width: 0.09;
+  stroke-linecap: round;
+}
+
+.part.opposite .polarity-band {
+  fill: rgb(40 30 20 / 18%);
+  stroke: rgb(40 30 20 / 45%);
+  stroke-width: 0.04;
+}
+
+.part.opposite .polarity-plus {
+  stroke: rgb(40 30 20 / 55%);
+  stroke-width: 0.07;
+}
+
+.faded .polarity-band,
+.faded .polarity-plus,
+.part.dim .polarity-band,
+.part.dim .polarity-plus {
+  opacity: 0.3;
+}
+
 /* Resistors on the Assembly and Breadboard drawings: a beige body, as on
    the bench, so the colour bands read clearly. */
 .part.resistor .part-body {

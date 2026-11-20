@@ -161,6 +161,18 @@
   fill: var(--copper);
 }
 
+.preview-polarity-band {
+  fill: #c9ccd1;
+  opacity: 0.92;
+}
+
+.preview-polarity-plus {
+  fill: none;
+  stroke: #e9ebee;
+  stroke-width: 0.09;
+  stroke-linecap: round;
+}
+
 .preview-bridge {
   fill: none;
   stroke: #e4e6e8;

@@ -2,6 +2,7 @@ import type { ComponentDefinition, Rotation } from "../api/project";
 import type { ResizeHandle } from "../editor/board-size";
 import { bodyGridRect, keepoutGridRect } from "./geometry-resize";
 import { bridgeConductorPaths } from "../editor/bridge-geometry";
+import { plusPath, polarityMark } from "../model/polarity";
 
 export type PinLabelMode =
   "number" | "name" | "function" | "combined" | "hidden";
@@ -276,8 +277,20 @@ export function renderComponentPreviewSvg(
               .join("")
           : "";
   const viewBox = options.viewBox ?? defaultBox.join(" ");
+  const polarity = polarityMark(definition.pins, {
+    x: body.x / PITCH_MM,
+    y: body.y / PITCH_MM,
+    width: body.width / PITCH_MM,
+    height: body.height / PITCH_MM,
+  });
+  const polarityGeometry =
+    polarity?.kind === "band"
+      ? `<rect class="preview-polarity-band" x="${polarity.x}" y="${polarity.y}" width="${polarity.width}" height="${polarity.height}"/>`
+      : polarity?.kind === "plus"
+        ? `<path class="preview-polarity-plus" d="${plusPath(polarity)}"/>`
+        : "";
   const primaryGeometry =
     bridgeGeometry ??
-    `<rect class="preview-body" x="${body.x / PITCH_MM}" y="${body.y / PITCH_MM}" width="${body.width / PITCH_MM}" height="${body.height / PITCH_MM}" rx=".35"/><path class="preview-orientation" d="M .2 .2 L .85 .2 L .2 .85 Z"/>`;
+    `<rect class="preview-body" x="${body.x / PITCH_MM}" y="${body.y / PITCH_MM}" width="${body.width / PITCH_MM}" height="${body.height / PITCH_MM}" rx=".35"/>${polarityGeometry}<path class="preview-orientation" d="M .2 .2 L .85 .2 L .2 .85 Z"/>`;
   return `<svg id="component-preview" role="img" aria-label="${escape(definition.name)} component preview" viewBox="${viewBox}" data-default-view-box="${defaultBox.join(" ")}"><g class="preview-grid">${holes}</g><g class="preview-axes"><path d="M ${gridMinX} 0 H ${gridMaxX} M 0 ${gridMinY} V ${gridMaxY}"/><circle cx="0" cy="0" r=".18"/><text x=".25" y="-.25">0,0</text></g><g class="preview-geometry" transform="rotate(${rotation})">${keepouts}${wireKeepouts}${primaryGeometry}${occupied}${pins}${access}${resizeControls}</g><g class="preview-labels">${labels}</g></svg>`;
 }

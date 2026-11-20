@@ -33,6 +33,7 @@ import {
   type Point,
 } from "../model/geometry";
 import { BAND_COLORS, OUTLINED_BANDS, bandRects } from "../model/bands";
+import { plusPath, polarityMark } from "../model/polarity";
 import { isDarkWire, pinName, wireColorCss } from "../model/naming";
 import type { Airwire } from "../model/ratsnest";
 import type { PinLabelMode, Selection } from "../state/store";
@@ -178,6 +179,13 @@ function ComponentBody({
     );
   }
   const body = definition.body;
+  const bodyRect = {
+    x: body.x / pitch,
+    y: body.y / pitch,
+    width: body.width / pitch,
+    height: body.height / pitch,
+  };
+  const polarity = polarityMark(definition.pins, bodyRect);
   const rect = (area: { min: Point; max: Point }) => ({
     x: area.min.x - 0.5,
     y: area.min.y - 0.5,
@@ -203,27 +211,31 @@ function ComponentBody({
         (definition.wire_keepouts ?? []).map((area, index) => (
           <rect key={`w${index}`} class="wire-keepout" {...rect(area)} />
         ))}
-      <rect
-        class="part-body"
-        x={body.x / pitch}
-        y={body.y / pitch}
-        width={body.width / pitch}
-        height={body.height / pitch}
-        rx={0.3}
-      />
+      <rect class="part-body" {...bodyRect} rx={0.3} />
       {!opposite && bands && (
         <BandOverlay
           bands={bands}
-          body={{
-            x: body.x / pitch,
-            y: body.y / pitch,
-            width: body.width / pitch,
-            height: body.height / pitch,
-          }}
+          body={bodyRect}
           rotation={instance.rotation}
         />
       )}
-      {!opposite && !resistor && (
+      {polarity?.kind === "band" && (
+        <rect
+          class="polarity-band"
+          x={polarity.x}
+          y={polarity.y}
+          width={polarity.width}
+          height={polarity.height}
+        >
+          <title>Cathode band</title>
+        </rect>
+      )}
+      {polarity?.kind === "plus" && (
+        <path class="polarity-plus" d={plusPath(polarity)}>
+          <title>Positive lead</title>
+        </path>
+      )}
+      {!opposite && !resistor && !polarity && (
         <path
           class="part-notch"
           d={`M ${body.x / pitch} ${body.y / pitch + 0.9} L ${body.x / pitch} ${body.y / pitch + 0.3} Q ${body.x / pitch} ${body.y / pitch} ${body.x / pitch + 0.3} ${body.y / pitch} L ${body.x / pitch + 0.9} ${body.y / pitch} Z`}

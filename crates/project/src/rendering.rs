@@ -1,7 +1,8 @@
 use std::fmt::Write;
 
 use perfboard_core::{
-    ComponentDefinition, ComponentInstance, ComponentKind, Rotation, Saddle, Side, WireColor,
+    ComponentDefinition, ComponentInstance, ComponentKind, PinDefinition, Rotation, Saddle, Side,
+    WireColor,
 };
 
 use crate::ProjectDocument;
@@ -21,7 +22,7 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
     let height = f64::from(board.size.intervals_y()) + padding * 2.0;
     let _ = write!(
         svg,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.lead{{stroke:#a3a7ab;stroke-width:.12}}.shunt{{fill:#1b1b1b;stroke:#e0c060;stroke-width:.08}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.lead{{stroke:#a3a7ab;stroke-width:.12}}.shunt{{fill:#1b1b1b;stroke:#e0c060;stroke-width:.08}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.polarity-band{{fill:#c9ccd1}}.polarity-plus{{fill:none;stroke:#e9ebee;stroke-width:.09;stroke-linecap:round}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
         escape(&board.name),
         side
     );
@@ -151,6 +152,7 @@ fn render_component(
             definition.body.width / pitch,
             definition.body.height / pitch,
         );
+        render_polarity(svg, definition, pitch);
     }
     let shunt_pins = (definition.kind == ComponentKind::Jumper && instance.shunted)
         .then_some(definition.pins.as_slice());
@@ -177,6 +179,123 @@ fn render_component(
         );
     }
     svg.push_str("</g>");
+}
+
+/// A polarity mark on a part's body, in part-local holes.
+#[derive(Debug, PartialEq)]
+enum PolarityMark {
+    /// A diode's cathode band.
+    Band {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+    },
+    /// An electrolytic capacitor's plus sign, centred on (`x`, `y`).
+    Plus { x: f64, y: f64, arm: f64 },
+}
+
+/// The polarity mark read from a part's pin IDs: a cathode band for pins
+/// `cathode` and `anode`, a plus sign by the positive lead for pins
+/// `positive` and `negative`. Mirrors `polarityMark` in
+/// `frontend/src/model/polarity.ts`.
+fn polarity_mark(definition: &ComponentDefinition, pitch: f64) -> Option<PolarityMark> {
+    let pin = |id: &str| definition.pins.iter().find(|pin| pin.id == id);
+    let body = &definition.body;
+    let (bx, by, bw, bh) = (
+        body.x / pitch,
+        body.y / pitch,
+        body.width / pitch,
+        body.height / pitch,
+    );
+    // Leads side by side along x (true), along y (false), or neither.
+    let axis = |a: &PinDefinition, b: &PinDefinition| {
+        if a.y == b.y && a.x != b.x {
+            Some(true)
+        } else if a.x == b.x && a.y != b.y {
+            Some(false)
+        } else {
+            None
+        }
+    };
+    if let (Some(cathode), Some(anode)) = (pin("cathode"), pin("anode")) {
+        let along_x = axis(cathode, anode)?;
+        let (start, length) = if along_x { (bx, bw) } else { (by, bh) };
+        let toward_start = if along_x {
+            cathode.x < anode.x
+        } else {
+            cathode.y < anode.y
+        };
+        let width = length * 0.16;
+        let inset = length * 0.1;
+        let from = if toward_start {
+            start + inset
+        } else {
+            start + length - inset - width
+        };
+        return Some(if along_x {
+            PolarityMark::Band {
+                x: from,
+                y: by,
+                width,
+                height: bh,
+            }
+        } else {
+            PolarityMark::Band {
+                x: bx,
+                y: from,
+                width: bw,
+                height: width,
+            }
+        });
+    }
+    if let (Some(positive), Some(negative)) = (pin("positive"), pin("negative")) {
+        let along_x = axis(positive, negative)?;
+        let half = if along_x { bh } else { bw } / 2.0;
+        let across = if along_x { by } else { bx } + half * 0.4;
+        let arm = (half * 0.22).min(0.2);
+        return Some(if along_x {
+            PolarityMark::Plus {
+                x: f64::from(positive.x),
+                y: across,
+                arm,
+            }
+        } else {
+            PolarityMark::Plus {
+                x: across,
+                y: f64::from(positive.y),
+                arm,
+            }
+        });
+    }
+    None
+}
+
+fn render_polarity(svg: &mut String, definition: &ComponentDefinition, pitch: f64) {
+    match polarity_mark(definition, pitch) {
+        Some(PolarityMark::Band {
+            x,
+            y,
+            width,
+            height,
+        }) => {
+            let _ = write!(
+                svg,
+                r#"<rect class="polarity-band" x="{x:.3}" y="{y:.3}" width="{width:.3}" height="{height:.3}"><title>Cathode band</title></rect>"#
+            );
+        }
+        Some(PolarityMark::Plus { x, y, arm }) => {
+            let _ = write!(
+                svg,
+                r#"<path class="polarity-plus" d="M {:.3} {y:.3} H {:.3} M {x:.3} {:.3} V {:.3}"><title>Positive lead</title></path>"#,
+                x - arm,
+                x + arm,
+                y - arm,
+                y + arm,
+            );
+        }
+        None => {}
+    }
 }
 
 fn render_saddle(svg: &mut String, saddle: &Saddle, side: Side) {
@@ -246,6 +365,47 @@ mod tests {
             Board::new("board", BoardSize::new(3, 2).unwrap(), 2.54),
         );
         assert!(render_design_svg(&document, Side::Solder).contains("translate(2 0) scale(-1 1)"));
+    }
+
+    fn part(file: &str) -> ComponentDefinition {
+        let path = format!(
+            "{}/../../components/{file}/component.toml",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        ComponentDefinition::from_toml(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn diodes_carry_a_cathode_band_at_the_cathode_end() {
+        let diode = part("diode-do-41");
+        let Some(PolarityMark::Band { x, width, .. }) = polarity_mark(&diode, 2.54) else {
+            panic!("no cathode band");
+        };
+        // The cathode lead is at x = 0, the anode at x = 4: the band sits in
+        // the body's cathode half.
+        let body_x = diode.body.x / 2.54;
+        let body_end = body_x + diode.body.width / 2.54;
+        assert!(x > body_x && x + width < f64::midpoint(body_x, body_end));
+        assert!(matches!(
+            polarity_mark(&part("diode-do-35"), 2.54),
+            Some(PolarityMark::Band { .. })
+        ));
+    }
+
+    #[test]
+    fn electrolytics_carry_a_plus_by_the_positive_lead() {
+        let capacitor = part("capacitor-electrolytic-5mm");
+        let Some(PolarityMark::Plus { x, y, .. }) = polarity_mark(&capacitor, 2.54) else {
+            panic!("no plus sign");
+        };
+        assert!((x - 0.0).abs() < f64::EPSILON);
+        assert!(y < -0.36 && y > capacitor.body.y / 2.54);
+    }
+
+    #[test]
+    fn unpolarized_parts_carry_no_mark() {
+        assert_eq!(polarity_mark(&part("capacitor-ceramic-2-54mm"), 2.54), None);
+        assert_eq!(polarity_mark(&part("dip-8"), 2.54), None);
     }
 
     #[test]
