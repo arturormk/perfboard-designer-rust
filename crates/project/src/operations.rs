@@ -106,6 +106,16 @@ pub enum OperationPayload {
         instance_id: ComponentInstanceId,
         value: String,
     },
+    /// Gives one part its own name for a pin, such as `TRIG` for pin 2 of
+    /// a 555 timer, without changing the pin names of other parts made from
+    /// the same definition. The label is trimmed; an empty label, or one
+    /// equal to the definition's pin name, goes back to the definition's
+    /// name.
+    SetPinLabel {
+        instance_id: ComponentInstanceId,
+        pin_id: String,
+        label: String,
+    },
     DefineNet {
         net: ElectricalNet,
     },
@@ -332,6 +342,8 @@ pub enum OperationError {
     NotAJumper,
     #[error("component is not a bridge")]
     NotABridge,
+    #[error("component has no pin {0}")]
+    PinNotFound(String),
     #[error("jumper inventory entry was not found")]
     JumperInventoryNotFound,
     #[error("locked wire requires an explicit route replacement operation")]
@@ -918,6 +930,35 @@ pub(crate) fn apply_operation_untracked(
                 format!("Cleared the value of {}", instance.name)
             } else {
                 format!("Set {} to {}", instance.name, instance.value)
+            }
+        }
+        OperationPayload::SetPinLabel {
+            instance_id,
+            pin_id,
+            label,
+        } => {
+            let instance = next
+                .design
+                .components
+                .get_mut(instance_id)
+                .ok_or(OperationError::InstanceNotFound)?;
+            let pin = next
+                .design
+                .component_definitions
+                .get(&instance.definition_id)
+                .and_then(|definition| definition.pins.iter().find(|pin| pin.id == *pin_id))
+                .ok_or_else(|| OperationError::PinNotFound(pin_id.clone()))?;
+            let label = label.trim();
+            affected.insert(*instance_id);
+            if label.is_empty() || label == pin.name {
+                instance.pin_labels.remove(pin_id);
+                format!(
+                    "Pin {} of {} is named {} again",
+                    pin.number, instance.name, pin.name
+                )
+            } else {
+                instance.pin_labels.insert(pin_id.clone(), label.to_owned());
+                format!("Named pin {} of {} {label}", pin.number, instance.name)
             }
         }
         OperationPayload::DefineNet { net } => {
@@ -1706,6 +1747,7 @@ mod tests {
             notes: String::new(),
             shunted: false,
             component_side: false,
+            pin_labels: BTreeMap::new(),
         }
     }
 

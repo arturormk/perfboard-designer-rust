@@ -267,13 +267,11 @@ impl<'a> Context<'a> {
         let Some(definition_pin) = definition.pins.iter().find(|item| item.id == pin.pin_id) else {
             return format!("{} · {}", instance.name, pin.pin_id);
         };
-        if definition_pin.number == definition_pin.name {
+        let name = instance.pin_name(definition_pin);
+        if definition_pin.number == name {
             format!("{} · {}", instance.name, definition_pin.number)
         } else {
-            format!(
-                "{} · {} {}",
-                instance.name, definition_pin.number, definition_pin.name
-            )
+            format!("{} · {} {name}", instance.name, definition_pin.number)
         }
     }
 

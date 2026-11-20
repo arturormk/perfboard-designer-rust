@@ -48,6 +48,7 @@ fn add(document: &mut ProjectDocument, position: HolePos) -> ComponentInstanceId
             notes: String::new(),
             shunted: false,
             component_side: false,
+            pin_labels: BTreeMap::new(),
         },
         definition,
     };

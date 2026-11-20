@@ -82,6 +82,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
                 notes: "USB faces the board edge".into(),
                 shunted: false,
                 component_side: false,
+                pin_labels: BTreeMap::new(),
             },
         },
     );
@@ -120,6 +121,7 @@ fn place_move_rotate_save_and_reopen_example_components() {
                 notes: "Keep terminal reachable".into(),
                 shunted: false,
                 component_side: false,
+                pin_labels: BTreeMap::new(),
             },
         },
     );

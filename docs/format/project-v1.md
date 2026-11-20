@@ -67,6 +67,13 @@ conducts like any bridge. A hole shared by two component-side bridges has the
 lead lying over it, so a part's pin there is reported as
 `placement.lead_bridge_over_pin`. The assembly plan makes a run of them in the
 step of the first part with a pin in one of its holes.
+`pin_labels` (written only when non-empty) maps pin IDs to this part's own
+names for those pins, such as `TRIG` for pin 2 of one 555 timer. A label
+replaces the embedded definition's pin name for that part only; pins without
+one keep the definition's name, and the definition itself is unchanged. It is
+set with `set_pin_label` (`instance_id`, `pin_id`, `label`), which trims the
+label, removes it when it is empty or equal to the definition's name, and
+refuses a pin ID the definition does not have. Older readers ignore the field.
 `update_component_metadata` also adopts a library change between `standard`
 and `jumper` when the pins are identical; going back to `standard` clears
 `shunted`. A cached `validation` array is stored when non-empty and

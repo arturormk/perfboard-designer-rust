@@ -351,6 +351,18 @@ function applyPayload(design: Design, op: OperationPayload): void {
     case "set_component_value":
       d.components![op.instance_id]!.value = mockNormalizeValue(op.value);
       return;
+    case "set_pin_label": {
+      const instance = d.components![op.instance_id]!;
+      const pin = d.component_definitions?.[instance.definition_id]?.pins.find(
+        (candidate) => candidate.id === op.pin_id,
+      );
+      if (!pin) throw new Error(`component has no pin ${op.pin_id}`);
+      const { [op.pin_id]: _previous, ...labels } = instance.pin_labels ?? {};
+      const label = op.label.trim();
+      if (label && label !== pin.name) labels[op.pin_id] = label;
+      instance.pin_labels = labels;
+      return;
+    }
     case "define_net":
       d.nets = { ...d.nets, [op.net.id]: op.net };
       return;

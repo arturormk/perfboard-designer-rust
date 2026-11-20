@@ -10,6 +10,7 @@ import { definitionOf, polylineLengthMm, bendCount } from "../model/geometry";
 import {
   formatMm,
   netOfPin,
+  pinName,
   terminalDisplay,
   wireColorCss,
   wireColorName,
@@ -37,13 +38,17 @@ export function HoverCard({
     const pin = definition?.pins.find((item) => item.id === target.ref.pin_id);
     if (!instance || !pin) return null;
     const net = netOfPin(current, target.ref);
+    const name = pinName(instance, pin);
     body = (
       <>
         <div class="hc-title">
           <span class="hc-pin">{pin.number}</span>
-          {pin.name !== pin.number && <strong>{pin.name}</strong>}
+          {name !== pin.number && <strong>{name}</strong>}
         </div>
-        <div class="hc-sub">{instance.name}</div>
+        <div class="hc-sub">
+          {instance.name}
+          {name !== pin.name && ` · ${pin.name} on the part`}
+        </div>
         {(pin.functions?.length || pin.aliases?.length) && (
           <div class="hc-tags">
             {[...(pin.aliases ?? []), ...(pin.functions ?? [])]

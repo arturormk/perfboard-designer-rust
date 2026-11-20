@@ -98,6 +98,7 @@ impl Fixture {
                 notes: String::new(),
                 shunted: false,
                 component_side: false,
+                pin_labels: BTreeMap::new(),
             },
         );
         id

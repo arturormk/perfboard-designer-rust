@@ -50,6 +50,7 @@ fn place(document: &mut ProjectDocument, toml: &str, x: i32) -> ComponentInstanc
                 notes: String::new(),
                 shunted: false,
                 component_side: false,
+                pin_labels: BTreeMap::new(),
             },
         },
     )

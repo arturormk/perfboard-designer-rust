@@ -33,7 +33,7 @@ import {
   type Point,
 } from "../model/geometry";
 import { BAND_COLORS, OUTLINED_BANDS, bandRects } from "../model/bands";
-import { isDarkWire, wireColorCss } from "../model/naming";
+import { isDarkWire, pinName, wireColorCss } from "../model/naming";
 import type { Airwire } from "../model/ratsnest";
 import type { PinLabelMode, Selection } from "../state/store";
 
@@ -1054,7 +1054,8 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
           pads
             .filter((pad) => pad.ownSide === side)
             .map(({ instance, pin, point }) => {
-              const text = pinLabels === "names" ? pin.name : pin.number;
+              const text =
+                pinLabels === "names" ? pinName(instance, pin) : pin.number;
               if (!text) return null;
               return (
                 <text

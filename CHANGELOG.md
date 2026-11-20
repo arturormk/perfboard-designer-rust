@@ -9,6 +9,15 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- A part's pins can be renamed for that part only: click a name in the
+  inspector's **Pins** table and type, such as `TRIG` for pin 2 of one 555
+  while another 555 keeps its names. A renamed pin shows in copper with a
+  button to go back to the definition's name; clearing the field does the
+  same. The new name shows on board pin labels, in the pin hover card (with
+  the definition's name beside it), net pin lists, the status bar, the
+  assembly plan and exported drawings. Agents set it with `set_pin_label`.
+  Labels are saved on the part as `pin_labels`, only when it has some.
+
 - A new net can no longer take the name of an existing one (case and
   surrounding spaces are ignored, as when renaming). Before, defining a net
   twice made a second, empty net with the same name, which was then reported

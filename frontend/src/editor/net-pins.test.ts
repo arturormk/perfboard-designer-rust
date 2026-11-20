@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectDocument } from "../api/project";
+import { pinDisplay } from "../model/naming";
 import { netPinLabel } from "./net-pins";
 
 const design: ProjectDocument["design"] = {
@@ -47,6 +48,15 @@ describe("net pin labels", () => {
     expect(
       netPinLabel(numbered, { component_id: "component_1", pin_id: "a" }),
     ).toBe("R1 · 1");
+  });
+
+  it("uses the part's own name for a pin when it has one", () => {
+    const labelled = structuredClone(design);
+    labelled.components!.component_1!.pin_labels = { a: "TOP" };
+    const ref = { component_id: "component_1", pin_id: "a" };
+    expect(netPinLabel(labelled, ref)).toBe("R1 · 1 (TOP)");
+    expect(pinDisplay(labelled, ref).pinName).toBe("TOP");
+    expect(pinDisplay(design, ref).pinName).toBe("A");
   });
 
   it("falls back to stable IDs when component metadata is unavailable", () => {

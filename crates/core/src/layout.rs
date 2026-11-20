@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{ComponentInstanceId, HolePos, Rotation};
+use crate::{ComponentInstanceId, HolePos, PinDefinition, Rotation};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentInstance {
@@ -35,4 +35,20 @@ pub struct ComponentInstance {
     /// assembly plan folds it into the step of the part whose lead it is.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub component_side: bool,
+    /// This part's own names for some of its pins, keyed by pin id, such as
+    /// `TRIG` for pin 2 of one 555 timer. They replace the definition's pin
+    /// names for this part only; pins left out keep the definition's name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pin_labels: BTreeMap<String, String>,
+}
+
+impl ComponentInstance {
+    /// The name this part gives a pin: its own label when it has one,
+    /// otherwise the definition's pin name.
+    #[must_use]
+    pub fn pin_name<'a>(&'a self, pin: &'a PinDefinition) -> &'a str {
+        self.pin_labels
+            .get(&pin.id)
+            .map_or(&pin.name, String::as_str)
+    }
 }

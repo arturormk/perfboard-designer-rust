@@ -201,6 +201,9 @@ export interface ComponentInstance {
   /** A `bridge` made on the component side, by laying a part's lead across
    * the holes, instead of a solder-side link. */
   component_side?: boolean;
+  /** This part's own names for some of its pins, keyed by pin id. They
+   * replace the definition's pin names for this part only. */
+  pin_labels?: Record<string, string>;
 }
 export type Side = "component" | "solder";
 export type ConnectionState = "proposed" | "accepted";
@@ -457,6 +460,13 @@ export type OperationPayload =
   | { type: "set_jumper_shunt"; instance_id: string; shunted: boolean }
   | { type: "set_bridge_side"; instance_id: string; side: Side }
   | { type: "set_component_value"; instance_id: string; value: string }
+  | {
+      type: "set_pin_label";
+      instance_id: string;
+      pin_id: string;
+      /** Empty, or the definition's name, restores the definition's name. */
+      label: string;
+    }
   | { type: "define_net"; net: ElectricalNet }
   | { type: "remove_net"; net_id: string }
   | { type: "rename_net"; net_id: string; name: string }

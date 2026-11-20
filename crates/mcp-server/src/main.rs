@@ -533,6 +533,10 @@ impl PerfboardMcp {
     /// Set a part's value with `set_component_value`: resistors take `4k7`,
     /// `10k`, `220R`; capacitors `100n`, `0.1u` or the code `104`; other parts
     /// free text such as `1N4148`.
+    /// Name one part's pin with `set_pin_label` (such as `TRIG` on pin 2 of
+    /// one 555) without renaming that pin on other parts; an empty label
+    /// restores the definition's name. Labels show in the part's
+    /// `pin_labels`, keyed by pin id.
     /// Design rules are checked once, on the result: intermediate steps may
     /// break them, so put every step of a rework in one call.
     #[tool(annotations(

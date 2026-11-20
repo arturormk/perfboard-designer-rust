@@ -173,7 +173,7 @@ fn render_component(
             escape(&pin.id),
             pin.x,
             pin.y,
-            escape(&format!("Pin {}: {}", pin.number, pin.name))
+            escape(&format!("Pin {}: {}", pin.number, instance.pin_name(pin)))
         );
     }
     svg.push_str("</g>");

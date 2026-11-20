@@ -3,6 +3,7 @@ import type {
   ComponentDefinition,
   ComponentInstance,
   ElectricalNet,
+  PinDefinition,
   PinRef,
   TerminalRef,
   Wire,
@@ -89,6 +90,14 @@ export function netOfPin(
   );
 }
 
+/** The name a part gives a pin: its own label, or the definition's name. */
+export function pinName(
+  instance: Pick<ComponentInstance, "pin_labels"> | undefined,
+  pin: Pick<PinDefinition, "id" | "name">,
+): string {
+  return instance?.pin_labels?.[pin.id] ?? pin.name;
+}
+
 export function pinDisplay(
   design: Design,
   ref: PinRef,
@@ -100,7 +109,7 @@ export function pinDisplay(
   return {
     component: instance?.name ?? "Missing part",
     pin: pin?.number ?? ref.pin_id,
-    pinName: pin?.name ?? ref.pin_id,
+    pinName: pin ? pinName(instance, pin) : ref.pin_id,
   };
 }
 

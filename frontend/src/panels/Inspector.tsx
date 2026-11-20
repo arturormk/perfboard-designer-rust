@@ -5,6 +5,7 @@ import type {
   ComponentInstance,
   Constraint,
   ElectricalNet,
+  PinDefinition,
   Rail,
   RouteProposal,
   Saddle,
@@ -59,6 +60,7 @@ import {
   formatMm,
   netOfPin,
   pinDisplay,
+  pinName,
   terminalDisplay,
   wireColorCss,
   wireColorName,
@@ -616,12 +618,8 @@ function PinTable({
               onMouseLeave={() => (hover.value = null)}
             >
               <td class="mono">{pin.number}</td>
-              <td
-                title={[...(pin.aliases ?? []), ...(pin.functions ?? [])].join(
-                  ", ",
-                )}
-              >
-                {pin.name}
+              <td>
+                <PinLabelInput instance={instance} pin={pin} />
               </td>
               <td>
                 <select
@@ -649,6 +647,79 @@ function PinTable({
         })}
       </tbody>
     </table>
+  );
+}
+
+/**
+ * A pin's name on this part. Typing renames the pin for this part only;
+ * clearing the field, or typing the definition's name, restores it.
+ */
+function PinLabelInput({
+  instance,
+  pin,
+}: {
+  instance: ComponentInstance;
+  pin: PinDefinition;
+}) {
+  const name = pinName(instance, pin);
+  const labelled = name !== pin.name;
+  const tags = [...(pin.aliases ?? []), ...(pin.functions ?? [])].join(", ");
+  const setLabel = (label: string) =>
+    mutate(
+      {
+        type: "set_pin_label",
+        instance_id: instance.id,
+        pin_id: pin.id,
+        label,
+      },
+      { failure: "Pin name not saved" },
+    );
+  const save = (input: HTMLInputElement) => {
+    const next = input.value.trim() || pin.name;
+    if (next === name) {
+      input.value = name;
+      return;
+    }
+    void setLabel(next);
+  };
+  return (
+    <div class={`pin-label-field${labelled ? " labelled" : ""}`}>
+      <input
+        key={`${instance.id}:${pin.id}:${name}`}
+        defaultValue={name}
+        placeholder={pin.name}
+        aria-label={`Name of pin ${pin.number}`}
+        title={[
+          labelled
+            ? `Named for ${instance.name} only; the part calls it ${pin.name}.`
+            : `Rename this pin on ${instance.name} only.`,
+          tags,
+        ]
+          .filter(Boolean)
+          .join("\n")}
+        maxLength={32}
+        onBlur={(event) => save(event.target as HTMLInputElement)}
+        onKeyDown={(event) => {
+          const input = event.target as HTMLInputElement;
+          if (event.key === "Enter") input.blur();
+          if (event.key === "Escape") {
+            input.value = name;
+            input.blur();
+          }
+        }}
+      />
+      {labelled && (
+        <button
+          type="button"
+          class="icon-btn small"
+          title={`Go back to ${pin.name}`}
+          aria-label={`Restore the name ${pin.name} for pin ${pin.number}`}
+          onClick={() => void setLabel("")}
+        >
+          <Icon name="undo" size={13} />
+        </button>
+      )}
+    </div>
   );
 }
 

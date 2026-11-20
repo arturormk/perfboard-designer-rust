@@ -1713,6 +1713,33 @@ button.pill.batch-toggle.on {
   background: var(--bg-2);
 }
 
+.pin-label-field {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pin-label-field input {
+  min-width: 0;
+  flex: 1;
+  height: 24px;
+  padding: 0 4px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 12px;
+}
+
+.pin-label-field input:hover,
+.pin-label-field input:focus {
+  border-color: var(--line-2);
+  background: var(--bg-1);
+}
+
+.pin-label-field.labelled input {
+  color: var(--copper-strong);
+  font-weight: 600;
+}
+
 .pin-table select,
 .path-table input {
   height: 24px;
