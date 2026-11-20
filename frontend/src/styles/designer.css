@@ -157,6 +157,11 @@
   stroke-width: 0.07;
 }
 
+.preview-lead {
+  stroke: #6b7079;
+  stroke-width: 0.07;
+}
+
 .preview-orientation {
   fill: var(--copper);
 }

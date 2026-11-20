@@ -33,6 +33,7 @@ import {
   type Point,
 } from "../model/geometry";
 import { BAND_COLORS, OUTLINED_BANDS, bandRects } from "../model/bands";
+import { leadSegments } from "../model/leads";
 import { plusPath, polarityMark } from "../model/polarity";
 import { isDarkWire, pinName, wireColorCss } from "../model/naming";
 import type { Airwire } from "../model/ratsnest";
@@ -113,6 +114,9 @@ function netForPin(design: Design): Map<string, string> {
   return map;
 }
 
+/** A part's pad on its own side, in holes. */
+const PART_PAD_RADIUS = 0.32;
+
 function ComponentBody({
   instance,
   definition,
@@ -186,6 +190,8 @@ function ComponentBody({
     height: body.height / pitch,
   };
   const polarity = polarityMark(definition.pins, bodyRect);
+  // A short body (a diode's) is joined to its pins, out to the pad's rim.
+  const leads = leadSegments(definition.pins, bodyRect, PART_PAD_RADIUS);
   const rect = (area: { min: Point; max: Point }) => ({
     x: area.min.x - 0.5,
     y: area.min.y - 0.5,
@@ -211,6 +217,9 @@ function ComponentBody({
         (definition.wire_keepouts ?? []).map((area, index) => (
           <rect key={`w${index}`} class="wire-keepout" {...rect(area)} />
         ))}
+      {leads.map((lead, index) => (
+        <line key={`l${index}`} class="part-lead" {...lead} />
+      ))}
       <rect class="part-body" {...bodyRect} rx={0.3} />
       {!opposite && bands && (
         <BandOverlay
@@ -887,7 +896,7 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
                 class={state}
                 cx={point.x}
                 cy={point.y}
-                r={joint ? 0.3 : 0.32}
+                r={joint ? 0.3 : PART_PAD_RADIUS}
                 data-pin={
                   pinTargets ? `${instance.id}\u0000${pin.id}` : undefined
                 }

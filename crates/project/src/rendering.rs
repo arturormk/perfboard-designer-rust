@@ -22,7 +22,7 @@ pub fn render_design_svg(document: &ProjectDocument, side: Side) -> String {
     let height = f64::from(board.size.intervals_y()) + padding * 2.0;
     let _ = write!(
         svg,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.lead{{stroke:#a3a7ab;stroke-width:.12}}.shunt{{fill:#1b1b1b;stroke:#e0c060;stroke-width:.08}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.polarity-band{{fill:#c9ccd1}}.polarity-plus{{fill:none;stroke:#e9ebee;stroke-width:.09;stroke-linecap:round}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="{}, {:?} side" viewBox="-2 -2 {width} {height}"><style>.board{{fill:#352817;stroke:#d8b56d;stroke-width:.15}}.hole{{fill:#111;stroke:#d8b56d;stroke-width:.05}}.component{{fill:#30536b;stroke:#bde4ff;stroke-width:.12}}.bridge{{stroke:#d98945;stroke-width:.22;stroke-linecap:round}}.lead{{stroke:#a3a7ab;stroke-width:.12}}.shunt{{fill:#1b1b1b;stroke:#e0c060;stroke-width:.08}}.pin{{fill:#d4b25f;stroke:#111;stroke-width:.06}}.wire{{fill:none;stroke-width:.24;stroke-linecap:round;stroke-linejoin:round}}.wire-casing{{fill:none;stroke:#172019;stroke-width:.38;stroke-linecap:round;stroke-linejoin:round}}.saddle{{stroke-width:.3;stroke-linecap:round}}.saddle-leg{{stroke:#d8b56d;stroke-width:.06}}.part-lead{{stroke:#bde4ff;stroke-width:.08}}.polarity-band{{fill:#c9ccd1}}.polarity-plus{{fill:none;stroke:#e9ebee;stroke-width:.09;stroke-linecap:round}}.opposite{{opacity:.25;stroke-dasharray:.3 .2}}.label{{fill:#fff;font: .55px sans-serif;paint-order:stroke;stroke:#111;stroke-width:.08}}</style>"#,
         escape(&board.name),
         side
     );
@@ -144,6 +144,12 @@ fn render_component(
             end.y,
         );
     } else {
+        for (x1, y1, x2, y2) in lead_segments(definition, pitch, PIN_RADIUS) {
+            let _ = write!(
+                svg,
+                r#"<line class="part-lead" x1="{x1:.3}" y1="{y1:.3}" x2="{x2:.3}" y2="{y2:.3}"/>"#
+            );
+        }
         let _ = write!(
             svg,
             r#"<rect class="component" x="{}" y="{}" width="{}" height="{}" rx=".3"/>"#,
@@ -171,7 +177,7 @@ fn render_component(
     for pin in &definition.pins {
         let _ = write!(
             svg,
-            r#"<circle class="pin" data-pin-id="{}" cx="{}" cy="{}" r=".25"><title>{}</title></circle>"#,
+            r#"<circle class="pin" data-pin-id="{}" cx="{}" cy="{}" r="{PIN_RADIUS}"><title>{}</title></circle>"#,
             escape(&pin.id),
             pin.x,
             pin.y,
@@ -179,6 +185,57 @@ fn render_component(
         );
     }
     svg.push_str("</g>");
+}
+
+/// A pin's drawn radius, in holes.
+const PIN_RADIUS: f64 = 0.25;
+
+/// Leads from a short body's ends out to the rim of each pin (`pad_radius`
+/// around it), as `(x1, y1, x2, y2)` in part-local holes, for a two-pin part
+/// with its pins on one axis. A pin the body reaches gets none. Mirrors
+/// `leadSegments` in `frontend/src/model/leads.ts`.
+fn lead_segments(
+    definition: &ComponentDefinition,
+    pitch: f64,
+    pad_radius: f64,
+) -> Vec<(f64, f64, f64, f64)> {
+    let [a, b] = definition.pins.as_slice() else {
+        return Vec::new();
+    };
+    let along_x = a.y == b.y && a.x != b.x;
+    let along_y = a.x == b.x && a.y != b.y;
+    if !along_x && !along_y {
+        return Vec::new();
+    }
+    let body = &definition.body;
+    let (start, length) = if along_x {
+        (body.x, body.width)
+    } else {
+        (body.y, body.height)
+    };
+    let (start, end) = (start / pitch, (start + length) / pitch);
+    [a, b]
+        .into_iter()
+        .filter_map(|pin| {
+            let (at, across) = if along_x {
+                (f64::from(pin.x), f64::from(pin.y))
+            } else {
+                (f64::from(pin.y), f64::from(pin.x))
+            };
+            let (from, to) = if at + pad_radius < start {
+                (start, at + pad_radius)
+            } else if at - pad_radius > end {
+                (end, at - pad_radius)
+            } else {
+                return None;
+            };
+            Some(if along_x {
+                (from, across, to, across)
+            } else {
+                (across, from, across, to)
+            })
+        })
+        .collect()
 }
 
 /// A polarity mark on a part's body, in part-local holes.
@@ -400,6 +457,18 @@ mod tests {
         };
         assert!((x - 0.0).abs() < f64::EPSILON);
         assert!(y < -0.36 && y > capacitor.body.y / 2.54);
+    }
+
+    #[test]
+    fn short_bodies_are_joined_to_their_pins() {
+        let diode = part("diode-do-41");
+        let leads = lead_segments(&diode, 2.54, 0.25);
+        let body_x = diode.body.x / 2.54;
+        let body_end = body_x + diode.body.width / 2.54;
+        assert_eq!(leads.len(), 2);
+        assert_eq!(leads[0], (body_x, 0.0, 0.25, 0.0));
+        assert_eq!(leads[1], (body_end, 0.0, 3.75, 0.0));
+        assert_eq!(lead_segments(&part("dip-8"), 2.54, 0.25), []);
     }
 
     #[test]

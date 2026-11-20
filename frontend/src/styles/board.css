@@ -484,6 +484,34 @@ button.mirror-tag.on {
   transition: opacity 0.15s;
 }
 
+/* A short body's leads out to its pins (a diode's): drawn in the outline's
+   colour, so the pins read as the part's own, and orange with it when
+   selected. */
+.part-lead {
+  stroke: var(--pad-stroke);
+  stroke-width: 0.08;
+  stroke-linecap: butt;
+}
+
+.part.hovered .part-lead {
+  stroke: #8a8f97;
+}
+
+.part.selected .part-lead {
+  stroke: var(--copper);
+}
+
+.part.opposite .part-lead {
+  stroke: rgb(40 30 20 / 45%);
+  stroke-width: 0.06;
+  stroke-dasharray: 0.25 0.15;
+}
+
+.faded .part-lead,
+.part.dim .part-lead {
+  opacity: 0.3;
+}
+
 .part-notch {
   fill: var(--copper);
   opacity: 0.85;

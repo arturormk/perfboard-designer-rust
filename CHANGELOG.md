@@ -17,6 +17,12 @@ Development line `v0.1.x`: the first public development builds.
   parts that follow that naming get it too; it replaces the corner notch on
   those parts.
 
+- A part whose body stops short of its pins, such as a diode, is drawn with
+  a lead from each end of the body out to the rim of its pad, so the pins
+  read as the part's own. The lead takes the outline's colour (orange when
+  the part is selected), on the board, the component designer preview and
+  the agent's rendered design.
+
 - A part's pins can be renamed for that part only: click a name in the
   inspector's **Pins** table and type, such as `TRIG` for pin 2 of one 555
   while another 555 keeps its names. A renamed pin shows in copper with a
