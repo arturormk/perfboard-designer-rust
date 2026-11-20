@@ -34,6 +34,10 @@ pub struct ProjectDocument {
     pub schema_version: SchemaVersion,
     pub project_id: ProjectId,
     pub name: String,
+    /// What the board is meant to do, in the user's words, so agents know
+    /// the intent without being told. Metadata like the name: outside the
+    /// design and its history. Empty when not written.
+    pub description: String,
     /// Where new placements find components (ADR 0014). `None` means the
     /// default project layer. A project setting: outside the design and its
     /// history, like the name.
@@ -161,6 +165,7 @@ impl ProjectDocument {
             schema_version: PROJECT_SCHEMA_VERSION,
             project_id,
             name: name.into(),
+            description: String::new(),
             component_paths: None,
             review_notes: Vec::new(),
             issues: Vec::new(),
@@ -316,6 +321,7 @@ impl ProjectDocument {
                 schema_version: self.schema_version,
                 project_id: self.project_id,
                 name: self.name.clone(),
+                description: String::new(),
                 component_paths: None,
                 review_notes: Vec::new(),
                 issues: Vec::new(),

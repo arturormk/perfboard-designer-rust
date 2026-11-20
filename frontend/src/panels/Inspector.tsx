@@ -24,6 +24,7 @@ import {
   mergeNets,
   removeNet,
   removeSelection,
+  describeCurrentProject,
   renameCurrentProject,
   renameNet,
   select,
@@ -1577,6 +1578,43 @@ function ProjectNameInput() {
   );
 }
 
+/**
+ * What the board is meant to do, saved when the field loses focus. Agents
+ * read it before working on the design and may rewrite it, so it is keyed by
+ * its text: an agent's edit replaces what is shown.
+ */
+function ProjectDescriptionSection() {
+  const description = view.value?.description ?? "";
+  return (
+    <Section title="Description">
+      <textarea
+        key={description}
+        class="notes"
+        rows={4}
+        defaultValue={description}
+        aria-label="Project description"
+        placeholder="What should this board do? Inputs, outputs, supply, constraints…"
+        onBlur={(event) => {
+          const input = event.target as HTMLTextAreaElement;
+          void describeCurrentProject(input.value).then((ok) => {
+            if (!ok) input.value = description;
+          });
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          const input = event.target as HTMLTextAreaElement;
+          input.value = description;
+          input.blur();
+        }}
+      />
+      <p class="field-note">
+        Saved with the project. AI agents read it to learn what the board is
+        for, and can update it.
+      </p>
+    </Section>
+  );
+}
+
 function BoardInspector({ design: current }: { design: Design }) {
   const board = current.board;
   const widthMm = (board.holes_x - 1) * board.pitch_mm;
@@ -1592,6 +1630,7 @@ function BoardInspector({ design: current }: { design: Design }) {
         title={<ProjectNameInput />}
         subtitle={`${board.holes_x} × ${board.holes_y} holes · ${board.pitch_mm} mm pitch`}
       />
+      <ProjectDescriptionSection />
       <Section title="Board">
         <dl class="stat-row">
           <div>

@@ -6,8 +6,9 @@ use perfboard_project::{
     SessionError,
 };
 use perfboard_session_ipc::{
-    ComponentDocumentation, DocumentationTrust, ProjectRenamed, RUNTIME_DIRECTORY_ENV,
-    SessionApiError, SessionRegistration, SessionRequest, SessionRequestHandler, SessionResponse,
+    ComponentDocumentation, DocumentationTrust, ProjectDescriptionSet, ProjectRenamed,
+    RUNTIME_DIRECTORY_ENV, SessionApiError, SessionRegistration, SessionRequest,
+    SessionRequestHandler, SessionResponse,
 };
 use rmcp::{
     ServiceExt,
@@ -51,6 +52,19 @@ impl SessionRequestHandler for TestHandler {
                     SessionResponse::Renamed(ProjectRenamed {
                         revision: event.revision,
                         name: session.document().name.clone(),
+                        summary: event.summary,
+                    })
+                })
+                .map_err(|error| session_error(&error)),
+            SessionRequest::SetProjectDescription {
+                expected_revision,
+                description,
+            } => session
+                .set_description(expected_revision, &description)
+                .map(|event| {
+                    SessionResponse::DescriptionSet(ProjectDescriptionSet {
+                        revision: event.revision,
+                        description: session.document().description.clone(),
                         summary: event.summary,
                     })
                 })
@@ -272,6 +286,44 @@ async fn real_stdio_server_reads_and_mutates_the_shared_session() {
         .await
         .unwrap();
     assert_eq!(blank.is_error, Some(true));
+
+    let described = client
+        .call_tool(
+            CallToolRequestParams::new("set_project_description").with_arguments(
+                serde_json::from_value(json!({
+                    "expected_revision": 2,
+                    "description": "  A two-transistor fuzz.\nRuns on 9 V.\n"
+                }))
+                .unwrap(),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(described.is_error, Some(false), "{described:?}");
+    let described = &described.structured_content.as_ref().unwrap()["data"]["value"];
+    assert_eq!(
+        described["description"],
+        "A two-transistor fuzz.\nRuns on 9 V."
+    );
+    assert_eq!(described["revision"], 3);
+
+    let design = client
+        .call_tool(CallToolRequestParams::new("get_design"))
+        .await
+        .unwrap();
+    let design = design.structured_content.unwrap();
+    assert_eq!(
+        design["description"],
+        "A two-transistor fuzz.\nRuns on 9 V."
+    );
+    let project = client
+        .call_tool(CallToolRequestParams::new("get_project"))
+        .await
+        .unwrap();
+    assert_eq!(
+        project.structured_content.unwrap()["data"]["value"]["description"],
+        "A two-transistor fuzz.\nRuns on 9 V."
+    );
 
     client.cancel().await.unwrap();
     host.abort();

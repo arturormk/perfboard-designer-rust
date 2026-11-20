@@ -9,6 +9,31 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- A rail on the solder side may run over pins of its own net, such as a GND
+  rail laid across a row of GND pins in place of a chain of bridges. It is
+  joined to every pin it passes over (and to bridges chained from them), so
+  those pins need no wire to it. Drawing or reshaping it adds a node on
+  each pin it passes, so its template has a bare window to solder there; a
+  pin left under a rail without a node (such as a part moved there) is
+  reported. Its assembly step comes after the parts
+  whose pins it covers and the wires that end in those holes (a wire ending
+  on one of its nodes on a whole hole is soldered first and the rail laid
+  over it), and names the pins to solder it to. A rail over a pin of another
+  net, a part pin on no net, or a bridge that reaches another net is still
+  an error, and so is a rail on the component side over any pin.
+
+- Rails are labelled `BB1`, `BB2`… (bus bar) instead of `R1`, `R2`…, which
+  read as resistors. `B` stays with bridges.
+
+- The project has a description: what the board is meant to do. With
+  nothing selected, the inspector shows it as a text box under the project
+  name; it saves when the box loses focus and Escape restores it. It is saved
+  with the file (an optional top-level `description`). Agents see it in
+  `get_project` and `get_design`, and can change it with the new
+  `set_project_description` MCP tool, so the design intent no longer has to
+  be repeated in every prompt. Like the name, it is revision-checked but not
+  an undo step.
+
 - Diodes are drawn with their cathode band and electrolytic capacitors with
   a `+` by the positive lead, on every drawing: the editor (both sides, faint
   on the side opposite the part), assembly, breadboard, printed sheets, the

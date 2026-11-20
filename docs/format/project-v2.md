@@ -49,6 +49,17 @@ Validation reports for the snapshots are not stored; readers recompute them.
 uncommitted document). It is absent when there is no working base and an
 empty array when the working copy is unchanged.
 
+## Description
+
+The optional top-level `description` is a plain-text string saying what the
+board is meant to do, written by the user or an agent. It sits beside `name`,
+outside `design`, so it is not part of revision history; editing it advances
+`revision`. It is stored trimmed and omitted when empty.
+
+```json
+"description": "Two-transistor fuzz.\nRuns on 9 V."
+```
+
 ## Component paths
 
 The optional top-level `component_paths` is an array of strings naming the

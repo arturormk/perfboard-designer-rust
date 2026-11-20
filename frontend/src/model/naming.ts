@@ -68,7 +68,7 @@ export function wireLabels(design: Design): Map<string, string> {
 
 export function railLabels(design: Design): Map<string, string> {
   return new Map(
-    Object.keys(design.rails ?? {}).map((id, index) => [id, `R${index + 1}`]),
+    Object.keys(design.rails ?? {}).map((id, index) => [id, `BB${index + 1}`]),
   );
 }
 

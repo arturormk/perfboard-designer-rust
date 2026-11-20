@@ -128,7 +128,7 @@ export function mockAssemblyPlan(
   }
 
   for (const rail of Object.values(design.rails ?? {})) {
-    const label = railNames.get(rail.id) ?? "R";
+    const label = railNames.get(rail.id) ?? "BB";
     const path = pathMm(rail.vertices, pitch);
     drafts.push({
       order: sideOrder(rail.side, 0, 30),

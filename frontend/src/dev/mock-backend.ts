@@ -866,6 +866,7 @@ export async function installMockBackend(): Promise<void> {
     schema_version: 2,
     project_id: doc.project_id,
     name: doc.name,
+    description: doc.description ?? "",
     revision: doc.revision,
     design: clone(doc.design),
     value_readings: Object.fromEntries(
@@ -1150,6 +1151,12 @@ export async function installMockBackend(): Promise<void> {
     rename_project: ({ expectedRevision, name }) => {
       stale(expectedRevision as number);
       doc.name = (name as string).trim();
+      doc.revision += 1;
+      emit();
+    },
+    set_project_description: ({ expectedRevision, description }) => {
+      stale(expectedRevision as number);
+      doc.description = (description as string).trim();
       doc.revision += 1;
       emit();
     },

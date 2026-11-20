@@ -320,7 +320,9 @@ pub enum OperationError {
     UnsupportedWireRoute,
     #[error("wire route passes through an unrelated component pin")]
     WireCrossesPin,
-    #[error("rail route passes through a component pin")]
+    #[error(
+        "rail route passes through a pin that is not on its net, or any pin on the component side"
+    )]
     RailCrossesPin,
     #[error("wire endpoint must refer to an existing terminal on the wire's net")]
     InvalidWireTerminal,
@@ -1291,7 +1293,10 @@ pub(crate) fn apply_operation_untracked(
             if !crate::connectivity::route_is_supported(&rail.vertices) {
                 return Err(OperationError::UnsupportedRailRoute);
             }
-            if !request.defer_checks && crate::connectivity::rail_crosses_pin(&next.design, rail) {
+            let rail = crate::connectivity::with_pin_nodes(&next.design, rail);
+            if !request.defer_checks
+                && crate::connectivity::rail_pin_conflict(&next.design, &rail).is_some()
+            {
                 return Err(OperationError::RailCrossesPin);
             }
             next.design.rails.insert(rail.id, rail.clone());
@@ -1335,7 +1340,10 @@ pub(crate) fn apply_operation_untracked(
                 return Err(OperationError::UnsupportedRailRoute);
             }
             rail.vertices.clone_from(vertices);
-            if !request.defer_checks && crate::connectivity::rail_crosses_pin(&next.design, &rail) {
+            let rail = crate::connectivity::with_pin_nodes(&next.design, &rail);
+            if !request.defer_checks
+                && crate::connectivity::rail_pin_conflict(&next.design, &rail).is_some()
+            {
                 return Err(OperationError::RailCrossesPin);
             }
             let referenced: BTreeSet<RoutePos> = next

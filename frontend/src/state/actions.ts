@@ -12,6 +12,7 @@ import {
   applyTransaction,
   commitProject,
   renameProject,
+  setProjectDescription,
   compareProjectRevisions,
   createProject,
   discardProjectChanges,
@@ -690,6 +691,20 @@ export async function renameCurrentProject(value: string): Promise<boolean> {
     await renameProject(revision(), name);
     return true;
   });
+  return result ?? false;
+}
+
+/** Sets what the board is meant to do; resolves false when it failed. */
+export async function describeCurrentProject(value: string): Promise<boolean> {
+  const description = value.trim();
+  if (description === (view.peek()?.description ?? "")) return true;
+  const result = await guarded(
+    "Could not save the project description",
+    async () => {
+      await setProjectDescription(revision(), description);
+      return true;
+    },
+  );
   return result ?? false;
 }
 

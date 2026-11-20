@@ -21,9 +21,9 @@ use perfboard_project::{
     save_project_atomic, suggest_route, suggest_route_alternatives,
 };
 use perfboard_session_ipc::{
-    ComponentDocumentation, DocumentationTrust, ProjectRenamed, RenderedDesign, ReviewNotesChanged,
-    RouteResults, SessionApiError, SessionRegistration, SessionRequest, SessionRequestHandler,
-    SessionResponse,
+    ComponentDocumentation, DocumentationTrust, ProjectDescriptionSet, ProjectRenamed,
+    RenderedDesign, ReviewNotesChanged, RouteResults, SessionApiError, SessionRegistration,
+    SessionRequest, SessionRequestHandler, SessionResponse,
 };
 use serde::Serialize;
 use tauri::{Emitter, Manager};
@@ -300,6 +300,23 @@ impl SessionRequestHandler for DesktopSessionHandler {
                 drop(session);
                 self.publish(&event);
                 Ok(SessionResponse::Renamed(renamed))
+            }
+            SessionRequest::SetProjectDescription {
+                expected_revision,
+                description,
+            } => {
+                let mut session = self.lock()?;
+                let event = session
+                    .set_description(expected_revision, &description)
+                    .map_err(|error| session_api_error(&error))?;
+                let set = ProjectDescriptionSet {
+                    revision: event.revision,
+                    description: session.document().description.clone(),
+                    summary: event.summary.clone(),
+                };
+                drop(session);
+                self.publish(&event);
+                Ok(SessionResponse::DescriptionSet(set))
             }
             SessionRequest::AddReviewNotes { notes } => {
                 let mut session = self.lock()?;
@@ -716,6 +733,27 @@ fn rename_project(
     })?;
     let event = session
         .rename(expected_revision, &name)
+        .map_err(CommandError::from)?;
+    publish(&app, &event);
+    Ok(())
+}
+
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn set_project_description(
+    state: tauri::State<'_, SessionState>,
+    app: tauri::AppHandle,
+    expected_revision: DocumentRevision,
+    description: String,
+) -> Result<(), CommandError> {
+    let mut session = state.0.lock().map_err(|error| CommandError {
+        code: "session.lock_failed",
+        message: error.to_string(),
+        expected_revision: None,
+        actual_revision: None,
+    })?;
+    let event = session
+        .set_description(expected_revision, &description)
         .map_err(CommandError::from)?;
     publish(&app, &event);
     Ok(())
@@ -1913,6 +1951,7 @@ pub fn run() {
             discard_project_changes,
             commit_project,
             rename_project,
+            set_project_description,
             remove_review_note,
             move_review_note,
             update_review_note,

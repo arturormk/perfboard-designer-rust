@@ -307,6 +307,15 @@ impl ProjectSession {
         Ok(self.event("rename", summary))
     }
 
+    pub fn set_description(
+        &mut self,
+        expected: DocumentRevision,
+        description: &str,
+    ) -> Result<SessionChangeEvent, SessionError> {
+        let summary = self.document.set_description(expected, description)?;
+        Ok(self.event("description", summary))
+    }
+
     pub fn set_component_paths(
         &mut self,
         expected: DocumentRevision,

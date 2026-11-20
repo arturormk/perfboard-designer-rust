@@ -17,6 +17,8 @@ const ADVICE: Record<string, string> = {
     "Part of this route is off the board. Drag its nodes back onto the board or its margin.",
   "route.crosses_pin":
     "The route runs through a pin it does not connect to. Reroute around it.",
+  "route.rail_pin_without_node":
+    "The rail passes over a pin with no node to solder it at. Add a node on that pin, or reroute the rail.",
   "route.junction_needs_through_hole":
     "Wires on both faces meet here. Make the junction a through-hole, or keep the wires on one face.",
   "route.rail_node_other_side":

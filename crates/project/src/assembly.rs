@@ -230,7 +230,7 @@ impl<'a> Context<'a> {
             rails: design.rails.values().collect(),
             saddles: design.saddles.values().collect(),
             wire_labels: labels("W", design.wires.keys().map(ToString::to_string).collect()),
-            rail_labels: labels("R", design.rails.keys().map(ToString::to_string).collect()),
+            rail_labels: labels("BB", design.rails.keys().map(ToString::to_string).collect()),
             saddle_labels: labels(
                 "S",
                 design.saddles.keys().map(ToString::to_string).collect(),
@@ -710,11 +710,19 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
                 .collect(),
         });
     }
+    // A rail laid over pins is soldered to their leads, so it goes on after
+    // them: by default after the solder-side wires too, as the last conductor.
+    let late_rails: Vec<bool> = context
+        .rails
+        .iter()
+        .map(|rail| crate::connectivity::rail_covers_pins(context.design, rail))
+        .collect();
     for (position, rail) in context.rails.iter().enumerate() {
         let (y, x) = top_left(&rail.vertices);
-        let phase = match rail.side {
-            Side::Component => 0,
-            Side::Solder => 3,
+        let (phase, order) = match rail.side {
+            Side::Component => (0, 0),
+            Side::Solder if late_rails[position] => (4, 2),
+            Side::Solder => (3, 0),
         };
         index_of.insert(Target::Rail(position), nodes.len());
         let label = context.rail_label(rail);
@@ -724,7 +732,7 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
             label: label.clone(),
             side: rail.side,
             objects: vec![reference("rail", rail.id.to_string())],
-            priority: (phase, 0, y, x, label, rail.id.to_string()),
+            priority: (phase, order, y, x, label, rail.id.to_string()),
             holes: rail.vertices.clone(),
         });
     }
@@ -884,6 +892,59 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
         }
     }
 
+    // A rail laid over pins needs their parts in place, and any wire ending
+    // in one of those holes.
+    for (rail_position, rail) in context.rails.iter().enumerate() {
+        if !late_rails[rail_position] {
+            continue;
+        }
+        let rail_node = index_of[&Target::Rail(rail_position)];
+        let points = crate::connectivity::rail_points(rail);
+        for (part, (instance, definition)) in context.components.iter().enumerate() {
+            let covered = definition.pins.iter().any(|pin| {
+                pin_position(
+                    context.design,
+                    &PinRef {
+                        component_id: instance.id,
+                        pin_id: pin.id.clone(),
+                    },
+                )
+                .is_some_and(|hole| points.contains(&hole))
+            });
+            if covered {
+                let part_node = index_of[&Target::Component(part)];
+                add(
+                    part_node,
+                    rail_node,
+                    format!(
+                        "{} is soldered over a pin of {}",
+                        label_of(&nodes, rail_node),
+                        label_of(&nodes, part_node)
+                    ),
+                );
+            }
+        }
+        for (wire_position, wire) in context.wires.iter().enumerate() {
+            let ends_under = [&wire.start, &wire.end].into_iter().any(|terminal| {
+                matches!(terminal, TerminalRef::Pin { .. })
+                    && crate::connectivity::terminal_position(context.design, wire.net_id, terminal)
+                        .is_ok_and(|hole| points.contains(&hole))
+            });
+            if ends_under {
+                let wire_node = index_of[&Target::Wire(wire_position)];
+                add(
+                    wire_node,
+                    rail_node,
+                    format!(
+                        "{} is laid over the end of {}",
+                        label_of(&nodes, rail_node),
+                        label_of(&nodes, wire_node)
+                    ),
+                );
+            }
+        }
+    }
+
     // A solder-side wire soldered to a part's pin, or any wire soldered to a
     // rail node, needs it in place.
     let mut shared_holes: Vec<(usize, String)> = Vec::new();
@@ -924,9 +985,24 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
                         ),
                     );
                 }
-                TerminalRef::RailNode { rail_id, .. } => {
+                TerminalRef::RailNode { rail_id, position } => {
                     if let Some(rail) = context.rails.iter().position(|rail| rail.id == *rail_id) {
                         let rail_node = index_of[&Target::Rail(rail)];
+                        if late_rails[rail] && position.is_hole() {
+                            // The rail goes on last: the wire's end is
+                            // soldered in the hole and the rail over it.
+                            add(
+                                wire_node,
+                                rail_node,
+                                format!(
+                                    "{} is laid over the end of {} at {}",
+                                    label_of(&nodes, rail_node),
+                                    label_of(&nodes, wire_node),
+                                    context.terminal_display(terminal)
+                                ),
+                            );
+                            continue;
+                        }
                         add(
                             rail_node,
                             wire_node,
@@ -1255,7 +1331,23 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
                     .copied()
                     .expect("rail node");
                 let entry = rail_entry(&context, rail, number);
-                let text = rail_text(node, rail, &entry);
+                let points = crate::connectivity::rail_points(rail);
+                let over: Vec<String> = context
+                    .components
+                    .iter()
+                    .filter(|(_, definition)| !is_bridge(definition))
+                    .flat_map(|(instance, definition)| {
+                        definition.pins.iter().map(|pin| PinRef {
+                            component_id: instance.id,
+                            pin_id: pin.id.clone(),
+                        })
+                    })
+                    .filter(|pin| {
+                        pin_position(context.design, pin).is_some_and(|hole| points.contains(&hole))
+                    })
+                    .map(|pin| context.pin_display(&pin))
+                    .collect();
+                let text = rail_text(node, rail, &entry, &over);
                 wire_list.push(entry);
                 text
             }
@@ -1814,9 +1906,14 @@ fn rail_entry(context: &Context<'_>, rail: &Rail, step: u32) -> WireListEntry {
     }
 }
 
-fn rail_text(node: &Node, rail: &Rail, entry: &WireListEntry) -> (String, Vec<String>) {
+fn rail_text(
+    node: &Node,
+    rail: &Rail,
+    entry: &WireListEntry,
+    over: &[String],
+) -> (String, Vec<String>) {
     let taps = rail.vertices.len().saturating_sub(2);
-    (
+    let mut text = (
         format!(
             "Rail {} · {} · {}",
             node.label,
@@ -1843,7 +1940,14 @@ fn rail_text(node: &Node, rail: &Rail, entry: &WireListEntry) -> (String, Vec<St
             "Solder the ends into their holes (clip any you do not need) and solder it at its nodes."
                 .into(),
         ],
-    )
+    );
+    if !over.is_empty() {
+        text.1.push(format!(
+            "It runs over pins already soldered ({}): solder it to each lead as it passes.",
+            over.join(", ")
+        ));
+    }
+    text
 }
 
 fn saddle_text(node: &Node, saddle: &Saddle, held: &[String]) -> (String, Vec<String>) {

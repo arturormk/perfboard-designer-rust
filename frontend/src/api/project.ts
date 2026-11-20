@@ -326,6 +326,8 @@ export interface ProjectDocument {
   schema_version?: number;
   project_id: string;
   name: string;
+  /** What the board is meant to do; absent when not written. */
+  description?: string;
   /** Library layers for new placements (ADR 0014); absent means the default. */
   component_paths?: string[];
   review_notes?: ReviewNote[];
@@ -967,6 +969,12 @@ export function renameProject(
 ): Promise<void> {
   return invoke("rename_project", { expectedRevision, name });
 }
+export function setProjectDescription(
+  expectedRevision: number,
+  description: string,
+): Promise<void> {
+  return invoke("set_project_description", { expectedRevision, description });
+}
 /*
  * Review-note writes act on note IDs and need no expected revision: notes
  * cannot conflict with design edits (ADR 0015).
@@ -1092,6 +1100,8 @@ export interface ProjectView {
   schema_version: number;
   project_id: string;
   name: string;
+  /** What the board is meant to do; empty when not written. */
+  description?: string;
   revision: number;
   design: ProjectDocument["design"];
   /** Component ID → how its value reads (bands, code); valued parts only. */

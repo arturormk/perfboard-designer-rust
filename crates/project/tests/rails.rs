@@ -453,3 +453,199 @@ fn notes_on_wires_rails_nets_and_junctions_can_be_edited_even_when_locked() {
         assert!(apply(&mut document, payload).is_err());
     }
 }
+
+/// Single-pin parts on row 1 at `xs`, each added to the board.
+fn pins_on_row(document: &mut ProjectDocument, xs: &[i32]) -> Vec<PinRef> {
+    let definition = ComponentDefinition::from_toml(
+        "schema_version=1\nid='pin'\ndefinition_version='1'\nname='Pin'\nallowed_rotations=['deg0']\n[body]\nx=-0.2\ny=-0.2\nwidth=0.4\nheight=0.4\n[[pins]]\nid='p'\nnumber='1'\nname='P'\nx=0\ny=0",
+    )
+    .unwrap();
+    xs.iter()
+        .enumerate()
+        .map(|(index, &x)| {
+            let id = ComponentInstanceId::new();
+            apply(
+                document,
+                OperationPayload::AddComponent {
+                    definition: definition.clone(),
+                    instance: ComponentInstance {
+                        id,
+                        definition_id: definition.id.clone(),
+                        name: format!("P{}", index + 1),
+                        position: HolePos::new(x, 1),
+                        rotation: Rotation::Deg0,
+                        value: String::new(),
+                        properties: BTreeMap::new(),
+                        notes: String::new(),
+                        shunted: false,
+                        component_side: false,
+                        pin_labels: BTreeMap::new(),
+                    },
+                },
+            )
+            .unwrap();
+            PinRef {
+                component_id: id,
+                pin_id: "p".into(),
+            }
+        })
+        .collect()
+}
+
+#[test]
+#[allow(clippy::too_many_lines)] // One end-to-end rail scenario, kept in order.
+fn a_solder_side_rail_may_run_over_pins_of_its_own_net_and_joins_them() {
+    let mut document = ProjectDocument::new(
+        ProjectId::new(),
+        "rail over pins",
+        Board::new("board", BoardSize::new(8, 8).unwrap(), 2.54),
+    );
+    // P1, P2 and P3 are on GND; P4 is on another net; P5 is on none.
+    let pins = pins_on_row(&mut document, &[0, 3, 6, 5, 7]);
+    let gnd = NetId::new();
+    let other = NetId::new();
+    for (id, name, members) in [(gnd, "GND", &pins[0..3]), (other, "OTHER", &pins[3..4])] {
+        apply(
+            &mut document,
+            OperationPayload::DefineNet {
+                net: ElectricalNet {
+                    id,
+                    name: name.into(),
+                    state: ConnectionState::Accepted,
+                    pins: members.iter().cloned().collect(),
+                    notes: String::new(),
+                },
+            },
+        )
+        .unwrap();
+    }
+    let rail = |side: Side, end: i64| Rail {
+        id: RailId::new(),
+        net_id: gnd,
+        side,
+        color: WireColor::Black,
+        vertices: vec![RoutePos::new(0, 2), RoutePos::new(end, 2)],
+        locked: false,
+        notes: String::new(),
+    };
+
+    // Over a pin of another net, or a part pin on no net: a short.
+    assert!(
+        apply(
+            &mut document,
+            OperationPayload::AddRail {
+                rail: rail(Side::Solder, 10)
+            }
+        )
+        .unwrap_err()
+        .contains("not on its net")
+    );
+    // On the component side the part's lead fills the hole.
+    assert!(
+        apply(
+            &mut document,
+            OperationPayload::AddRail {
+                rail: rail(Side::Component, 8)
+            }
+        )
+        .unwrap_err()
+        .contains("component side")
+    );
+
+    // Over P1 and P2 (both GND), ending at a whole hole short of P4.
+    let over = rail(Side::Solder, 8);
+    let rail_id = over.id;
+    apply(&mut document, OperationPayload::AddRail { rail: over }).unwrap();
+    let wire_id = WireId::new();
+    apply(
+        &mut document,
+        OperationPayload::AddWire {
+            wire: Wire {
+                id: wire_id,
+                net_id: gnd,
+                start: TerminalRef::from(pins[2].clone()),
+                end: TerminalRef::RailNode {
+                    rail_id,
+                    position: RoutePos::new(8, 2),
+                },
+                side: Side::Solder,
+                color: WireColor::Black,
+                vertices: vec![
+                    RoutePos::new(12, 2),
+                    RoutePos::new(12, 4),
+                    RoutePos::new(8, 4),
+                    RoutePos::new(8, 2),
+                ],
+                locked: false,
+                notes: String::new(),
+            },
+        },
+    )
+    .unwrap();
+    document.validate().unwrap();
+    // A node was added where it passes P2, so its template has a window there.
+    assert_eq!(
+        document.design.rails[&rail_id].vertices,
+        [
+            RoutePos::new(0, 2),
+            RoutePos::new(6, 2),
+            RoutePos::new(8, 2)
+        ]
+    );
+    // Taking that node away puts it back.
+    apply(
+        &mut document,
+        OperationPayload::ModifyRailPath {
+            rail_id,
+            vertices: vec![RoutePos::new(0, 2), RoutePos::new(8, 2)],
+        },
+    )
+    .unwrap();
+    assert_eq!(document.design.rails[&rail_id].vertices.len(), 3);
+    // The rail joins P1 and P2 by passing over them, and P3 through the wire.
+    let errors: Vec<_> = document
+        .validation
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic.code.0 == "circuit.net_incomplete" || diagnostic.code.0.starts_with("route.")
+        })
+        .collect();
+    assert!(errors.is_empty(), "{errors:?}");
+    let islands = perfboard_project::net_connectivity(&document.design)
+        .into_iter()
+        .find(|net| net.net_id == gnd)
+        .unwrap()
+        .islands;
+    assert_eq!(islands.len(), 1);
+
+    // It goes on after the parts it covers and the wire ending under it,
+    // and its step says which pins it is soldered over.
+    let plan = perfboard_project::assembly_plan(&document.design, document.revision);
+    let position = |id: &str| {
+        plan.steps
+            .iter()
+            .position(|step| step.objects.iter().any(|object| object.id == id))
+            .unwrap()
+    };
+    let rail_step = position(&rail_id.to_string());
+    for earlier in [
+        pins[0].component_id.to_string(),
+        pins[1].component_id.to_string(),
+        wire_id.to_string(),
+    ] {
+        assert!(position(&earlier) < rail_step, "{earlier} after the rail");
+    }
+    assert!(
+        plan.steps[rail_step]
+            .instructions
+            .iter()
+            .any(|line| line.contains("P1 · 1") && line.contains("P2 · 1")),
+        "{:?}",
+        plan.steps[rail_step].instructions
+    );
+    assert!(
+        plan.warnings
+            .iter()
+            .all(|warning| warning.code != "assembly.cycle")
+    );
+}

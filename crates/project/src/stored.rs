@@ -65,6 +65,8 @@ struct StoredDocumentOut<'a> {
     schema_version: SchemaVersion,
     project_id: ProjectId,
     name: &'a str,
+    #[serde(skip_serializing_if = "str::is_empty")]
+    description: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     component_paths: Option<&'a [String]>,
     #[serde(skip_serializing_if = "<[ReviewNote]>::is_empty")]
@@ -94,6 +96,8 @@ struct StoredDocumentIn {
     schema_version: SchemaVersion,
     project_id: ProjectId,
     name: String,
+    #[serde(default)]
+    description: String,
     #[serde(default)]
     component_paths: Option<Vec<String>>,
     #[serde(default)]
@@ -141,6 +145,7 @@ impl Serialize for ProjectDocument {
             schema_version: self.schema_version,
             project_id: self.project_id,
             name: &self.name,
+            description: &self.description,
             component_paths: self.component_paths.as_deref(),
             review_notes: &self.review_notes,
             issues: &self.issues,
@@ -315,6 +320,7 @@ impl StoredDocumentIn {
             schema_version: self.schema_version,
             project_id: self.project_id,
             name: self.name,
+            description: self.description,
             component_paths: self.component_paths,
             review_notes: self.review_notes,
             issues: self.issues,

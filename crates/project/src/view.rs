@@ -53,6 +53,9 @@ pub struct ProjectView {
     pub schema_version: SchemaVersion,
     pub project_id: ProjectId,
     pub name: String,
+    /// What the board is meant to do; empty when not written.
+    #[serde(default)]
+    pub description: String,
     pub revision: DocumentRevision,
     pub design: Design,
     /// How each valued part's value reads: display text, resistor colour
@@ -153,6 +156,7 @@ impl ProjectView {
             schema_version: document.schema_version,
             project_id: document.project_id,
             name: document.name.clone(),
+            description: document.description.clone(),
             revision: document.revision,
             design: document.design.clone(),
             value_readings: value_readings(&document.design),

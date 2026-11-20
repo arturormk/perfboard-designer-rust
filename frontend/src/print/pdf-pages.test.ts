@@ -148,8 +148,8 @@ describe("buildWirePages with rails", () => {
   it("exports a design that has rails but no wires", () => {
     const pages = build();
     expect(pages.length).toBe(2);
-    expect(pages[0]).toContain("R1");
-    expect(pages[1]).toContain("R1 · rail");
+    expect(pages[0]).toContain("BB1");
+    expect(pages[1]).toContain("BB1 · rail");
     expect(pages[1]).toContain("3 windows");
     expect(pages[1]).toContain("73.5 mm");
     expect(pages[1]).toContain("VCC");

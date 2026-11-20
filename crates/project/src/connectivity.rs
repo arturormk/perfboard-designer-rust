@@ -256,10 +256,17 @@ fn rail_rules(design: &Design, result: &mut Vec<Diagnostic>) {
                 rail.id.to_string(),
             ));
         }
-        if rail_crosses_pin(design, rail) {
+        if let Some(message) = rail_pin_conflict(design, rail) {
             result.push(rule(
                 "route.crosses_pin",
-                "Rail passes through a component pin".into(),
+                message.into(),
+                "rail",
+                rail.id.to_string(),
+            ));
+        } else if pins_without_node(design, rail) {
+            result.push(rule(
+                "route.rail_pin_without_node",
+                "Rail passes over a pin with no node there to solder it".into(),
                 "rail",
                 rail.id.to_string(),
             ));
@@ -685,21 +692,6 @@ fn adjacency(design: &Design, net_id: NetId) -> BTreeMap<TerminalRef, BTreeSet<T
             .or_insert_with(BTreeSet::new)
             .insert(wire.start.clone());
     }
-    for rail in design.rails.values().filter(|rail| rail.net_id == net_id) {
-        let nodes = design
-            .wires
-            .values()
-            .filter(|wire| wire.net_id == net_id)
-            .flat_map(|wire| [&wire.start, &wire.end])
-            .filter(|terminal| matches!(terminal, TerminalRef::RailNode { rail_id, .. } if *rail_id == rail.id))
-            .cloned()
-            .collect::<Vec<_>>();
-        for (index, first) in nodes.iter().enumerate() {
-            for second in nodes.iter().skip(index + 1) {
-                add_connection(&mut map, first, second);
-            }
-        }
-    }
     let terminals = design
         .nets
         .get(&net_id)
@@ -727,6 +719,33 @@ fn adjacency(design: &Design, net_id: NetId) -> BTreeMap<TerminalRef, BTreeSet<T
                 && group_of(first_position) == group_of(second_position)
             {
                 add_connection(&mut map, first, second);
+            }
+        }
+    }
+    // A rail joins the wires that end on its nodes and the pins it passes
+    // over (and so, through their bridges, any pin those bridges reach).
+    for rail in design.rails.values().filter(|rail| rail.net_id == net_id) {
+        let points = rail_points(rail);
+        let touched: BTreeSet<_> = points.iter().map(&group_of).collect();
+        let nodes = design
+            .wires
+            .values()
+            .filter(|wire| wire.net_id == net_id)
+            .flat_map(|wire| [&wire.start, &wire.end])
+            .filter(|terminal| matches!(terminal, TerminalRef::RailNode { rail_id, .. } if *rail_id == rail.id))
+            .cloned()
+            .chain(
+                terminals
+                    .iter()
+                    .filter(|(_, position)| {
+                        points.contains(position) || touched.contains(&group_of(position))
+                    })
+                    .map(|(terminal, _)| terminal.clone()),
+            )
+            .collect::<Vec<_>>();
+        if let Some((first, rest)) = nodes.split_first() {
+            for other in rest {
+                add_connection(&mut map, first, other);
             }
         }
     }
@@ -920,30 +939,132 @@ pub(crate) fn route_crosses_unrelated_pin(design: &Design, wire: &perfboard_core
     })
 }
 
-pub(crate) fn rail_crosses_pin(design: &Design, rail: &perfboard_core::Rail) -> bool {
-    let pins: BTreeSet<_> = design
+/// Every half-grid point a rail covers, ends included.
+pub(crate) fn rail_points(rail: &perfboard_core::Rail) -> BTreeSet<RoutePos> {
+    let mut points = BTreeSet::new();
+    for pair in rail.vertices.windows(2) {
+        let (dx, dy, steps) = segment_step(pair);
+        for step in 0..=steps {
+            points.insert(RoutePos::new(
+                pair[0].x2 + dx * step,
+                pair[0].y2 + dy * step,
+            ));
+        }
+    }
+    points.extend(rail.vertices.first().copied());
+    points
+}
+
+/// Every pin a rail passes over, with whether that pin belongs to a bridge.
+fn pins_under_rail(design: &Design, rail: &perfboard_core::Rail) -> Vec<(PinRef, bool)> {
+    let points = rail_points(rail);
+    design
         .components
         .values()
         .flat_map(|instance| {
             let definition = &design.component_definitions[&instance.definition_id];
+            let bridge = definition.kind == ComponentKind::Bridge;
             definition.pins.iter().map(move |pin| {
-                let (x, y) = instance.rotation.rotate_local((pin.x, pin.y));
-                RoutePos::new(
-                    (i64::from(instance.position.x) + i64::from(x)) * 2,
-                    (i64::from(instance.position.y) + i64::from(y)) * 2,
+                (
+                    PinRef {
+                        component_id: instance.id,
+                        pin_id: pin.id.clone(),
+                    },
+                    bridge,
                 )
             })
         })
+        .filter(|(pin, _)| pin_position(design, pin).is_some_and(|hole| points.contains(&hole)))
+        .collect()
+}
+
+/// Why a rail may not pass over the pins it does, if it may not.
+///
+/// A rail on the solder side is bare wire laid over the pads: where it passes
+/// a pin of its own net it is soldered to that pin's lead, which joins them
+/// (and the rail then goes on after the part, see the assembly plan). A pin
+/// of another net would be shorted to it, and so would a part pin on no net,
+/// so both are refused. A bridge end on no net is bare copper the rail simply
+/// joins. On the component side a pin's hole is filled by its lead under the
+/// part's body, so a rail there may not pass over any pin.
+pub(crate) fn rail_pin_conflict(
+    design: &Design,
+    rail: &perfboard_core::Rail,
+) -> Option<&'static str> {
+    let pins = pins_under_rail(design, rail);
+    if pins.is_empty() {
+        return None;
+    }
+    if rail.side == perfboard_core::Side::Component {
+        return Some("A rail on the component side passes through a component pin");
+    }
+    let on_rail_net = |pin: &PinRef| net_of_pin(design, pin).map(|net| net.id == rail.net_id);
+    if pins.iter().any(|(pin, bridge)| match on_rail_net(pin) {
+        Some(same) => !same,
+        None => !bridge,
+    }) {
+        return Some("Rail passes through a pin that is not on its net");
+    }
+    // Bridges chained from a pin the rail touches carry its net onward.
+    let groups = bridge_groups(design);
+    let touched: BTreeSet<_> = rail_points(rail)
+        .iter()
+        .filter_map(|point| groups.get(point).copied())
         .collect();
-    rail.vertices.windows(2).any(|pair| {
-        let (dx, dy, steps) = segment_step(pair);
-        (0..=steps).any(|step| {
-            pins.contains(&RoutePos::new(
-                pair[0].x2 + dx * step,
-                pair[0].y2 + dy * step,
-            ))
+    if !touched.is_empty()
+        && design.nets.values().any(|net| {
+            net.id != rail.net_id
+                && net.pins.iter().any(|pin| {
+                    pin_position(design, pin)
+                        .and_then(|hole| groups.get(&hole))
+                        .is_some_and(|group| touched.contains(group))
+                })
         })
+    {
+        return Some("Rail joins a bridge that reaches a pin of another net");
+    }
+    None
+}
+
+/// The rail with a node wherever it passes over a pin and has none yet.
+///
+/// The rail is soldered to each lead it passes, so it needs a bare window
+/// there, and windows are cut at nodes. Nodes are added on the runs where
+/// the pins lie, so the rail keeps its shape.
+pub(crate) fn with_pin_nodes(design: &Design, rail: &perfboard_core::Rail) -> perfboard_core::Rail {
+    let holes: BTreeSet<RoutePos> = pins_under_rail(design, rail)
+        .iter()
+        .filter_map(|(pin, _)| pin_position(design, pin))
+        .collect();
+    let mut vertices = Vec::with_capacity(rail.vertices.len() + holes.len());
+    for pair in rail.vertices.windows(2) {
+        vertices.push(pair[0]);
+        let (dx, dy, steps) = segment_step(pair);
+        for step in 1..steps {
+            let point = RoutePos::new(pair[0].x2 + dx * step, pair[0].y2 + dy * step);
+            if holes.contains(&point) && !rail.vertices.contains(&point) {
+                vertices.push(point);
+            }
+        }
+    }
+    vertices.extend(rail.vertices.last().copied());
+    perfboard_core::Rail {
+        vertices,
+        ..rail.clone()
+    }
+}
+
+/// Whether a rail passes over a pin that has no node of the rail on it.
+fn pins_without_node(design: &Design, rail: &perfboard_core::Rail) -> bool {
+    pins_under_rail(design, rail).iter().any(|(pin, _)| {
+        pin_position(design, pin).is_some_and(|hole| !rail.vertices.contains(&hole))
     })
+}
+
+/// Whether a rail passes over any pin, so it is soldered to leads already in
+/// place and must go on after them.
+pub(crate) fn rail_covers_pins(design: &Design, rail: &perfboard_core::Rail) -> bool {
+    !pins_under_rail(design, rail).is_empty()
 }
 
 pub(crate) fn route_is_supported(vertices: &[RoutePos]) -> bool {

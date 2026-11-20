@@ -60,6 +60,12 @@ pub enum SessionRequest {
         expected_revision: DocumentRevision,
         name: String,
     },
+    /// Sets what the board is meant to do; empty clears it. Not an undo
+    /// step; advances the revision when the text changes.
+    SetProjectDescription {
+        expected_revision: DocumentRevision,
+        description: String,
+    },
     /// Adds review notes (ADR 0015), each in front of the first less severe
     /// note. Needs no expected revision and leaves the revision alone.
     AddReviewNotes {
@@ -124,6 +130,7 @@ pub enum SessionResponse {
     History(HistoryActionResult),
     Commit(Box<Commit>),
     Renamed(ProjectRenamed),
+    DescriptionSet(ProjectDescriptionSet),
     ReviewNotes(ReviewNotesChanged),
     Diff(SemanticDiff),
     Routes(RouteResults),
@@ -136,6 +143,14 @@ pub enum SessionResponse {
 pub struct ProjectRenamed {
     pub revision: DocumentRevision,
     pub name: String,
+    pub summary: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProjectDescriptionSet {
+    pub revision: DocumentRevision,
+    /// The description as stored, trimmed.
+    pub description: String,
     pub summary: String,
 }
 
@@ -749,6 +764,35 @@ mod tests {
             serde_json::from_value::<SessionResponse>(json).unwrap(),
             response
         );
+    }
+
+    #[test]
+    fn set_project_description_uses_a_stable_wire_shape() {
+        let request = SessionRequest::SetProjectDescription {
+            expected_revision: DocumentRevision(3),
+            description: "A two-transistor fuzz.".into(),
+        };
+        let json = serde_json::to_value(&request).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "method": "set_project_description",
+                "params": { "expected_revision": 3, "description": "A two-transistor fuzz." }
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<SessionRequest>(json).unwrap(),
+            request
+        );
+
+        let response = SessionResponse::DescriptionSet(ProjectDescriptionSet {
+            revision: DocumentRevision(4),
+            description: "A two-transistor fuzz.".into(),
+            summary: "Updated the project description".into(),
+        });
+        let json = serde_json::to_value(&response).unwrap();
+        assert_eq!(json["type"], "description_set");
+        assert_eq!(json["value"]["description"], "A two-transistor fuzz.");
     }
 
     #[test]

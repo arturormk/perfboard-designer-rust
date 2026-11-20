@@ -219,6 +219,28 @@ impl ProjectDocument {
         Ok(format!("Project is already named {name}"))
     }
 
+    /// Sets what the board is meant to do. Like the name, it is document
+    /// metadata and not an undo step; the revision advances when the text
+    /// changes. Surrounding whitespace is trimmed; an empty text clears it.
+    pub fn set_description(
+        &mut self,
+        expected_revision: DocumentRevision,
+        description: &str,
+    ) -> Result<String, RevisionError> {
+        self.check_revision(expected_revision)?;
+        let description = description.trim();
+        if description == self.description {
+            return Ok("Project description is unchanged".into());
+        }
+        description.clone_into(&mut self.description);
+        self.revision.0 += 1;
+        Ok(if description.is_empty() {
+            "Cleared the project description".into()
+        } else {
+            "Updated the project description".into()
+        })
+    }
+
     /// Replaces the project's component library layers (ADR 0014). `None`
     /// restores the default. Every entry must be a valid path template.
     pub fn set_component_paths(
