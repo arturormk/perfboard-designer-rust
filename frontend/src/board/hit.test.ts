@@ -31,13 +31,15 @@ describe("pin hit testing", () => {
 
   it("describes the part pin under a bridge end, not the bridge", () => {
     const design = testDesign();
-    expect(describedPin(design, { component_id: "b1", pin_id: "a" })).toEqual(
-      { component_id: "r1", pin_id: "b" },
-    );
+    expect(describedPin(design, { component_id: "b1", pin_id: "a" })).toEqual({
+      component_id: "r1",
+      pin_id: "b",
+    });
     // A part's own pin is described as itself.
-    expect(describedPin(design, { component_id: "r1", pin_id: "b" })).toEqual(
-      { component_id: "r1", pin_id: "b" },
-    );
+    expect(describedPin(design, { component_id: "r1", pin_id: "b" })).toEqual({
+      component_id: "r1",
+      pin_id: "b",
+    });
   });
 
   it("finds the bridge end under the pointer", () => {
@@ -49,9 +51,9 @@ describe("pin hit testing", () => {
     // Mid-span, and on a part that is not a bridge, there is no end.
     const [a, b] = ["a", "b"].map((pin_id) => {
       const instance = design.components!.b1!;
-      const pin = design.component_definitions![instance.definition_id]!.pins.find(
-        (item) => item.id === pin_id,
-      )!;
+      const pin = design.component_definitions![
+        instance.definition_id
+      ]!.pins.find((item) => item.id === pin_id)!;
       return { x: instance.position.x + pin.x, y: instance.position.y + pin.y };
     });
     expect(
@@ -64,9 +66,10 @@ describe("pin hit testing", () => {
     const design = testDesign();
     const bridge = design.components!.b1!;
     bridge.position = { x: 9, y: 7 };
-    expect(describedPin(design, { component_id: "b1", pin_id: "a" })).toEqual(
-      { component_id: "b1", pin_id: "a" },
-    );
+    expect(describedPin(design, { component_id: "b1", pin_id: "a" })).toEqual({
+      component_id: "b1",
+      pin_id: "a",
+    });
   });
 
   it("only lets bridges take wires on the solder side", () => {

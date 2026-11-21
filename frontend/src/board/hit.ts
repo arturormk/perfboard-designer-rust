@@ -43,7 +43,9 @@ export function describedPin(design: Design, ref: PinRef): PinRef {
   if (!instance || !pin) return ref;
   const underlying = pinsAt(design, pinBoardPosition(instance, pin)).find(
     (candidate) =>
-      !isBridge(definitionOf(design, design.components?.[candidate.component_id])),
+      !isBridge(
+        definitionOf(design, design.components?.[candidate.component_id]),
+      ),
   );
   return underlying ?? ref;
 }
