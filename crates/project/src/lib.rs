@@ -12,6 +12,7 @@ pub mod revisions;
 pub mod routing;
 pub mod session;
 mod stored;
+pub mod test_points;
 pub mod view;
 
 pub use assembly::{
@@ -19,9 +20,9 @@ pub use assembly::{
     WireListEntry, WireListKind, assembly_plan,
 };
 pub use breadboard::{
-    BreadboardJumper, BreadboardLayout, BreadboardPart, BreadboardRail, BreadboardWarning,
-    JumperKind, PartPlacement, RailPolarity, RailSlot, breadboard_layout, is_rail_row,
-    verify_breadboard_layout,
+    BreadboardCheck, BreadboardJumper, BreadboardLayout, BreadboardPart, BreadboardProbe,
+    BreadboardRail, BreadboardWarning, JumperKind, PartPlacement, RailPolarity, RailSlot,
+    breadboard_layout, is_rail_row, verify_breadboard_layout,
 };
 pub use diff::{ChangeKind, DiffEntry, SemanticDiff};
 pub use document::{
@@ -47,6 +48,7 @@ pub use session::{
     ChangeMarker, ProjectSession, SessionChangeEvent, SessionError, TransactionRequest,
     TransactionResult,
 };
+pub use test_points::Measure;
 pub use view::{ChangeSummary, CommitSummary, ProjectView, undo_history_bytes};
 
 /// Serialize values in the canonical human-readable snapshot format.

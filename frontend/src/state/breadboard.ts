@@ -14,6 +14,11 @@ export const focusNet = signal<string | null>(null);
 /** The jumper under the pointer, on the board or in the list. */
 export const hoverJumper = signal<string | null>(null);
 
+/** A measurement picked in the checks list: its test points are marked. */
+export const selectedProbe = signal<{ checkId: string; index: number } | null>(
+  null,
+);
+
 let request = 0;
 
 /** Derives the layout for the current revision; a newer request wins. */
@@ -29,6 +34,14 @@ export async function loadBreadboard(): Promise<void> {
       !next.jumpers.some((jumper) => jumper.net_id === focusNet.peek())
     )
       focusNet.value = null;
+    const picked = selectedProbe.peek();
+    if (
+      picked &&
+      !next.checks?.find((check) => check.id === picked.checkId)?.probes[
+        picked.index
+      ]
+    )
+      selectedProbe.value = null;
   } catch (error) {
     if (mine === request) breadboardError.value = errorMessage(error);
   }
@@ -36,4 +49,12 @@ export async function loadBreadboard(): Promise<void> {
 
 export function toggleFocusNet(netId: string): void {
   focusNet.value = focusNet.peek() === netId ? null : netId;
+}
+
+export function toggleProbe(checkId: string, index: number): void {
+  const picked = selectedProbe.peek();
+  selectedProbe.value =
+    picked?.checkId === checkId && picked.index === index
+      ? null
+      : { checkId, index };
 }

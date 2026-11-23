@@ -200,6 +200,37 @@
   color: var(--error);
 }
 
+.bb-check {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.bb-check summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.bb-check-instructions,
+.bb-check-notes {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 8px;
+  padding: 0 0 0 16px;
+  color: var(--text-2);
+}
+
+.bb-check-notes {
+  color: var(--text-3);
+}
+
+.bb-check .step-probes {
+  margin: 0 0 8px;
+}
+
 .bb-rails {
   display: grid;
   gap: 4px;

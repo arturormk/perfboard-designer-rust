@@ -218,7 +218,14 @@ Inspect, Problems and Notes tabs. Press `?` for all keyboard shortcuts.
   hovering one shows its colour code, and **Resistor colour codes** in the
   panel lists every resistor's bands as a reference. The view is read-only, follows every
   design change, and checks its own connectivity against the nets; see
-  [ADR 0018](docs/adr/0018-breadboard-layout.md).
+  [ADR 0018](docs/adr/0018-breadboard-layout.md). **Checks** in the panel
+  lists multimeter measurements for the built breadboard: continuity at the
+  parts' leads, neighbouring rows that must read open, each rail end to end,
+  each resistor's expected reading in place, and supply against ground. Pick
+  one to ring its test points. Assembly ends with the same resistance and
+  short checks for the perfboard. A reading is given only where the design
+  proves it: one a diode or IC could change is left out, with a note saying
+  why; see [ADR 0022](docs/adr/0022-test-points.md).
 
   ![The Breadboard tab showing a capacitive touch module laid out on one breadboard: an Arduino Nano straddling the channel, four screw terminals and six resistors below it, 5V and GND on the rails, and 20 numbered jumpers listed by net on the right](docs/screenshots/breadboard-view.png)
 

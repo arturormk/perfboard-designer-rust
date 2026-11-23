@@ -9,6 +9,20 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Multimeter checks with expected readings (ADR 0022). The assembly plan
+  has a new "Check resistances" step: each resistor measured in place, with
+  the reading and range its tolerance allows, such as "R3 (4.7 kΩ): expect
+  4.7 kΩ (4.65–4.75 kΩ)". Where other parts change the reading, it names
+  them. Where a diode, transistor or IC could change it, the reading is not
+  predicted and a note says why. The supply-to-ground short check gives the
+  expected resistance too, when the design proves it. The Breadboard view
+  gets a Checks section of its own: continuity measured at the parts' leads
+  (which catches a lead in the wrong row or not pushed home), neighbouring
+  rows with different nets that must read open, each rail end to end (for
+  boards whose rails break at the middle), resistances, and shorts. Pick a
+  measurement to ring its test points on the board. Agents see the same
+  checks in `get_assembly_plan` and `get_breadboard_layout`.
+
 - Each resistor can show a 4-band (5%) or 5-band (1%) colour code, to match
   the parts in hand: choose it under the value in the inspector. Five stays
   the default. The board, Assembly and Breadboard views, the colour-code card

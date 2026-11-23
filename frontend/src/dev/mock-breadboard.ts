@@ -3,10 +3,12 @@
  *
  * It produces a layout of the right shape for UI work: parts stacked down
  * one board (straddling, on the left, or beside the board), and each net
- * chained with jumpers. It assigns no rails and checks nothing; the real
- * rules live in `crates/project/src/breadboard.rs` (ADR 0018).
+ * chained with jumpers. It assigns no rails, and its only check is
+ * continuity at the leads; the real rules live in
+ * `crates/project/src/breadboard.rs` (ADRs 0018 and 0022).
  */
 import type {
+  BreadboardCheck,
   BreadboardGeometry,
   BreadboardJumper,
   BreadboardLayout,
@@ -126,6 +128,15 @@ export function mockBreadboardLayout(
     return hole;
   };
   const jumpers: BreadboardJumper[] = [];
+  const leads: BreadboardCheck = {
+    id: "check:leads",
+    label: "Leads",
+    title: "Check continuity at the leads",
+    instructions: [
+      "With the power off and the meter on continuity, check that each net below joins all its pins.",
+    ],
+    probes: [],
+  };
   const nets = Object.values(design.nets ?? {})
     .filter((net) => net.state === "accepted")
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -133,6 +144,13 @@ export function mockBreadboardLayout(
     const holes = (net.pins ?? [])
       .map((pin) => pinAt.get(`${pin.component_id}\u0000${pin.pin_id}`))
       .filter((hole): hole is HolePos => hole !== undefined);
+    if (holes.length >= 2)
+      leads.probes.push({
+        text: `${net.name}: ${holes.length} pins.`,
+        nets: [net.id],
+        holes,
+        measure: { kind: "continuity" },
+      });
     const color =
       Object.values(design.wires ?? {}).find((wire) => wire.net_id === net.id)
         ?.color ?? suggestedWireColor(net.name);
@@ -166,11 +184,12 @@ export function mockBreadboardLayout(
     parts,
     rails: [],
     jumpers,
+    checks: leads.probes.length ? [leads] : [],
     warnings: [
       {
         code: "breadboard.preview",
         message:
-          "Browser preview: a simplified layout without rails or checks. Run the desktop app for the real one.",
+          "Browser preview: a simplified layout without rails, and with continuity checks only. Run the desktop app for the real one.",
       },
     ],
   };

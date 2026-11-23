@@ -48,6 +48,11 @@ use perfboard_core::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::assembly::natural_cmp;
+use crate::test_points::{
+    Measure, SUPPLY_INSTRUCTIONS, is_ground, is_power, resistance_instructions, resistor_checks,
+    supply_checks,
+};
 use crate::{Design, DocumentRevision, connectivity::copper_joined_pins};
 
 /// Rows on one board.
@@ -101,6 +106,9 @@ pub struct BreadboardLayout {
     pub rails: Vec<BreadboardRail>,
     pub jumpers: Vec<BreadboardJumper>,
     pub warnings: Vec<BreadboardWarning>,
+    /// Multimeter checks for the built breadboard, power off (ADR 0022).
+    #[serde(default)]
+    pub checks: Vec<BreadboardCheck>,
 }
 
 /// Board dimensions, so a viewer draws exactly what the layout assumes.
@@ -253,6 +261,34 @@ pub struct BreadboardJumper {
     /// Readable ends, e.g. `e12`, `B2 left − rail, row 7`, `J1 · 2 VCC`.
     pub from_label: String,
     pub to_label: String,
+}
+
+/// One group of measurements, such as continuity at the leads.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BreadboardCheck {
+    /// Stable across layouts: `check:<name>`.
+    pub id: String,
+    pub label: String,
+    pub title: String,
+    pub instructions: Vec<String>,
+    /// Measurements left out, and why.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+    pub probes: Vec<BreadboardProbe>,
+}
+
+/// One measurement on the breadboard.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct BreadboardProbe {
+    pub text: String,
+    /// The nets being measured.
+    pub nets: Vec<NetId>,
+    /// Where to touch the meter's probes, in layout coordinates: a part's
+    /// lead or pin where there is one, otherwise a strip or rail hole.
+    pub holes: Vec<HolePos>,
+    /// What the meter should read, when the design proves it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measure: Option<Measure>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -854,23 +890,6 @@ fn net_color(design: &Design, net_id: NetId, name: &str) -> Option<WireColor> {
     })
 }
 
-fn is_ground(name: &str) -> bool {
-    let upper = name.to_uppercase();
-    ["GND", "VSS", "0V"].iter().any(|word| {
-        upper == *word
-            || upper.starts_with(&format!("{word}_"))
-            || upper.ends_with(&format!("_{word}"))
-    })
-}
-
-fn is_power(name: &str) -> bool {
-    let upper = name.to_uppercase();
-    upper.starts_with('+')
-        || ["VCC", "VDD", "VIN", "VBUS", "5V", "3V3", "12V"]
-            .iter()
-            .any(|word| upper.contains(word))
-}
-
 impl<'a> Planner<'a> {
     fn warn(&mut self, code: &str, message: String, objects: Vec<ObjectReference>) {
         self.warnings.push(BreadboardWarning {
@@ -892,26 +911,7 @@ impl<'a> Planner<'a> {
     }
 
     fn pin_label(&self, pin: &PinRef) -> String {
-        let Some(instance) = self.design.components.get(&pin.component_id) else {
-            return pin.pin_id.clone();
-        };
-        let name = self
-            .definition(instance)
-            .and_then(|definition| definition.pins.iter().find(|p| p.id == pin.pin_id))
-            .map_or_else(
-                || pin.pin_id.clone(),
-                |p| {
-                    if p.name.is_empty()
-                        || p.name == p.number
-                        || p.name.eq_ignore_ascii_case(&format!("pin {}", p.number))
-                    {
-                        format!("pin {}", p.number)
-                    } else {
-                        format!("{} {}", p.number, p.name)
-                    }
-                },
-            );
-        format!("{} · {name}", instance.name)
+        pin_label(self.design, pin)
     }
 
     // ── Parts ────────────────────────────────────────────────────────────────
@@ -1711,7 +1711,9 @@ impl<'a> Planner<'a> {
             rails,
             jumpers,
             warnings: self.warnings,
+            checks: Vec::new(),
         };
+        layout.checks = layout_checks(self.design, &layout, nets);
         let problems = verify_breadboard_layout(self.design, &layout);
         for problem in problems {
             layout.warnings.push(BreadboardWarning {
@@ -1767,6 +1769,392 @@ fn hole_label(h: HolePos, multi: bool) -> String {
         Some(letter) => format!("{prefix}{letter}{row}"),
         None if (8..=9).contains(&column) => format!("{prefix}channel, row {row}"),
         None => format!("{prefix}beside the rails, row {row}"),
+    }
+}
+
+/// `R1 · 1`, `U1 · 8 VCC`.
+fn pin_label(design: &Design, pin: &PinRef) -> String {
+    let Some(instance) = design.components.get(&pin.component_id) else {
+        return pin.pin_id.clone();
+    };
+    let name = design
+        .component_definitions
+        .get(&instance.definition_id)
+        .and_then(|definition| definition.pins.iter().find(|p| p.id == pin.pin_id))
+        .map_or_else(
+            || pin.pin_id.clone(),
+            |p| {
+                if p.name.is_empty()
+                    || p.name == p.number
+                    || p.name.eq_ignore_ascii_case(&format!("pin {}", p.number))
+                {
+                    format!("pin {}", p.number)
+                } else {
+                    format!("{} {}", p.number, p.name)
+                }
+            },
+        );
+    format!("{} · {name}", instance.name)
+}
+
+// ── Checks (ADR 0022) ────────────────────────────────────────────────────────
+
+/// Where every pin of every laid-out part is, in layout coordinates.
+fn layout_pin_holes(design: &Design, layout: &BreadboardLayout) -> BTreeMap<PinRef, HolePos> {
+    let mut holes = BTreeMap::new();
+    for part in &layout.parts {
+        let Some(definition) = design.component_definitions.get(&part.definition_id) else {
+            continue;
+        };
+        let origin = point(part.position);
+        for pin in &definition.pins {
+            let (x, y) = rotate(part.rotation, (i64::from(pin.x), i64::from(pin.y)));
+            holes.insert(
+                PinRef {
+                    component_id: part.component_id,
+                    pin_id: pin.id.clone(),
+                },
+                hole((origin.0 + x, origin.1 + y)),
+            );
+        }
+    }
+    holes
+}
+
+/// What every breadboard check needs.
+struct Checker<'a> {
+    design: &'a Design,
+    layout: &'a BreadboardLayout,
+    nets: &'a [NetInfo],
+    pin_holes: BTreeMap<PinRef, HolePos>,
+    multi: bool,
+    net_name: BTreeMap<NetId, &'a str>,
+    /// The net each used rail carries, by board and slot.
+    rail_net: BTreeMap<(u32, RailSlot), NetId>,
+}
+
+/// The multimeter checks for a laid-out breadboard, power off: continuity at
+/// the parts' leads, isolation between neighbouring strips, rails end to
+/// end, resistances, and supply against ground.
+fn layout_checks(
+    design: &Design,
+    layout: &BreadboardLayout,
+    nets: &[NetInfo],
+) -> Vec<BreadboardCheck> {
+    let checker = Checker {
+        design,
+        layout,
+        nets,
+        pin_holes: layout_pin_holes(design, layout),
+        multi: layout.board_count > 1,
+        net_name: nets.iter().map(|net| (net.id, net.name.as_str())).collect(),
+        rail_net: layout
+            .rails
+            .iter()
+            .map(|rail| ((rail.board, rail.slot), rail.net_id))
+            .collect(),
+    };
+    let mut checks = Vec::new();
+    checker.leads(&mut checks);
+    checker.neighbours(&mut checks);
+    checker.rails(&mut checks);
+    checker.resistances(&mut checks);
+    checker.supplies(&mut checks);
+    checks
+}
+
+impl Checker<'_> {
+    /// A net's pins as (label, hole), in designator order.
+    fn points(&self, net: &NetInfo) -> Vec<(String, HolePos)> {
+        let mut points: Vec<(String, HolePos)> = net
+            .pins
+            .iter()
+            .filter_map(|pin| Some((pin_label(self.design, pin), *self.pin_holes.get(pin)?)))
+            .collect();
+        points.sort_by(|a, b| natural_cmp(&a.0, &b.0).then(a.1.cmp(&b.1)));
+        points.dedup_by(|a, b| a.1 == b.1);
+        points
+    }
+
+    /// Continuity at the parts' own leads, net by net.
+    fn leads(&self, checks: &mut Vec<BreadboardCheck>) {
+        let nets = self.nets;
+        let leads: Vec<BreadboardProbe> = nets
+            .iter()
+            .filter_map(|net| {
+                let points = self.points(net);
+                if points.len() < 2 {
+                    return None;
+                }
+                let shown: Vec<&str> = points
+                    .iter()
+                    .take(6)
+                    .map(|(name, _)| name.as_str())
+                    .collect();
+                let more = points.len().saturating_sub(6);
+                let text = if more > 0 {
+                    format!("{}: {} and {more} more.", net.name, shown.join(", "))
+                } else {
+                    format!("{}: {}.", net.name, shown.join(", "))
+                };
+                Some(BreadboardProbe {
+                    text,
+                    nets: vec![net.id],
+                    holes: points.into_iter().map(|(_, at)| at).collect(),
+                    measure: Some(Measure::Continuity),
+                })
+            })
+            .collect();
+        if !leads.is_empty() {
+            checks.push(BreadboardCheck {
+                id: "check:leads".into(),
+                label: "Leads".into(),
+                title: "Check continuity at the leads".into(),
+                instructions: vec![
+                    "With the power off and the meter on continuity, check that each net below \
+                     joins all its pins."
+                        .into(),
+                    "Touch each part's own lead or pin, not the strip hole beside it: a lead one row \
+                     off, or not pushed home, then shows as a missing beep."
+                        .into(),
+                ],
+                notes: Vec::new(),
+                probes: leads,
+            });
+        }
+    }
+
+    /// Neighbouring strips, and the two rails of a side, that carry different
+    /// nets: they should read open.
+    fn neighbours(&self, checks: &mut Vec<BreadboardCheck>) {
+        let (design, layout, multi) = (self.design, self.layout, self.multi);
+        let (pin_holes, net_name, rail_net) = (&self.pin_holes, &self.net_name, &self.rail_net);
+        // Each strip is probed at a part's lead where it has one.
+        let mut strip_net: BTreeMap<Strip, (NetId, HolePos, String)> = BTreeMap::new();
+        for net in self.nets {
+            for pin in &net.pins {
+                if let Some(&at) = pin_holes.get(pin)
+                    && let Some(strip) = strip_of(at)
+                    && bb_coords(at).0 < layout.board_count * BOARD_STRIDE
+                {
+                    strip_net
+                        .entry(strip)
+                        .or_insert_with(|| (net.id, at, pin_label(design, pin)));
+                }
+            }
+        }
+        for jumper in &layout.jumpers {
+            for end in [jumper.from, jumper.to] {
+                if let Some(strip) = strip_of(end)
+                    && bb_coords(end).0 < layout.board_count * BOARD_STRIDE
+                {
+                    strip_net
+                        .entry(strip)
+                        .or_insert_with(|| (jumper.net_id, end, hole_label(end, multi)));
+                }
+            }
+        }
+        let mut isolation = Vec::new();
+        for (&(board, lane, row), (net, at, label)) in &strip_net {
+            if let Some((next_net, next_at, next_label)) = strip_net.get(&(board, lane, row + 1))
+                && next_net != net
+            {
+                let (a, b) = (net_name[net], net_name[next_net]);
+                isolation.push(BreadboardProbe {
+                    text: format!(
+                        "{label} and {next_label}, rows {} and {}: {a} and {b}.",
+                        row + 1,
+                        row + 2
+                    ),
+                    nets: vec![*net, *next_net],
+                    holes: vec![*at, *next_at],
+                    measure: Some(Measure::Open),
+                });
+            }
+        }
+        for board in 0..layout.board_count {
+            for (plus, minus) in [
+                (RailSlot::LeftOuter, RailSlot::LeftInner),
+                (RailSlot::RightInner, RailSlot::RightOuter),
+            ] {
+                if let (Some(a), Some(b)) =
+                    (rail_net.get(&(board, plus)), rail_net.get(&(board, minus)))
+                    && a != b
+                {
+                    let side = if plus == RailSlot::LeftOuter {
+                        "left"
+                    } else {
+                        "right"
+                    };
+                    let prefix = if multi {
+                        format!("B{} ", board + 1)
+                    } else {
+                        String::new()
+                    };
+                    isolation.push(BreadboardProbe {
+                        text: format!(
+                            "{prefix}{side} + and − rails: {} and {}.",
+                            net_name[a], net_name[b]
+                        ),
+                        nets: vec![*a, *b],
+                        holes: vec![
+                            rail_hole(board, plus, RAIL_FIRST_ROW),
+                            rail_hole(board, minus, RAIL_FIRST_ROW),
+                        ],
+                        measure: Some(Measure::Open),
+                    });
+                }
+            }
+        }
+        if !isolation.is_empty() {
+            checks.push(BreadboardCheck {
+                id: "check:neighbours".into(),
+                label: "Neighbours".into(),
+                title: "Check neighbouring rows are apart".into(),
+                instructions: vec![
+                    "Each pair below carries different nets and should read open.".into(),
+                    "A reading means a bent lead or a stray jumper end bridges them.".into(),
+                ],
+                notes: Vec::new(),
+                probes: isolation,
+            });
+        }
+    }
+
+    /// Each used rail between its first and last jumper: many boards break
+    /// their rails at the middle.
+    fn rails(&self, checks: &mut Vec<BreadboardCheck>) {
+        let (layout, multi, net_name) = (self.layout, self.multi, &self.net_name);
+        let rail_net = &self.rail_net;
+        let mut rail_rows_used: BTreeMap<(u32, RailSlot), BTreeSet<u32>> = BTreeMap::new();
+        for jumper in &layout.jumpers {
+            for end in [jumper.from, jumper.to] {
+                if let Some(rail) = rail_of(end)
+                    && rail.0 < layout.board_count
+                {
+                    rail_rows_used
+                        .entry(rail)
+                        .or_default()
+                        .insert(bb_coords(end).1);
+                }
+            }
+        }
+        let rails: Vec<BreadboardProbe> = rail_rows_used
+            .iter()
+            .filter_map(|(&(board, slot), rows)| {
+                let (&top, &bottom) = (rows.first()?, rows.last()?);
+                if top == bottom {
+                    return None;
+                }
+                let net = *rail_net.get(&(board, slot))?;
+                let from = rail_hole(board, slot, top);
+                Some(BreadboardProbe {
+                    text: format!(
+                        "{}: {} to row {}.",
+                        net_name[&net],
+                        hole_label(from, multi),
+                        bottom + 1
+                    ),
+                    nets: vec![net],
+                    holes: vec![from, rail_hole(board, slot, bottom)],
+                    measure: Some(Measure::Continuity),
+                })
+            })
+            .collect();
+        if !rails.is_empty() {
+            checks.push(BreadboardCheck {
+                id: "check:rails".into(),
+                label: "Rails".into(),
+                title: "Check each rail end to end".into(),
+                instructions: vec![
+                    "With the meter on continuity, check each rail between its first and last \
+                     jumper."
+                        .into(),
+                    "Many boards break each rail at the middle. If a rail does not beep, bridge its \
+                     two halves with a short jumper."
+                        .into(),
+                ],
+                notes: Vec::new(),
+                probes: rails,
+            });
+        }
+    }
+
+    /// Each resistor in place, power off, with the reading the design proves.
+    fn resistances(&self, checks: &mut Vec<BreadboardCheck>) {
+        let (design, pin_holes) = (self.design, &self.pin_holes);
+        let resistors = resistor_checks(design);
+        if !resistors.is_empty() {
+            let mut probes = Vec::new();
+            let mut notes = Vec::new();
+            for check in resistors {
+                match &check.outcome {
+                    Ok(reading) => probes.push(BreadboardProbe {
+                        text: check.line(),
+                        nets: check.nets.clone(),
+                        holes: check
+                            .pins
+                            .iter()
+                            .filter_map(|pin| pin_holes.get(pin).copied())
+                            .collect(),
+                        measure: Some(reading.measure()),
+                    }),
+                    Err(_) => notes.push(check.line()),
+                }
+            }
+            checks.push(BreadboardCheck {
+                id: "check:resistance".into(),
+                label: "Resistance".into(),
+                title: "Check resistances".into(),
+                instructions: resistance_instructions(design),
+                notes,
+                probes,
+            });
+        }
+    }
+
+    /// Each supply net against ground, before power goes on.
+    fn supplies(&self, checks: &mut Vec<BreadboardCheck>) {
+        let (design, nets) = (self.design, self.nets);
+        let first_point = |id: NetId| {
+            nets.iter()
+                .find(|net| net.id == id)
+                .and_then(|net| self.points(net).into_iter().next())
+        };
+        let supplies: Vec<BreadboardProbe> = supply_checks(design)
+            .into_iter()
+            .map(|check| {
+                let point = first_point(check.supply);
+                let ground_point = first_point(check.ground);
+                let at = match (&point, &ground_point) {
+                    (Some((from, _)), Some((to, _))) => format!(", for example {from} to {to}"),
+                    _ => String::new(),
+                };
+                BreadboardProbe {
+                    text: format!(
+                        "{} and {}{}{at}.",
+                        check.supply_name, check.ground_name, check.expect
+                    ),
+                    nets: vec![check.supply, check.ground],
+                    holes: point
+                        .iter()
+                        .chain(ground_point.iter())
+                        .map(|(_, at)| *at)
+                        .collect(),
+                    measure: check.measure,
+                }
+            })
+            .collect();
+        if !supplies.is_empty() {
+            checks.push(BreadboardCheck {
+                id: "check:power".into(),
+                label: "Power".into(),
+                title: "Check for shorts before powering".into(),
+                instructions: SUPPLY_INSTRUCTIONS.map(str::to_owned).to_vec(),
+                notes: Vec::new(),
+                probes: supplies,
+            });
+        }
     }
 }
 

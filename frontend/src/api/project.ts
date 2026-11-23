@@ -790,6 +790,11 @@ export interface StepDependency {
   step_id: string;
   reason: string;
 }
+/** What the meter should read, when the design proves it (ADR 0022). */
+export type Measure =
+  | { kind: "continuity" }
+  | { kind: "open" }
+  | { kind: "resistance"; nominal: number; min: number; max: number };
 /** One measurement in a check step. */
 export interface Probe {
   text: string;
@@ -797,6 +802,7 @@ export interface Probe {
   nets: string[];
   /** Test points: pin holes to touch with the meter's probes. */
   holes: Array<{ x2: number; y2: number }>;
+  measure?: Measure;
 }
 export interface AssemblyStep {
   /** Stable across plans: `component:<id>`, `wire:<id>`, `check:<name>`… */
@@ -932,6 +938,25 @@ export interface BreadboardJumper {
   from_label: string;
   to_label: string;
 }
+/** One measurement on the breadboard (ADR 0022). */
+export interface BreadboardProbe {
+  text: string;
+  nets: string[];
+  /** Where to touch the meter's probes: a part's lead where there is one. */
+  holes: HolePos[];
+  measure?: Measure;
+}
+/** A group of measurements, such as continuity at the leads. */
+export interface BreadboardCheck {
+  /** Stable across layouts: `check:<name>`. */
+  id: string;
+  label: string;
+  title: string;
+  instructions: string[];
+  /** Measurements left out, and why. */
+  notes?: string[];
+  probes: BreadboardProbe[];
+}
 export interface BreadboardWarning {
   code: string;
   message: string;
@@ -946,6 +971,8 @@ export interface BreadboardLayout {
   rails: BreadboardRail[];
   jumpers: BreadboardJumper[];
   warnings: BreadboardWarning[];
+  /** Multimeter checks for the built breadboard, power off. */
+  checks: BreadboardCheck[];
 }
 export function getBreadboardLayout(): Promise<BreadboardLayout> {
   return invoke("get_breadboard_layout");

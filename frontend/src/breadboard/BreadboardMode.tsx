@@ -35,7 +35,9 @@ import {
   focusNet,
   hoverJumper,
   loadBreadboard,
+  selectedProbe,
   toggleFocusNet,
+  toggleProbe,
 } from "../state/breadboard";
 import {
   design as designSignal,
@@ -294,7 +296,12 @@ function BreadboardCanvas({ layout }: { layout: BreadboardLayout }) {
             showValues
             partBands={partBands(layout)}
             beigeResistors
-            overlay={<Jumpers layout={layout} />}
+            overlay={
+              <>
+                <Jumpers layout={layout} />
+                <ProbeMarkers layout={layout} />
+              </>
+            }
           />
         </svg>
         <BreadboardHover at={hoverAt} layout={layout} scene={scene} />
@@ -555,6 +562,27 @@ function Jumpers({ layout }: { layout: BreadboardLayout }) {
   );
 }
 
+/** The picked measurement's test points, ringed on the board. */
+function ProbeMarkers({ layout }: { layout: BreadboardLayout }) {
+  const picked = selectedProbe.value;
+  const probe = picked
+    ? layout.checks?.find((check) => check.id === picked.checkId)?.probes[
+        picked.index
+      ]
+    : undefined;
+  if (!probe) return null;
+  return (
+    <g class="bb-probe-markers">
+      {probe.holes.map((hole, index) => (
+        <g key={index} class="step-hole">
+          <circle class="casing" cx={hole.x} cy={hole.y} r={0.42} />
+          <circle class="ring" cx={hole.x} cy={hole.y} r={0.42} />
+        </g>
+      ))}
+    </g>
+  );
+}
+
 // ── Panel ─────────────────────────────────────────────────────────────────
 
 /** A view option: each resistor's colour code, to pick the right one. */
@@ -581,6 +609,68 @@ function ColorCodes({ layout }: { layout: BreadboardLayout }) {
             bands={part.value!.bands!}
           />
         ))}
+    </section>
+  );
+}
+
+/**
+ * Multimeter checks for the built breadboard (ADR 0022): each measurement
+ * with its expected reading, and its test points marked when picked.
+ */
+function Checks({ layout }: { layout: BreadboardLayout }) {
+  const checks = layout.checks ?? [];
+  if (!checks.length) return null;
+  const picked = selectedProbe.value;
+  return (
+    <section class="bb-section bb-checks">
+      <h3>
+        <Icon name="target" size={14} /> Checks
+      </h3>
+      {checks.map((check) => (
+        <details key={check.id} class="bb-check">
+          <summary>
+            <span>{check.title}</span>
+            <span class="field-note">{check.probes.length}</span>
+          </summary>
+          <ul class="bb-check-instructions">
+            {check.instructions.map((line, index) => (
+              <li key={index}>{line}</li>
+            ))}
+          </ul>
+          {check.probes.length > 0 && (
+            <ul class="step-probes" aria-label="Measurements">
+              {check.probes.map((probe, index) => {
+                const on =
+                  picked?.checkId === check.id && picked.index === index;
+                return (
+                  <li key={index}>
+                    <button
+                      class={on ? "on" : ""}
+                      aria-pressed={on}
+                      title={
+                        on
+                          ? "Hide its test points"
+                          : "Show its test points on the breadboard"
+                      }
+                      onClick={() => toggleProbe(check.id, index)}
+                    >
+                      <Icon name="target" size={14} />
+                      <span>{probe.text}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {check.notes && check.notes.length > 0 && (
+            <ul class="bb-check-notes">
+              {check.notes.map((note, index) => (
+                <li key={index}>{note}</li>
+              ))}
+            </ul>
+          )}
+        </details>
+      ))}
     </section>
   );
 }
@@ -633,6 +723,7 @@ function BreadboardPanel({ layout }: { layout: BreadboardLayout }) {
           </section>
         )}
         <ColorCodes layout={layout} />
+        <Checks layout={layout} />
         {rails.size > 0 && (
           <section class="bb-section">
             <h3>Rails</h3>

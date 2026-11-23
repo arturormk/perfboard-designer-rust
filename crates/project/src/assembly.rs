@@ -26,6 +26,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::connectivity::{pin_position, segment_step};
+use crate::test_points::{
+    Measure, SUPPLY_INSTRUCTIONS, resistance_instructions, resistor_checks, supply_checks,
+};
 use crate::{Design, DocumentRevision};
 
 /// Bare lead allowed at each wire end: board thickness plus a short tail to
@@ -107,7 +110,7 @@ pub struct AssemblyStep {
 }
 
 /// One measurement in a check step.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Probe {
     /// What to measure, e.g. "GND: Nano · 4 GND, J1 · 1."
     pub text: String,
@@ -115,6 +118,9 @@ pub struct Probe {
     pub nets: Vec<String>,
     /// The test points: pin holes to touch with the meter's probes.
     pub holes: Vec<RoutePos>,
+    /// What the meter should read, when the design proves it (ADR 0022).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measure: Option<Measure>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -1408,7 +1414,7 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
             Vec::new(),
             Vec::new(),
             check.instructions,
-            Vec::new(),
+            check.notes,
             Vec::new(),
             check.probes,
         ));
@@ -1979,28 +1985,12 @@ fn saddle_text(node: &Node, saddle: &Saddle, held: &[String]) -> (String, Vec<St
     )
 }
 
-fn is_ground(name: &str) -> bool {
-    let upper = name.to_uppercase();
-    ["GND", "VSS", "0V"].iter().any(|word| {
-        upper == *word
-            || upper.starts_with(&format!("{word}_"))
-            || upper.ends_with(&format!("_{word}"))
-    })
-}
-
-fn is_power(name: &str) -> bool {
-    let upper = name.to_uppercase();
-    upper.starts_with('+')
-        || ["VCC", "VDD", "VIN", "VBUS", "5V", "3V3", "12V"]
-            .iter()
-            .any(|word| upper.contains(word))
-}
-
 struct CheckStep {
     key: String,
     label: String,
     title: String,
     instructions: Vec<String>,
+    notes: Vec<String>,
     probes: Vec<Probe>,
 }
 
@@ -2028,7 +2018,7 @@ fn net_test_points(
 }
 
 /// Orders text with embedded numbers by value, so `R2` comes before `R10`.
-fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
+pub(crate) fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
     fn runs(text: &str) -> impl Iterator<Item = &str> {
         let mut rest = text;
         std::iter::from_fn(move || {
@@ -2066,6 +2056,89 @@ fn natural_cmp(left: &str, right: &str) -> std::cmp::Ordering {
     }
 }
 
+/// Each resistor measured in place with the power off, with the reading the
+/// design proves (ADR 0022); the ones it cannot predict are listed as notes.
+fn resistance_step(context: &Context<'_>) -> Option<CheckStep> {
+    let checks = resistor_checks(context.design);
+    if checks.is_empty() {
+        return None;
+    }
+    let mut probes = Vec::new();
+    let mut notes = Vec::new();
+    for check in checks {
+        match &check.outcome {
+            Ok(reading) => probes.push(Probe {
+                text: check.line(),
+                nets: check.nets.iter().map(ToString::to_string).collect(),
+                holes: check
+                    .pins
+                    .iter()
+                    .filter_map(|pin| pin_position(context.design, pin))
+                    .collect(),
+                measure: Some(reading.measure()),
+            }),
+            Err(_) => notes.push(check.line()),
+        }
+    }
+    Some(CheckStep {
+        key: "check:resistance".into(),
+        label: "Resistance".into(),
+        title: "Check resistances".into(),
+        instructions: resistance_instructions(context.design),
+        notes,
+        probes,
+    })
+}
+
+/// Each supply net against ground before power goes on.
+fn power_step(context: &Context<'_>) -> Option<CheckStep> {
+    let supplies = supply_checks(context.design);
+    if supplies.is_empty() {
+        return None;
+    }
+    {
+        let first_point = |id: perfboard_core::NetId| {
+            context
+                .design
+                .nets
+                .get(&id)
+                .and_then(|net| net_test_points(context, net).into_iter().next())
+        };
+        let probes = supplies
+            .into_iter()
+            .map(|check| {
+                let point = first_point(check.supply);
+                let ground_point = first_point(check.ground);
+                let at = match (&point, &ground_point) {
+                    (Some((from, _)), Some((to, _))) => format!(", for example {from} to {to}"),
+                    _ => String::new(),
+                };
+                Probe {
+                    text: format!(
+                        "{} and {}{}{at}.",
+                        check.supply_name, check.ground_name, check.expect
+                    ),
+                    nets: vec![check.supply.to_string(), check.ground.to_string()],
+                    holes: point
+                        .iter()
+                        .chain(ground_point.iter())
+                        .map(|(_, hole)| *hole)
+                        .collect(),
+                    measure: check.measure,
+                }
+            })
+            .collect();
+        Some(CheckStep {
+            key: "check:power".into(),
+            label: "Power".into(),
+            title: "Check for shorts before powering".into(),
+            instructions: SUPPLY_INSTRUCTIONS.map(str::to_owned).to_vec(),
+            notes: Vec::new(),
+            probes,
+        })
+    }
+}
+
 fn check_steps(context: &Context<'_>) -> Vec<CheckStep> {
     let mut steps = vec![CheckStep {
         key: "check:inspect".into(),
@@ -2076,6 +2149,7 @@ fn check_steps(context: &Context<'_>) -> Vec<CheckStep> {
                 .into(),
             "Reflow any joint that looks dull, cracked or balled up.".into(),
         ],
+        notes: Vec::new(),
         probes: Vec::new(),
     }];
     // Nets are keyed by random IDs; list them by name.
@@ -2109,6 +2183,7 @@ fn check_steps(context: &Context<'_>) -> Vec<CheckStep> {
                 text,
                 nets: vec![net.id.to_string()],
                 holes: points.into_iter().map(|(_, hole)| hole).collect(),
+                measure: Some(Measure::Continuity),
             })
         })
         .collect();
@@ -2121,48 +2196,14 @@ fn check_steps(context: &Context<'_>) -> Vec<CheckStep> {
                 "With a multimeter on continuity, check that each net below connects all its pins."
                     .into(),
             ],
+            notes: Vec::new(),
             probes: continuity,
         });
     }
-    let ground = accepted.iter().find(|net| is_ground(&net.name));
-    let power: Vec<&&perfboard_core::ElectricalNet> = accepted
-        .iter()
-        .filter(|net| is_power(&net.name) && !is_ground(&net.name))
-        .collect();
-    if let Some(ground) = ground
-        && !power.is_empty()
-    {
-        let ground_point = net_test_points(context, ground).into_iter().next();
-        let probes = power
-            .iter()
-            .map(|net| {
-                let point = net_test_points(context, net).into_iter().next();
-                let at = match (&point, &ground_point) {
-                    (Some((from, _)), Some((to, _))) => format!(", for example {from} to {to}"),
-                    _ => String::new(),
-                };
-                Probe {
-                    text: format!("{} and {}{at}.", net.name, ground.name),
-                    nets: vec![net.id.to_string(), ground.id.to_string()],
-                    holes: point
-                        .iter()
-                        .chain(ground_point.iter())
-                        .map(|(_, hole)| *hole)
-                        .collect(),
-                }
-            })
-            .collect();
-        steps.push(CheckStep {
-            key: "check:power".into(),
-            label: "Power".into(),
-            title: "Check for shorts before powering".into(),
-            instructions: vec![
-                "Measure the resistance between each pair of nets below.".into(),
-                "A reading near 0 Ω means a short: find it before connecting power.".into(),
-            ],
-            probes,
-        });
+    if let Some(step) = resistance_step(context) {
+        steps.push(step);
     }
+    steps.extend(power_step(context));
     steps
 }
 

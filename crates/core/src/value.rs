@@ -241,6 +241,19 @@ pub fn read_value(kind: ValueKind, stored: &str, band_count: BandCount) -> Optio
     })
 }
 
+/// A stored resistance in ohms, or `None` when there is none or it does not
+/// read as one.
+#[must_use]
+pub fn resistance_ohms(stored: &str) -> Option<f64> {
+    let text = stored.trim();
+    if text.is_empty() {
+        return None;
+    }
+    let value = parse_resistance(text).ok()?;
+    #[allow(clippy::cast_precision_loss)] // At most a few significant digits.
+    Some(value.digits as f64 * 10_f64.powi(value.exponent))
+}
+
 /// Orders two stored values of `kind`: by magnitude when both read as
 /// resistances or capacitances (220 Ω before 4.7 kΩ before 10 kΩ), readable
 /// values before unreadable ones, otherwise by text.
@@ -570,6 +583,21 @@ mod tests {
         read_value(ValueKind::Resistance, input, BandCount::Five)
             .unwrap()
             .bands
+    }
+
+    #[test]
+    fn stored_resistances_read_as_ohms() {
+        let close = |stored: &str, ohms: f64| {
+            let read = resistance_ohms(stored).unwrap();
+            assert!((read - ohms).abs() <= ohms * 1e-12, "{stored}: {read}");
+        };
+        close("4.7 kΩ", 4700.0);
+        close("220 Ω", 220.0);
+        close("2.2 MΩ", 2.2e6);
+        close("4R7", 4.7);
+        assert_eq!(resistance_ohms("0 Ω"), Some(0.0));
+        assert_eq!(resistance_ohms(""), None);
+        assert_eq!(resistance_ohms("1N4148"), None);
     }
 
     fn four_bands(input: &str) -> Vec<Band> {

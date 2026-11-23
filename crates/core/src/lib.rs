@@ -40,5 +40,5 @@ pub use routing::{
 pub use validation::{PlacementPolicy, validate_design_placements};
 pub use value::{
     Band, BandCount, MAX_VALUE_LEN, ValueError, ValueKind, ValueReading, compare_values,
-    normalize_value, read_value,
+    normalize_value, read_value, resistance_ohms,
 };
