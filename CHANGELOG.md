@@ -9,6 +9,11 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- On the solder side, a pin whose lead is laid across component-side
+  bridges no longer shows a joint in its own hole, since the lead does not go
+  in there. The joint is drawn instead at the far end of the run, where the
+  lead goes through the board.
+
 - A rail on the solder side may run over pins of its own net, such as a GND
   rail laid across a row of GND pins in place of a chain of bridges. It is
   joined to every pin it passes over (and to bridges chained from them), so

@@ -24,6 +24,8 @@ import {
   bodyBounds,
   componentSide,
   isJumper,
+  isLeadBridge,
+  leadRunJoints,
   PAD_RADIUS,
   pinBoardPosition,
   polylineMidpoint,
@@ -658,13 +660,28 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
       }),
     );
 
+  // A part's lead laid across component-side bridges is soldered where the
+  // run ends, not in the pin's own hole: from the solder side that pin has no
+  // joint, and the run's far end has one.
+  const leadJoints =
+    side === "solder"
+      ? leadRunJoints(design)
+      : { carried: new Set(), ends: [] };
+  const solderedPads = pads.filter(
+    ({ instance, pin, ownSide }) =>
+      ownSide === side ||
+      !leadJoints.carried.has(`${instance.id}\u0000${pin.id}`),
+  );
+
   // Bridge ends seen from the component side: a bridge end is soldered in its
   // hole, so a wire on this face can end there, as on a rail node. A hole
   // that already has a part's pad uses the pad instead; one target per hole.
   const padHoles = new Set(pads.map(({ point }) => `${point.x},${point.y}`));
   const bridgeThrough = new Map<string, { point: Point; pin: string }>();
   for (const { instance, definition } of other) {
-    if (definition.kind !== "bridge") continue;
+    // Lead bridges go through the board only at their run's far end.
+    if (definition.kind !== "bridge" || isLeadBridge(definition, instance))
+      continue;
     for (const pin of definition.pins) {
       const point = pinBoardPosition(instance, pin);
       const key = `${point.x},${point.y}`;
@@ -866,43 +883,55 @@ const SceneLayers = memo(function SceneLayers(props: LayerProps) {
         </g>
 
         <g class="layer-pads">
-          {pads.map(({ instance, pin, point, netId, first, ownSide }) => {
-            const joint = ownSide !== side;
-            const state = classes(
-              joint ? "joint" : "pad",
-              first && "first",
-              netId && "assigned",
-              emphasisNetId &&
-                (netId === emphasisNetId ? "emphasis" : "deemphasis"),
-              (selection?.id === instance.id || flashIds?.has(instance.id)) &&
-                "of-selected",
-            );
-            return first && !joint ? (
-              <rect
-                key={`${instance.id}:${pin.id}`}
-                class={state}
-                x={point.x - 0.3}
-                y={point.y - 0.3}
-                width={0.6}
-                height={0.6}
-                rx={0.08}
-                data-pin={
-                  pinTargets ? `${instance.id}\u0000${pin.id}` : undefined
-                }
-              />
-            ) : (
-              <circle
-                key={`${instance.id}:${pin.id}`}
-                class={state}
-                cx={point.x}
-                cy={point.y}
-                r={joint ? 0.3 : PART_PAD_RADIUS}
-                data-pin={
-                  pinTargets ? `${instance.id}\u0000${pin.id}` : undefined
-                }
-              />
-            );
-          })}
+          {solderedPads.map(
+            ({ instance, pin, point, netId, first, ownSide }) => {
+              const joint = ownSide !== side;
+              const state = classes(
+                joint ? "joint" : "pad",
+                first && "first",
+                netId && "assigned",
+                emphasisNetId &&
+                  (netId === emphasisNetId ? "emphasis" : "deemphasis"),
+                (selection?.id === instance.id || flashIds?.has(instance.id)) &&
+                  "of-selected",
+              );
+              return first && !joint ? (
+                <rect
+                  key={`${instance.id}:${pin.id}`}
+                  class={state}
+                  x={point.x - 0.3}
+                  y={point.y - 0.3}
+                  width={0.6}
+                  height={0.6}
+                  rx={0.08}
+                  data-pin={
+                    pinTargets ? `${instance.id}\u0000${pin.id}` : undefined
+                  }
+                />
+              ) : (
+                <circle
+                  key={`${instance.id}:${pin.id}`}
+                  class={state}
+                  cx={point.x}
+                  cy={point.y}
+                  r={joint ? 0.3 : PART_PAD_RADIUS}
+                  data-pin={
+                    pinTargets ? `${instance.id}\u0000${pin.id}` : undefined
+                  }
+                />
+              );
+            },
+          )}
+          {leadJoints.ends.map(({ point, pin }) => (
+            <circle
+              key={pin}
+              class="joint"
+              cx={point.x}
+              cy={point.y}
+              r={0.3}
+              data-pin={pinTargets ? pin : undefined}
+            />
+          ))}
         </g>
 
         <g class="layer-wires">

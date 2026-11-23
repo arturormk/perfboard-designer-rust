@@ -6,6 +6,7 @@ import {
   bridgeRotation,
   componentSide,
   fromRoute,
+  leadRunJoints,
   nextRotation,
   pinPosition,
   polylineLengthMm,
@@ -59,6 +60,30 @@ describe("pin and body placement", () => {
   it("puts bridges on the solder side", () => {
     expect(componentSide(bridge)).toBe("solder");
     expect(componentSide(resistor)).toBe("component");
+  });
+});
+
+describe("lead bridges", () => {
+  it("solders a laid-across lead at the run's far end, not at its pin", () => {
+    const design = testDesign();
+    design.components!.b1!.component_side = true;
+    design.components!.b2 = {
+      id: "b2",
+      definition_id: bridge.id,
+      name: "Bridge 2",
+      position: { x: 4, y: 1 },
+      rotation: "deg0",
+      component_side: true,
+    };
+    const { carried, ends } = leadRunJoints(design);
+    expect([...carried]).toEqual(["r1\u0000b"]);
+    expect(ends).toEqual([{ point: { x: 5, y: 1 }, pin: "b2\u0000b" }]);
+  });
+
+  it("leaves solder-side bridges alone", () => {
+    const { carried, ends } = leadRunJoints(testDesign());
+    expect(carried.size).toBe(0);
+    expect(ends).toEqual([]);
   });
 });
 

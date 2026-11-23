@@ -267,3 +267,80 @@ export function samePoint(a: Point, b: Point): boolean {
 export function pinKey(ref: PinRef): string {
   return `${ref.component_id}\u0000${ref.pin_id}`;
 }
+
+/**
+ * Where a part's lead laid across component-side bridges is soldered.
+ *
+ * A run of touching component-side bridges is one part's lead bent flat
+ * across the holes: it does not go into the pin's own hole, but through the
+ * run's far end. So, seen from the solder side, the owning pin has no joint
+ * (`carried`, as `instance\0pin` keys) and the far end has one (`ends`, with
+ * the bridge pin there). The owner is the first part found with a pin in an
+ * end hole of the run, as in the assembly plan; a far end that holds another
+ * part's pin is soldered with that pin and is not listed.
+ */
+export function leadRunJoints(design: Design): {
+  carried: Set<string>;
+  ends: { point: Point; pin: string }[];
+} {
+  const definitions = design.component_definitions ?? {};
+  const instances = Object.values(design.components ?? {});
+  const key = (point: Point) => `${point.x},${point.y}`;
+
+  const bridges = instances.flatMap((instance) => {
+    const definition = definitions[instance.definition_id];
+    if (!isLeadBridge(definition, instance) || !definition) return [];
+    const holes = definition.pins.slice(0, 2).map((pin) => ({
+      point: pinBoardPosition(instance, pin),
+      pin: `${instance.id}\u0000${pin.id}`,
+    }));
+    return holes.length === 2 ? [holes] : [];
+  });
+  const partPins = new Map<string, string[]>();
+  for (const instance of instances) {
+    const definition = definitions[instance.definition_id];
+    if (!definition || isBridge(definition)) continue;
+    for (const pin of definition.pins) {
+      const hole = key(pinBoardPosition(instance, pin));
+      const list = partPins.get(hole) ?? [];
+      list.push(`${instance.id}\u0000${pin.id}`);
+      partPins.set(hole, list);
+    }
+  }
+
+  const carried = new Set<string>();
+  const ends: { point: Point; pin: string }[] = [];
+  const seen = new Set<number>();
+  bridges.forEach((_, start) => {
+    if (seen.has(start)) return;
+    seen.add(start);
+    const members = [start];
+    for (let cursor = 0; cursor < members.length; cursor++) {
+      const touching = new Set(
+        bridges[members[cursor]!]!.map((h) => key(h.point)),
+      );
+      bridges.forEach((other, index) => {
+        if (!seen.has(index) && other.some((h) => touching.has(key(h.point)))) {
+          seen.add(index);
+          members.push(index);
+        }
+      });
+    }
+    // Holes covered once are the run's ends; the rest have the lead over them.
+    const count = new Map<string, { point: Point; pin: string; n: number }>();
+    for (const hole of members.flatMap((m) => bridges[m]!)) {
+      const entry = count.get(key(hole.point));
+      if (entry) entry.n++;
+      else count.set(key(hole.point), { ...hole, n: 1 });
+    }
+    const runEnds = [...count.values()].filter((entry) => entry.n === 1);
+    const ownerEnd = runEnds.find((end) => partPins.has(key(end.point)));
+    const owner = ownerEnd && partPins.get(key(ownerEnd.point))![0]!;
+    if (owner) carried.add(owner);
+    for (const end of runEnds) {
+      if (end === ownerEnd || partPins.has(key(end.point))) continue;
+      ends.push({ point: end.point, pin: end.pin });
+    }
+  });
+  return { carried, ends };
+}
