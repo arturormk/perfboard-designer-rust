@@ -23,6 +23,19 @@ Development line `v0.1.x`: the first public development builds.
   measurement to ring its test points on the board. Agents see the same
   checks in `get_assembly_plan` and `get_breadboard_layout`.
 
+- The Breadboard view turns a part so its pins face their nets' rails. A
+  diode between two supplies, each with a rail down one side, used to go
+  down the wrong way round, with a jumper across the whole board from each
+  end. Now each end takes a short jumper to the rail on its own side. A part
+  with a cable end, such as a Nano's USB, keeps its turn.
+
+- A part's lead that the perfboard joins to a net without the net listing
+  it (it shares a hole with a bridge end or another pin of the net, sits at
+  the far end of a run of bridges, or lies under a rail) is now wired in on
+  the Breadboard. Before, it was left unconnected there while soldered in on
+  the perfboard. The board also warns about such a lead: add it to the net,
+  or move the part or bridge so they no longer touch.
+
 - Each resistor can show a 4-band (5%) or 5-band (1%) colour code, to match
   the parts in hand: choose it under the value in the inspector. Five stays
   the default. The board, Assembly and Breadboard views, the colour-code card
