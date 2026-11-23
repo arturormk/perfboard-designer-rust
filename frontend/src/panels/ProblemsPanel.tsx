@@ -9,6 +9,8 @@ const ADVICE: Record<string, string> = {
     "Some pins on this net are not joined yet. Follow the dashed hints on the board or ask for a suggested route.",
   "circuit.net_too_small": "A net needs at least two pins to mean anything.",
   "circuit.proposed_net": "Review it in Nets and accept or reject it.",
+  "circuit.pin_joined_off_net":
+    "A bridge, rail or shared hole joins this pin to the net, but the net does not list it. Add the pin to the net, or move the part or bridge so they no longer touch.",
   "circuit.bridge_short":
     "Bridges join pins of different nets. Remove or move a bridge, or move the pins onto one net.",
   "route.terminal_net_mismatch":

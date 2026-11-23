@@ -103,6 +103,13 @@ impl Builder {
         self
     }
 
+    /// Moves a part to a perfboard hole.
+    fn at(&mut self, name: &str, x: i32, y: i32) -> &mut Self {
+        let id = self.names[name];
+        self.design.components.get_mut(&id).unwrap().position = HolePos::new(x, y);
+        self
+    }
+
     /// Adds an accepted net over `Part.pin` names.
     fn net(&mut self, name: &str, pins: &[&str]) -> NetId {
         let id = NetId::new();
@@ -662,4 +669,75 @@ fn rail_links_sit_just_below_the_parts_on_rows_of_their_own() {
         }
     }
     assert!(checked >= 2, "no rail links to check");
+}
+
+#[test]
+fn a_straddling_part_turns_its_pins_toward_their_rails() {
+    // A diode between two supplies, each with a rail down one side of the
+    // board: whichever way round the rails fall, the diode is turned so each
+    // end takes a short jumper to the rail on its own side.
+    for busier in ["VIN", "VCC"] {
+        let mut b = Builder::new();
+        b.part("D1", "diode-do-41")
+            .part("J1", "header-1x4-male")
+            .part("C1", "capacitor-ceramic-2-54mm")
+            .part("C2", "capacitor-ceramic-2-54mm");
+        b.net("GND", &["J1.pin_4", "C1.terminal_2", "C2.terminal_2"]);
+        let (vin, vcc): (&[&str], &[&str]) = if busier == "VIN" {
+            (
+                &["D1.anode", "J1.pin_1", "C1.terminal_1"],
+                &["D1.cathode", "C2.terminal_1"],
+            )
+        } else {
+            (
+                &["D1.anode", "J1.pin_1"],
+                &["D1.cathode", "C2.terminal_1", "C1.terminal_1"],
+            )
+        };
+        b.net("VIN", vin);
+        b.net("VCC", vcc);
+        let layout = b.layout();
+        assert_sound(&b.design, &layout);
+        assert_eq!(placement(&layout, "D1").placement, PartPlacement::Straddle);
+        // One rail each, on opposite sides.
+        let sides: Vec<_> = layout
+            .rails
+            .iter()
+            .filter(|r| r.net_name.starts_with('V'))
+            .collect();
+        assert_eq!(sides.len(), 2, "{sides:?}");
+        let strip = |x: i32| (3..=14).contains(&(x % 19));
+        let across: Vec<_> = layout
+            .jumpers
+            .iter()
+            .filter(|j| {
+                j.net_name.starts_with('V') && strip(j.from.x) && j.from.x.abs_diff(j.to.x) > 8
+            })
+            .map(|j| (&j.net_name, &j.from_label, &j.to_label))
+            .collect();
+        assert!(across.is_empty(), "{busier} busier: {across:?}");
+    }
+}
+
+#[test]
+fn a_lead_joined_to_a_net_only_by_copper_is_wired_in() {
+    // On the perfboard, C1's first lead shares a hole with the end of bridge
+    // B1, whose other end is on VCC; the net lists the bridge end, not the
+    // lead. Bridges have no breadboard part, so the lead must still get its
+    // jumper to VCC.
+    let mut b = Builder::new();
+    b.part("J1", "header-1x4-male")
+        .part("C1", "capacitor-ceramic-2-54mm")
+        .part("B1", "bridge");
+    b.at("J1", 10, 0).at("B1", 0, 5).at("C1", 1, 5);
+    b.net("VCC", &["J1.pin_1", "B1.a"]);
+    b.net("GND", &["J1.pin_4", "C1.terminal_2"]);
+    let layout = b.layout();
+    assert_sound(&b.design, &layout);
+    let vcc_strips = layout
+        .jumpers
+        .iter()
+        .filter(|j| j.net_name == "VCC" && (3..=14).contains(&(j.from.x % 19)))
+        .count();
+    assert_eq!(vcc_strips, 2, "{:#?}", layout.jumpers);
 }

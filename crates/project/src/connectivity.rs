@@ -435,6 +435,7 @@ pub(crate) fn diagnostics(design: &Design) -> Vec<Diagnostic> {
         }
     }
     result.extend(shunt_join_advisories(design));
+    result.extend(pins_joined_off_net(design));
     result.extend(rule_diagnostics(design));
     for wire in design.wires.values() {
         // Position only: a terminal on the wrong net is its own rule error.
@@ -757,6 +758,98 @@ fn adjacency(design: &Design, net_id: NetId) -> BTreeMap<TerminalRef, BTreeSet<T
         }
     }
     map
+}
+
+/// A part lead on no net that copper joins to one anyway: the board and the
+/// circuit disagree, and anything that reads the net (the breadboard layout
+/// excepted, which follows the copper) would treat the lead as unconnected.
+fn pins_joined_off_net(design: &Design) -> Vec<Diagnostic> {
+    copper_joined_pins(design)
+        .into_iter()
+        .filter_map(|(pin, net_id)| {
+            let instance = design.components.get(&pin.component_id)?;
+            let definition = design.component_definitions.get(&instance.definition_id)?;
+            let pin_name = definition
+                .pins
+                .iter()
+                .find(|candidate| candidate.id == pin.pin_id)
+                .map_or(pin.pin_id.as_str(), |candidate| candidate.name.as_str());
+            let net = design.nets.get(&net_id)?;
+            Some(Diagnostic {
+                code: DiagnosticCode("circuit.pin_joined_off_net".into()),
+                severity: DiagnosticSeverity::Warning,
+                message: format!(
+                    "{} {pin_name} is joined to net `{}` on the board but is not in it",
+                    instance.name, net.name
+                ),
+                objects: vec![
+                    ObjectReference {
+                        kind: "component".into(),
+                        id: instance.id.to_string(),
+                    },
+                    ObjectReference {
+                        kind: "net".into(),
+                        id: net_id.to_string(),
+                    },
+                ],
+            })
+        })
+        .collect()
+}
+
+/// Part leads on no net that copper joins to one anyway, with that net: a lead
+/// in the same hole as a net's pin or bridge end, at the far end of a run of
+/// bridges from one, or reached through a rail of the net. A bridge end on no
+/// net is bare copper, so its run counts whether or not it is listed. A pin
+/// copper joins to two nets is a short, not a membership, and is left out.
+pub(crate) fn copper_joined_pins(design: &Design) -> BTreeMap<PinRef, NetId> {
+    let groups = bridge_groups(design);
+    let group_of = |position: RoutePos| groups.get(&position).copied().unwrap_or(position);
+    let mut reach = BTreeMap::<RoutePos, BTreeSet<NetId>>::new();
+    let mut listed = BTreeSet::<&PinRef>::new();
+    for (net_id, net) in &design.nets {
+        for pin in &net.pins {
+            listed.insert(pin);
+            if let Some(position) = pin_position(design, pin) {
+                reach.entry(group_of(position)).or_default().insert(*net_id);
+            }
+        }
+    }
+    for rail in design.rails.values() {
+        for point in rail_points(rail) {
+            reach
+                .entry(group_of(point))
+                .or_default()
+                .insert(rail.net_id);
+        }
+    }
+    let mut joined = BTreeMap::new();
+    for instance in design.components.values() {
+        let Some(definition) = design.component_definitions.get(&instance.definition_id) else {
+            continue;
+        };
+        if definition.kind == ComponentKind::Bridge {
+            continue;
+        }
+        for pin in &definition.pins {
+            let pin = PinRef {
+                component_id: instance.id,
+                pin_id: pin.id.clone(),
+            };
+            if listed.contains(&pin) {
+                continue;
+            }
+            let Some(position) = pin_position(design, &pin) else {
+                continue;
+            };
+            if let Some(nets) = reach.get(&group_of(position))
+                && let [net_id] = nets.iter().collect::<Vec<_>>()[..]
+            {
+                joined.insert(pin, *net_id);
+            }
+        }
+    }
+    joined
 }
 
 /// Maps each bridge end to a representative position shared by every end
@@ -1357,6 +1450,48 @@ mod tests {
                 .iter()
                 .all(|item| item.code.0 != "circuit.net_incomplete")
         );
+    }
+
+    #[test]
+    fn a_pin_joined_to_a_net_by_a_bridge_but_not_in_it_is_a_warning() {
+        // The bridge joins both parts' pins; the net lists only the first.
+        let (mut design, first_id, second_id) = bridge_fixture();
+        let net_id = NetId::new();
+        let second = PinRef {
+            component_id: second_id,
+            pin_id: "p".into(),
+        };
+        design.nets.insert(
+            net_id,
+            ElectricalNet {
+                id: net_id,
+                name: "bridged".into(),
+                state: ConnectionState::Accepted,
+                pins: BTreeSet::from([PinRef {
+                    component_id: first_id,
+                    pin_id: "p".into(),
+                }]),
+                notes: String::new(),
+            },
+        );
+        let off_net = |design: &Design| {
+            diagnostics(design)
+                .into_iter()
+                .filter(|item| item.code.0 == "circuit.pin_joined_off_net")
+                .collect::<Vec<_>>()
+        };
+        let found = off_net(&design);
+        assert_eq!(found.len(), 1, "{found:#?}");
+        assert_eq!(found[0].severity, DiagnosticSeverity::Warning);
+        assert_eq!(
+            found[0].message,
+            "part P is joined to net `bridged` on the board but is not in it"
+        );
+        assert_eq!(found[0].objects[0].id, second_id.to_string());
+        assert_eq!(found[0].objects[1].id, net_id.to_string());
+
+        design.nets.get_mut(&net_id).unwrap().pins.insert(second);
+        assert_eq!(off_net(&design), Vec::new());
     }
 
     #[test]

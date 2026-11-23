@@ -48,7 +48,7 @@ use perfboard_core::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{Design, DocumentRevision};
+use crate::{Design, DocumentRevision, connectivity::copper_joined_pins};
 
 /// Rows on one board.
 pub const BREADBOARD_ROWS: u32 = 63;
@@ -481,7 +481,12 @@ const ROTATIONS: [Rotation; 4] = [
 ];
 
 struct PartFits {
-    straddle: Option<Fit>,
+    /// The best-scoring straddle fits, one per rotation that reaches the top
+    /// score, so placement can turn a part end for end when that puts its
+    /// pins on the side of their rails. A part with required access regions
+    /// keeps the first, so a Nano's USB end stays at the top of the board
+    /// rather than facing the parts below it.
+    straddle: Vec<Fit>,
     left: Option<Fit>,
     right: Option<Fit>,
 }
@@ -493,12 +498,13 @@ fn part_fits(
 ) -> PartFits {
     let base_cover = footprint_cover(definition, pitch_mm);
     let base_access = access_cover(definition);
+    let mut straddle: [Option<Fit>; 4] = Default::default();
     let mut best = PartFits {
-        straddle: None,
+        straddle: Vec::new(),
         left: None,
         right: None,
     };
-    for rotation in ROTATIONS {
+    for (turn, rotation) in ROTATIONS.into_iter().enumerate() {
         let pins: Vec<(String, Point)> = definition
             .pins
             .iter()
@@ -548,7 +554,7 @@ fn part_fits(
                     let right_column = left_column + span;
                     if RIGHT_COLUMNS.map(i64::from).contains(&right_column) {
                         consider(
-                            &mut best.straddle,
+                            &mut straddle[turn],
                             make(PartPlacement::Straddle, left_column - first),
                         );
                     }
@@ -568,6 +574,17 @@ fn part_fits(
             }
         }
     }
+    let top = straddle.iter().flatten().map(|fit| fit.score).max();
+    best.straddle = straddle
+        .into_iter()
+        .flatten()
+        .filter(|fit| Some(fit.score) == top)
+        .take(if base_access.is_empty() {
+            ROTATIONS.len()
+        } else {
+            1
+        })
+        .collect();
     best
 }
 
@@ -628,6 +645,31 @@ fn faces_out(fit: &Fit) -> bool {
     let pins = mean(&mut fit.pins.iter().map(|(_, p)| p.0));
     let access = mean(&mut fit.access.iter().map(|p| p.0));
     (access - channel).abs() + 0.25 >= (pins - channel).abs()
+}
+
+/// Pins of a fit on a rail net whose rails all run down the other side of the
+/// board, so each would need a jumper across it.
+fn rail_crossings(
+    instance: &ComponentInstance,
+    fit: &Fit,
+    rail_sides: &BTreeMap<&PinRef, BTreeSet<Lane>>,
+) -> usize {
+    fit.pins
+        .iter()
+        .filter(|(pin_id, (x, _))| {
+            let pin = PinRef {
+                component_id: instance.id,
+                pin_id: pin_id.clone(),
+            };
+            let lane = u32::try_from(fit.shift_x + x)
+                .ok()
+                .and_then(Lane::of_column);
+            matches!(
+                (rail_sides.get(&pin), lane),
+                (Some(sides), Some(lane)) if !sides.contains(&lane)
+            )
+        })
+        .count()
 }
 
 /// Whether a layout point lies within a board's outline, holes or not (the
@@ -714,8 +756,10 @@ pub fn breadboard_layout(design: &Design, revision: DocumentRevision) -> Breadbo
             Vec::new(),
         );
     }
-    planner.place_parts(&nets);
+    // Rails depend on the nets alone; assigning them first lets placement
+    // turn parts toward their rails.
     planner.assign_rails(&nets);
+    planner.place_parts(&nets);
     planner.connect(&nets);
     planner.finish(&nets, revision)
 }
@@ -728,6 +772,10 @@ fn net_infos(design: &Design) -> Vec<NetInfo> {
             .and_then(|instance| design.component_definitions.get(&instance.definition_id))
             .is_none_or(|definition| definition.kind == ComponentKind::Bridge)
     };
+    // Bridges have no breadboard part, so a lead the perfboard joins to a net
+    // only through one (or through a shared hole or a rail) would be left
+    // unwired: follow the copper, not just the net's list.
+    let joined = copper_joined_pins(design);
     let mut nets: Vec<NetInfo> = design
         .nets
         .values()
@@ -739,6 +787,12 @@ fn net_infos(design: &Design) -> Vec<NetInfo> {
             pins: net
                 .pins
                 .iter()
+                .chain(
+                    joined
+                        .iter()
+                        .filter(|(_, id)| **id == net.id)
+                        .map(|(pin, _)| pin),
+                )
                 .filter(|pin| !is_bridge(&pin.component_id))
                 .cloned()
                 .collect(),
@@ -897,7 +951,7 @@ impl<'a> Planner<'a> {
                 self.pitch_mm,
                 connected.get(&instance.id).unwrap_or(&empty),
             );
-            if fits.straddle.is_some() || fits.left.is_some() || fits.right.is_some() {
+            if !fits.straddle.is_empty() || fits.left.is_some() || fits.right.is_some() {
                 on_board.push((instance, fits));
             } else {
                 off_board.push(instance);
@@ -917,6 +971,22 @@ impl<'a> Planner<'a> {
                 .map(|(_, net)| *net)
                 .collect()
         };
+        // The sides of the board each pin's net has a rail down (rails are
+        // assigned from the nets alone, before any part goes down).
+        let rail_sides: BTreeMap<&PinRef, BTreeSet<Lane>> = nets
+            .iter()
+            .enumerate()
+            .flat_map(|(index, net)| {
+                let sides: BTreeSet<Lane> = self
+                    .rails
+                    .iter()
+                    .filter(|(_, net)| **net == index)
+                    .map(|(slot, _)| slot.lane())
+                    .collect();
+                net.pins.iter().map(move |pin| (pin, sides.clone()))
+            })
+            .filter(|(_, sides)| !sides.is_empty())
+            .collect();
         let mut placed_nets: BTreeSet<NetId> = BTreeSet::new();
         while !on_board.is_empty() {
             let index = (0..on_board.len())
@@ -931,7 +1001,7 @@ impl<'a> Planner<'a> {
                 .unwrap_or(0);
             let (instance, fits) = on_board.remove(index);
             placed_nets.extend(nets_of(instance));
-            self.place_on_board(instance, &fits);
+            self.place_on_board(instance, &fits, &rail_sides);
         }
 
         self.off_board_x = i64::from(self.board_count * BOARD_STRIDE + OFF_BOARD_GAP);
@@ -940,22 +1010,33 @@ impl<'a> Planner<'a> {
         }
     }
 
-    fn place_on_board(&mut self, instance: &ComponentInstance, fits: &PartFits) {
-        let candidates: Vec<&Fit> = if let Some(fit) = &fits.straddle {
-            vec![fit]
-        } else {
+    /// Puts a part at the first board with room for it. On that board, the
+    /// fit with fewest pins away from their net's rails wins (a straddling
+    /// part turned end for end, a one-side part on the other side), so pins
+    /// take short jumpers instead of ones across the board; then the first
+    /// row.
+    fn place_on_board(
+        &mut self,
+        instance: &ComponentInstance,
+        fits: &PartFits,
+        rail_sides: &BTreeMap<&PinRef, BTreeSet<Lane>>,
+    ) {
+        let candidates: Vec<&Fit> = if fits.straddle.is_empty() {
             [&fits.left, &fits.right].into_iter().flatten().collect()
+        } else {
+            fits.straddle.iter().collect()
         };
         loop {
-            let mut best: Option<(u32, u32, &Fit)> = None;
+            let mut best: Option<((u32, usize, u32), &Fit)> = None;
             for fit in &candidates {
-                if let Some((board, row)) = self.find_rows(fit)
-                    && best.is_none_or(|(b, r, _)| (board, row) < (b, r))
-                {
-                    best = Some((board, row, fit));
+                if let Some((board, row)) = self.find_rows(fit) {
+                    let key = (board, rail_crossings(instance, fit, rail_sides), row);
+                    if best.is_none_or(|(old, _)| key < old) {
+                        best = Some((key, fit));
+                    }
                 }
             }
-            if let Some((board, row, fit)) = best {
+            if let Some(((board, _, row), fit)) = best {
                 self.commit_part(instance, fit, board, row);
                 return;
             }
