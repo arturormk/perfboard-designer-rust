@@ -24,6 +24,16 @@ export const BAND_COLORS: Record<Band, string> = {
 /** Bands that need an outline to show against a light or dark body. */
 export const OUTLINED_BANDS: ReadonlySet<Band> = new Set(["black", "white"]);
 
+/**
+ * Where each band's centre sits along the body, as a fraction of its length,
+ * by how many bands there are.
+ */
+const BAND_CENTRES: Record<number, readonly number[]> = {
+  1: [0.5],
+  4: [0.26, 0.4, 0.54, 0.8],
+  5: [0.22, 0.34, 0.46, 0.58, 0.8],
+};
+
 /** Bodies at least this many times longer than wide are drawn with bands. */
 const MIN_BANDED_ASPECT = 2.5;
 
@@ -36,8 +46,9 @@ export interface BandRect {
 }
 
 /**
- * The bands on a lying resistor's body, in part-local units. The four value
- * bands are grouped, then a gap, then the tolerance band. The tolerance band
+ * The bands on a lying resistor's body, in part-local units. The value bands
+ * (three digits and a multiplier, or two and a multiplier on a four-band
+ * code) are grouped, then a gap, then the tolerance band. The tolerance band
  * goes to the right (or bottom) end as seen on screen, so the code reads left
  * to right or top to bottom whatever way the part is turned. Bodies too short
  * to be a lying resistor (a standing one) get none.
@@ -62,11 +73,8 @@ export function bandRects(
   const reversed = dx < 0 || dy < 0;
 
   const width = length * 0.075;
-  const centres =
-    bands.length === 1
-      ? [0.5]
-      : [0.22, 0.34, 0.46, 0.58, 0.8].slice(0, bands.length);
-  return bands.map((band, index) => {
+  const centres = BAND_CENTRES[bands.length] ?? [];
+  return bands.slice(0, centres.length).map((band, index) => {
     const fraction = reversed ? 1 - centres[index]! : centres[index]!;
     const start = (along ? body.x : body.y) + fraction * length - width / 2;
     return along

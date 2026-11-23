@@ -270,10 +270,52 @@ function ValueField({
           {libraryKind === "resistance" ? " and see the colour code" : ""}.
         </p>
       )}
+      {kind === "resistance" && <BandCountChoice instance={instance} />}
       {reading?.bands && (
-        <ColorCode bands={reading.bands} value={reading.display} />
+        <ColorCode
+          bands={reading.bands}
+          value={reading.display}
+          tolerance={reading.tolerance}
+        />
       )}
+      {kind === "resistance" &&
+        instance.band_count === "four" &&
+        reading &&
+        !reading.bands && (
+          <p class="field-note warn">
+            No four-band code fits this value: it needs three digits.
+          </p>
+        )}
     </Section>
+  );
+}
+
+/**
+ * Four or five colour bands for this one resistor, to match the part in the
+ * builder's hand. Five is the default.
+ */
+function BandCountChoice({ instance }: { instance: ComponentInstance }) {
+  const current = instance.band_count ?? "five";
+  return (
+    <div class="segmented small" role="group" aria-label="Colour bands">
+      {(["four", "five"] as const).map((count) => (
+        <button
+          key={count}
+          class={count === current ? "on" : ""}
+          aria-pressed={count === current}
+          onClick={() => {
+            if (count === current) return;
+            void mutate({
+              type: "set_resistor_bands",
+              instance_id: instance.id,
+              band_count: count,
+            });
+          }}
+        >
+          {count === "four" ? "4 bands · 5%" : "5 bands · 1%"}
+        </button>
+      ))}
+    </div>
   );
 }
 

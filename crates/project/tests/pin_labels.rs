@@ -48,6 +48,7 @@ fn setup() -> (ProjectDocument, ComponentInstanceId, ComponentInstanceId) {
             notes: String::new(),
             shunted: false,
             component_side: false,
+            band_count: perfboard_core::BandCount::Five,
             pin_labels: BTreeMap::new(),
         };
         ids.push(instance.id);

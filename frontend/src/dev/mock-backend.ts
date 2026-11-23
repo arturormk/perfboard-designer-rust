@@ -348,6 +348,9 @@ function applyPayload(design: Design, op: OperationPayload): void {
     case "set_bridge_side":
       d.components![op.instance_id]!.component_side = op.side === "component";
       return;
+    case "set_resistor_bands":
+      d.components![op.instance_id]!.band_count = op.band_count;
+      return;
     case "set_component_value":
       d.components![op.instance_id]!.value = mockNormalizeValue(op.value);
       return;
@@ -871,7 +874,7 @@ export async function installMockBackend(): Promise<void> {
     design: clone(doc.design),
     value_readings: Object.fromEntries(
       Object.values(doc.design.components ?? {}).flatMap((instance) => {
-        const reading = mockReadValue(instance.value);
+        const reading = mockReadValue(instance.value, instance.band_count);
         return reading ? [[instance.id, reading]] : [];
       }),
     ),

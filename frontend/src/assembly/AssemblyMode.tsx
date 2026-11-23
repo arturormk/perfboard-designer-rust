@@ -475,7 +475,11 @@ function StepDetail({ plan: current }: { plan: AssemblyPlan }) {
         <h2>{step.title}</h2>
         {step.value &&
           (step.value.bands?.length ? (
-            <ColorCode bands={step.value.bands} value={step.value.display} />
+            <ColorCode
+              bands={step.value.bands}
+              value={step.value.display}
+              tolerance={step.value.tolerance}
+            />
           ) : (
             <p class="step-value">
               <ValueBadge value={step.value} />

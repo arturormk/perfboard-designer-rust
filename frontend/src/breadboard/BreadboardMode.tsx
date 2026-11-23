@@ -568,7 +568,7 @@ function ColorCodes({ layout }: { layout: BreadboardLayout }) {
     <section class="bb-section bb-color-codes">
       <Toggle
         label="Resistor colour codes"
-        hint="The bands to look for, 1% tolerance"
+        hint="The bands to look for on each resistor"
         value={on}
         onChange={(value) => (showBreadboardColorCodes.value = value)}
       />

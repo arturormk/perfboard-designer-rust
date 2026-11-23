@@ -39,6 +39,7 @@ fn add_payload(id: ComponentInstanceId, name: &str, x: i32) -> OperationPayload 
             notes: String::new(),
             shunted: false,
             component_side: false,
+            band_count: perfboard_core::BandCount::Five,
             pin_labels: BTreeMap::new(),
         },
         definition,

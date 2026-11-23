@@ -70,7 +70,9 @@ export function mockAssemblyPlan(
       return { x2: point.x * 2, y2: point.y * 2 };
     });
     const kind: StepKind = bridge ? "bridge" : "component";
-    const value = bridge ? undefined : mockReadValue(instance.value);
+    const value = bridge
+      ? undefined
+      : mockReadValue(instance.value, instance.band_count);
     drafts.push({
       order: bridge ? 50 : 10 + Math.min(definition.pins.length, 30),
       id: `${kind}:${instance.id}`,
@@ -268,7 +270,7 @@ export function mockAssemblyPlan(
   for (const instance of Object.values(design.components ?? {})) {
     const definition = design.component_definitions?.[instance.definition_id];
     if (!definition || definition.kind === "bridge") continue;
-    const value = mockReadValue(instance.value);
+    const value = mockReadValue(instance.value, instance.band_count);
     const key = `${definition.id}\u0000${value?.display ?? ""}`;
     const entry = groups.get(key) ?? {
       definition_id: definition.id,

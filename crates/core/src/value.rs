@@ -4,7 +4,8 @@
 //! A definition's [`ValueKind`] says how its parts' values are read.
 //! Resistances and capacitances are parsed and stored in one display form
 //! (`4k7` → `4.7 kΩ`, `104` → `100 nF`), so the stored text is what every view
-//! shows. Resistances also get their colour code: five bands at 1% tolerance.
+//! shows. Resistances also get their colour code: five bands at 1% tolerance,
+//! or four bands at 5% for a part that says it has four ([`BandCount`]).
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -82,10 +83,52 @@ impl Band {
     }
 }
 
-/// The tolerance band drawn on every resistor: brown, 1%.
-pub const DEFAULT_TOLERANCE: Band = Band::Brown;
-/// The tolerance the default band stands for, as shown to the user.
-pub const DEFAULT_TOLERANCE_TEXT: &str = "1%";
+/// How many colour bands a resistor's code has, to match the parts the
+/// builder actually holds. Each resistor chooses its own; five is the default.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum BandCount {
+    /// Two digits, a multiplier and a gold (5%) tolerance band.
+    Four,
+    /// Three digits, a multiplier and a brown (1%) tolerance band.
+    #[default]
+    Five,
+}
+
+impl BandCount {
+    #[must_use]
+    #[allow(clippy::trivially_copy_pass_by_ref)] // Serde's skip predicate receives a reference.
+    pub const fn is_five(&self) -> bool {
+        matches!(self, Self::Five)
+    }
+
+    /// How many digit bands come before the multiplier.
+    #[must_use]
+    pub const fn digits(self) -> u32 {
+        match self {
+            Self::Four => 2,
+            Self::Five => 3,
+        }
+    }
+
+    /// The tolerance band at the end of the code.
+    #[must_use]
+    pub const fn tolerance(self) -> Band {
+        match self {
+            Self::Four => Band::Gold,
+            Self::Five => Band::Brown,
+        }
+    }
+
+    /// The tolerance that band stands for, as shown to the user.
+    #[must_use]
+    pub const fn tolerance_text(self) -> &'static str {
+        match self {
+            Self::Four => "5%",
+            Self::Five => "1%",
+        }
+    }
+}
 /// The longest value, in characters.
 pub const MAX_VALUE_LEN: usize = 32;
 /// The most significant digits a resistance or capacitance may have.
@@ -118,10 +161,15 @@ pub enum ValueError {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ValueReading {
     pub display: String,
-    /// Five bands (digit, digit, digit, multiplier, tolerance), or one black
-    /// band for a zero-ohm link. Empty when the value has no colour code.
+    /// Five bands (digit, digit, digit, multiplier, tolerance) or four (two
+    /// digits), as the part's [`BandCount`] says, or one black band for a
+    /// zero-ohm link. Empty when the value has no colour code.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bands: Vec<Band>,
+    /// The tolerance the last band stands for, such as `1%`, when the bands
+    /// end in one (not for a zero-ohm link).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tolerance: Option<String>,
     /// The three-digit code printed on small capacitors, such as `104`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub code: Option<String>,
@@ -153,9 +201,10 @@ pub fn normalize_value(kind: ValueKind, input: &str) -> Result<String, ValueErro
 
 /// Reads a stored value. Returns `None` when there is none. A value that
 /// does not parse as `kind` (stored before the definition said what it is)
-/// is shown as it is, without a code.
+/// is shown as it is, without a code. Resistances are coded in `band_count`
+/// bands.
 #[must_use]
-pub fn read_value(kind: ValueKind, stored: &str) -> Option<ValueReading> {
+pub fn read_value(kind: ValueKind, stored: &str, band_count: BandCount) -> Option<ValueReading> {
     let text = stored.trim();
     if text.is_empty() {
         return None;
@@ -163,16 +212,21 @@ pub fn read_value(kind: ValueKind, stored: &str) -> Option<ValueReading> {
     let plain = || ValueReading {
         display: text.to_owned(),
         bands: Vec::new(),
+        tolerance: None,
         code: None,
     };
     Some(match kind {
         ValueKind::Text => plain(),
         ValueKind::Resistance => parse_resistance(text).map_or_else(
             |_| plain(),
-            |value| ValueReading {
-                display: format_resistance(value),
-                bands: resistor_bands(value),
-                code: None,
+            |value| {
+                let bands = resistor_bands(value, band_count);
+                ValueReading {
+                    display: format_resistance(value),
+                    tolerance: (bands.len() > 1).then(|| band_count.tolerance_text().to_owned()),
+                    bands,
+                    code: None,
+                }
             },
         ),
         ValueKind::Capacitance => parse_capacitance(text).map_or_else(
@@ -180,6 +234,7 @@ pub fn read_value(kind: ValueKind, stored: &str) -> Option<ValueReading> {
             |value| ValueReading {
                 display: format_capacitance(value),
                 bands: Vec::new(),
+                tolerance: None,
                 code: capacitor_code(value),
             },
         ),
@@ -463,14 +518,15 @@ fn format_capacitance(value: Decimal) -> String {
     )
 }
 
-/// Five-band code at the default tolerance; one black band for zero ohms;
-/// empty when the value cannot be coded in three digits and a multiplier
-/// from silver (×0.01) to white (×10⁹).
-fn resistor_bands(value: Decimal) -> Vec<Band> {
+/// The colour code in `count` bands: the digits, a multiplier and the
+/// tolerance; one black band for zero ohms; empty when the value cannot be
+/// coded in that many digits and a multiplier from silver (×0.01) to white
+/// (×10⁹).
+fn resistor_bands(value: Decimal, count: BandCount) -> Vec<Band> {
     if value.digits == 0 {
         return vec![Band::Black];
     }
-    let Some((digits, exponent)) = value.with_digits(3) else {
+    let Some((digits, exponent)) = value.with_digits(count.digits()) else {
         return Vec::new();
     };
     let multiplier = match exponent {
@@ -480,13 +536,12 @@ fn resistor_bands(value: Decimal) -> Vec<Band> {
         _ => return Vec::new(),
     };
     let digit = |place: u64| Band::DIGITS[usize::try_from(digits / place % 10).unwrap_or(0)];
-    vec![
-        digit(100),
-        digit(10),
-        digit(1),
-        multiplier,
-        DEFAULT_TOLERANCE,
-    ]
+    let mut bands: Vec<Band> = (0..count.digits())
+        .rev()
+        .map(|place| digit(10_u64.pow(place)))
+        .collect();
+    bands.extend([multiplier, count.tolerance()]);
+    bands
 }
 
 /// The EIA three-digit code (`104`) for `value` in picofarads, for values of
@@ -501,7 +556,7 @@ fn capacitor_code(value: Decimal) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Band::{Black, Brown, Gold, Red, Silver, Violet, White, Yellow};
+    use Band::{Black, Brown, Gold, Orange, Red, Silver, Violet, White, Yellow};
 
     fn resistance(input: &str) -> String {
         normalize_value(ValueKind::Resistance, input).unwrap()
@@ -512,7 +567,15 @@ mod tests {
     }
 
     fn bands(input: &str) -> Vec<Band> {
-        read_value(ValueKind::Resistance, input).unwrap().bands
+        read_value(ValueKind::Resistance, input, BandCount::Five)
+            .unwrap()
+            .bands
+    }
+
+    fn four_bands(input: &str) -> Vec<Band> {
+        read_value(ValueKind::Resistance, input, BandCount::Four)
+            .unwrap()
+            .bands
     }
 
     #[test]
@@ -661,6 +724,34 @@ mod tests {
     }
 
     #[test]
+    fn four_band_codes_have_two_digits_and_a_gold_tolerance() {
+        assert_eq!(four_bands("10k"), [Brown, Black, Orange, Gold]);
+        assert_eq!(four_bands("4k7"), [Yellow, Violet, Red, Gold]);
+        assert_eq!(four_bands("220"), [Red, Red, Brown, Gold]);
+        assert_eq!(four_bands("47"), [Yellow, Violet, Black, Gold]);
+        assert_eq!(four_bands("1"), [Brown, Black, Gold, Gold]);
+        assert_eq!(four_bands("R47"), [Yellow, Violet, Silver, Gold]);
+        assert_eq!(four_bands("10G"), [Brown, Black, White, Gold]);
+        assert_eq!(four_bands("0"), [Black]);
+        // Three significant digits do not fit two digit bands.
+        assert_eq!(four_bands("4.99k"), []);
+        assert_eq!(four_bands("100G"), []);
+    }
+
+    #[test]
+    fn readings_name_the_tolerance_of_their_bands() {
+        let tolerance = |input: &str, count: BandCount| {
+            read_value(ValueKind::Resistance, input, count)
+                .unwrap()
+                .tolerance
+        };
+        assert_eq!(tolerance("4k7", BandCount::Five).as_deref(), Some("1%"));
+        assert_eq!(tolerance("4k7", BandCount::Four).as_deref(), Some("5%"));
+        assert_eq!(tolerance("0", BandCount::Four), None);
+        assert_eq!(tolerance("4.99k", BandCount::Four), None);
+    }
+
+    #[test]
     fn values_without_a_colour_code_have_no_bands() {
         // Below 1 Ω, four significant digits, and past white.
         assert_eq!(bands("R47"), []);
@@ -670,7 +761,11 @@ mod tests {
 
     #[test]
     fn capacitor_codes() {
-        let code = |input: &str| read_value(ValueKind::Capacitance, input).unwrap().code;
+        let code = |input: &str| {
+            read_value(ValueKind::Capacitance, input, BandCount::Five)
+                .unwrap()
+                .code
+        };
         assert_eq!(code("100n").as_deref(), Some("104"));
         assert_eq!(code("4.7n").as_deref(), Some("472"));
         assert_eq!(code("22p").as_deref(), Some("220"));
@@ -696,12 +791,14 @@ mod tests {
 
     #[test]
     fn unreadable_stored_values_are_shown_as_they_are() {
-        let reading = read_value(ValueKind::Resistance, "about 10k").unwrap();
+        let reading = read_value(ValueKind::Resistance, "about 10k", BandCount::Five).unwrap();
         assert_eq!(reading.display, "about 10k");
         assert_eq!(reading.bands, []);
-        assert_eq!(read_value(ValueKind::Text, ""), None);
+        assert_eq!(read_value(ValueKind::Text, "", BandCount::Five), None);
         assert_eq!(
-            read_value(ValueKind::Capacitance, "104").unwrap().display,
+            read_value(ValueKind::Capacitance, "104", BandCount::Five)
+                .unwrap()
+                .display,
             "100 nF"
         );
     }

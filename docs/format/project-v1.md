@@ -67,6 +67,12 @@ conducts like any bridge. A hole shared by two component-side bridges has the
 lead lying over it, so a part's pin there is reported as
 `placement.lead_bridge_over_pin`. The assembly plan makes a run of them in the
 step of the first part with a pin in one of its holes.
+`band_count` (written only when `four`) says how many colour bands a resistor
+has: `five` (three digits, a multiplier and a brown 1% band; the default) or
+`four` (two digits, a multiplier and a gold 5% band), so its colour code
+matches the part the builder holds. It is set with `set_resistor_bands`
+(`instance_id`, `band_count`), which refuses parts whose definition is not a
+`resistance`, and is reset on such parts when they are added.
 `pin_labels` (written only when non-empty) maps pin IDs to this part's own
 names for those pins, such as `TRIG` for pin 2 of one 555 timer. A label
 replaces the embedded definition's pin name for that part only; pins without

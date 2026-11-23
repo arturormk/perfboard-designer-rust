@@ -17,10 +17,9 @@ use std::collections::{BTreeMap, BTreeSet, BinaryHeap};
 use std::fmt::Write as _;
 
 use perfboard_core::{
-    Band, ComponentDefinition, ComponentInstance, ComponentKind, ConnectionState,
-    DEFAULT_TOLERANCE_TEXT, JumperMatchKind, ObjectReference, PinRef, Rail, RoutePos, Saddle, Side,
-    TerminalRef, ValueKind, ValueReading, Wire, WireColor, compare_values, measure_route,
-    read_value,
+    Band, ComponentDefinition, ComponentInstance, ComponentKind, ConnectionState, JumperMatchKind,
+    ObjectReference, PinRef, Rail, RoutePos, Saddle, Side, TerminalRef, ValueKind, ValueReading,
+    Wire, WireColor, compare_values, measure_route, read_value,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1393,7 +1392,7 @@ pub fn assembly_plan(design: &Design, revision: DocumentRevision) -> AssemblyPla
                 context
                     .component(&node.objects[0].id)
                     .and_then(|(instance, definition)| {
-                        read_value(definition.value_kind, &instance.value)
+                        read_value(definition.value_kind, &instance.value, instance.band_count)
                     });
         }
     }
@@ -1549,7 +1548,7 @@ fn component_text(
     leads: &[&LeadRun],
 ) -> (String, Vec<String>) {
     let first = definition.pins.first();
-    let value = read_value(definition.value_kind, &instance.value);
+    let value = read_value(definition.value_kind, &instance.value, instance.band_count);
     let mut instructions: Vec<String> = value
         .as_ref()
         .map(|value| value_check_text(definition.value_kind, value))
@@ -1609,14 +1608,15 @@ fn value_check_text(kind: ValueKind, value: &ValueReading) -> String {
             "Check the colour code: a single black band (a zero-ohm link).".into()
         }
         (ValueKind::Resistance, [_, ..], _) => format!(
-            "Check the colour bands: {} ({}, {DEFAULT_TOLERANCE_TEXT}).",
+            "Check the colour bands: {} ({}, {}).",
             value
                 .bands
                 .iter()
                 .map(|band| band.name())
                 .collect::<Vec<_>>()
                 .join(", "),
-            value.display
+            value.display,
+            value.tolerance.as_deref().unwrap_or_default()
         ),
         (ValueKind::Capacitance, _, Some(code)) => {
             format!("Check the value: {} (code {code}).", value.display)
@@ -1652,21 +1652,27 @@ fn missing_values(context: &Context<'_>) -> Vec<AssemblyWarning> {
         .collect()
 }
 
-/// Placed parts grouped by type and value. Bridges are not parts to gather.
+/// Placed parts grouped by type and value, and resistors by how many bands
+/// they have, as 4- and 5-band parts are gathered from different drawers.
+/// Bridges are not parts to gather.
 fn parts_list(context: &Context<'_>) -> Vec<PartsListEntry> {
-    let mut groups: BTreeMap<(String, String), (ValueKind, String, PartsListEntry)> =
+    let mut groups: BTreeMap<(String, String, u32), (ValueKind, String, PartsListEntry)> =
         BTreeMap::new();
     for (instance, definition) in &context.components {
         if is_bridge(definition) {
             continue;
         }
-        let value = read_value(definition.value_kind, &instance.value);
+        let value = read_value(definition.value_kind, &instance.value, instance.band_count);
         let display = value
             .as_ref()
             .map(|value| value.display.clone())
             .unwrap_or_default();
         groups
-            .entry((definition.id.clone(), display.clone()))
+            .entry((
+                definition.id.clone(),
+                display.clone(),
+                instance.band_count.digits(),
+            ))
             .or_insert_with(|| {
                 (
                     definition.value_kind,

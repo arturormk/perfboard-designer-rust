@@ -2,8 +2,11 @@ import { useId } from "preact/hooks";
 import type { Band } from "../api/project";
 import { BAND_COLORS, OUTLINED_BANDS, bandRects } from "../model/bands";
 
-/** What each band of a five-band code stands for. */
-const ROLES = ["1st digit", "2nd digit", "3rd digit", "Multiplier", "1%"];
+/** What each band but the tolerance stands for, by how many bands there are. */
+const ROLES: Record<number, readonly string[]> = {
+  4: ["1st digit", "2nd digit", "Multiplier"],
+  5: ["1st digit", "2nd digit", "3rd digit", "Multiplier"],
+};
 
 /**
  * The outline of an axial resistor in a 200 × 40 box: rounded end caps that
@@ -75,14 +78,17 @@ function ResistorDrawing({
 /**
  * A resistor's colour code as a reference card: the resistor drawn with its
  * bands, then each band named with what it stands for. Read from the end
- * away from the gap; the last band, after the gap, is the 1% tolerance.
+ * away from the gap; the last band, after the gap, is the tolerance.
  */
 export function ColorCode({
   bands,
   value,
+  tolerance,
 }: {
   bands: readonly Band[];
   value: string;
+  /** What the last band stands for, such as `1%`. */
+  tolerance?: string;
 }) {
   if (!bands.length) return null;
   const zero = bands.length === 1;
@@ -102,7 +108,10 @@ export function ColorCode({
             />
             <span class="color-code-name">{band}</span>
             <span class="color-code-role">
-              {zero ? "Zero-ohm link" : ROLES[index]}
+              {zero
+                ? "Zero-ohm link"
+                : (ROLES[bands.length]?.[index] ??
+                  `${tolerance ?? ""} tolerance`.trim())}
             </span>
           </li>
         ))}

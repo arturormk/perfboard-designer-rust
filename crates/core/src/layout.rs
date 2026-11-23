@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{ComponentInstanceId, HolePos, PinDefinition, Rotation};
+use crate::{BandCount, ComponentInstanceId, HolePos, PinDefinition, Rotation};
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ComponentInstance {
@@ -35,6 +35,11 @@ pub struct ComponentInstance {
     /// assembly plan folds it into the step of the part whose lead it is.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub component_side: bool,
+    /// How many colour bands this resistor's code has: five (1%, the
+    /// default) or four (5%), to match the part in the builder's hand. Only
+    /// meaningful when the definition's value kind is `resistance`.
+    #[serde(default, skip_serializing_if = "BandCount::is_five")]
+    pub band_count: BandCount,
     /// This part's own names for some of its pins, keyed by pin id, such as
     /// `TRIG` for pin 2 of one 555 timer. They replace the definition's pin
     /// names for this part only; pins left out keep the definition's name.

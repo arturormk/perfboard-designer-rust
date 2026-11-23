@@ -49,10 +49,13 @@ must see the same values and codes as the UI.
 5. **Codes are derived in Rust.** `read_value` returns the display text, the
    resistor bands and the capacitor code. Assembly steps, the parts list and
    breadboard parts carry that reading; the frontend only paints it. Bands
-   are always five at 1% tolerance (three digits, multiplier, brown), one
-   black band for a zero-ohm link, and none for values below 1 Ω or needing
-   four significant digits. The tolerance is one constant, so a per-part
-   tolerance can be added later.
+   are five at 1% tolerance (three digits, multiplier, brown) by default, or
+   four at 5% (two digits, multiplier, gold) for a resistor whose
+   `band_count` is `four`, chosen per part with `set_resistor_bands` to match
+   the parts the builder actually holds. A zero-ohm link is one black band;
+   values below 0.1 Ω or needing more digits than the code has get none. The
+   reading carries the tolerance text (`1%`, `5%`) so views need not derive
+   it. The parts list keeps 4- and 5-band parts of one value apart.
 
 6. **Readable direction.** The tolerance band is drawn after a wider gap and
    at the right or bottom end as seen on screen, whatever the part's

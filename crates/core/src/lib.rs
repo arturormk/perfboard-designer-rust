@@ -39,6 +39,6 @@ pub use routing::{
 };
 pub use validation::{PlacementPolicy, validate_design_placements};
 pub use value::{
-    Band, DEFAULT_TOLERANCE, DEFAULT_TOLERANCE_TEXT, MAX_VALUE_LEN, ValueError, ValueKind,
-    ValueReading, compare_values, normalize_value, read_value,
+    Band, BandCount, MAX_VALUE_LEN, ValueError, ValueKind, ValueReading, compare_values,
+    normalize_value, read_value,
 };

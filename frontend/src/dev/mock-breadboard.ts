@@ -103,7 +103,7 @@ export function mockBreadboardLayout(
     parts.push({
       component_id: instance.id,
       name: instance.name,
-      value: mockReadValue(instance.value),
+      value: mockReadValue(instance.value, instance.band_count),
       definition_id: instance.definition_id,
       position,
       rotation,

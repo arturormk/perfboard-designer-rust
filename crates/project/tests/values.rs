@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use perfboard_core::{
-    Band::{Black, Brown, Red, Violet, Yellow},
-    BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, HolePos, OperationId,
-    ProjectId, Rotation, ValueKind,
+    Band::{Black, Brown, Gold, Red, Violet, Yellow},
+    BandCount, BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, HolePos,
+    OperationId, ProjectId, Rotation, ValueKind,
 };
 use perfboard_project::{
     Board, OperationOrigin, OperationPayload, OperationRequest, ProjectDocument, apply_operation,
@@ -54,6 +54,7 @@ fn instance(definition: &ComponentDefinition, value: &str, x: i32) -> ComponentI
         notes: String::new(),
         shunted: false,
         component_side: false,
+        band_count: BandCount::Five,
         pin_labels: BTreeMap::new(),
     }
 }
@@ -341,4 +342,72 @@ fn update_metadata_brings_in_the_value_kind_and_tidies_values() {
         view.value_readings[&typed].bands,
         [Red, Red, Black, Black, Brown]
     );
+}
+
+fn set_bands(
+    document: &mut ProjectDocument,
+    id: ComponentInstanceId,
+    band_count: BandCount,
+) -> Result<(), String> {
+    apply(
+        document,
+        OperationPayload::SetResistorBands {
+            instance_id: id,
+            band_count,
+        },
+    )
+}
+
+#[test]
+fn each_resistor_chooses_four_or_five_bands() {
+    let mut document = document();
+    let resistor = definition(Some("resistance"));
+    let four = add(&mut document, &resistor, "4k7").unwrap();
+    let five = add(&mut document, &resistor, "4k7").unwrap();
+    set_bands(&mut document, four, BandCount::Four).unwrap();
+
+    let view = perfboard_project::ProjectView::from_document(&document);
+    assert_eq!(
+        view.value_readings[&four].bands,
+        [Yellow, Violet, Red, Gold]
+    );
+    assert_eq!(view.value_readings[&four].tolerance.as_deref(), Some("5%"));
+    assert_eq!(
+        view.value_readings[&five].bands,
+        [Yellow, Violet, Black, Brown, Brown]
+    );
+
+    let plan = perfboard_project::assembly_plan(&document.design, document.revision);
+    let step = plan
+        .steps
+        .iter()
+        .find(|step| step.id == format!("component:{four}"))
+        .unwrap();
+    assert_eq!(
+        step.instructions[0],
+        "Check the colour bands: yellow, violet, red, gold (4.7 kΩ, 5%)."
+    );
+    // A 4-band and a 5-band 4.7 kΩ come from different drawers.
+    assert_eq!(plan.parts.len(), 2);
+
+    let json = perfboard_project::to_snapshot_json(&document).unwrap();
+    assert!(json.contains("\"band_count\": \"four\""), "{json}");
+    let loaded = ProjectDocument::from_json(&json).unwrap();
+    assert_eq!(loaded.design.components[&four].band_count, BandCount::Four);
+    assert_eq!(loaded.design.components[&five].band_count, BandCount::Five);
+
+    set_bands(&mut document, four, BandCount::Five).unwrap();
+    assert_eq!(
+        document.design.components[&four].band_count,
+        BandCount::Five
+    );
+}
+
+#[test]
+fn only_resistors_have_a_band_count() {
+    let mut document = document();
+    let capacitor = definition(Some("capacitance"));
+    let id = add(&mut document, &capacitor, "100n").unwrap();
+    let error = set_bands(&mut document, id, BandCount::Four).unwrap_err();
+    assert!(error.contains("not a resistor"), "{error}");
 }

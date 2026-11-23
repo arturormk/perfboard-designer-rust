@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use perfboard_core::{
-    BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId, ComponentKind,
-    ConnectionState, Constraint, ConstraintId, ConstraintKind, Diagnostic, DiagnosticSeverity,
-    ElectricalNet, HolePos, JumperInventoryEntry, Junction, JunctionId, NetId, OperationId, PinRef,
-    Rail, RailId, Rotation, RoutePos, RouteProposal, Saddle, SaddleId, Side, ValueError, Wire,
-    WireColor, WireId, normalize_value,
+    BandCount, BoardSize, ComponentDefinition, ComponentInstance, ComponentInstanceId,
+    ComponentKind, ConnectionState, Constraint, ConstraintId, ConstraintKind, Diagnostic,
+    DiagnosticSeverity, ElectricalNet, HolePos, JumperInventoryEntry, Junction, JunctionId, NetId,
+    OperationId, PinRef, Rail, RailId, Rotation, RoutePos, RouteProposal, Saddle, SaddleId, Side,
+    ValueError, ValueKind, Wire, WireColor, WireId, normalize_value,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -105,6 +105,12 @@ pub enum OperationPayload {
     SetComponentValue {
         instance_id: ComponentInstanceId,
         value: String,
+    },
+    /// Says how many colour bands a resistor has, `four` (5%) or `five`
+    /// (1%, the default), so its colour code matches the part in hand.
+    SetResistorBands {
+        instance_id: ComponentInstanceId,
+        band_count: BandCount,
     },
     /// Gives one part its own name for a pin, such as `TRIG` for pin 2 of
     /// a 555 timer, without changing the pin names of other parts made from
@@ -344,6 +350,8 @@ pub enum OperationError {
     NotAJumper,
     #[error("component is not a bridge")]
     NotABridge,
+    #[error("component is not a resistor; only resistors have colour bands")]
+    NotAResistor,
     #[error("component has no pin {0}")]
     PinNotFound(String),
     #[error("jumper inventory entry was not found")]
@@ -670,6 +678,9 @@ pub(crate) fn apply_operation_untracked(
             if definition.kind != ComponentKind::Bridge {
                 instance.component_side = false;
             }
+            if definition.value_kind != ValueKind::Resistance {
+                instance.band_count = BandCount::default();
+            }
             if instance.name.trim().is_empty() {
                 instance.name = definition.next_instance_name(
                     next.design
@@ -933,6 +944,34 @@ pub(crate) fn apply_operation_untracked(
             } else {
                 format!("Set {} to {}", instance.name, instance.value)
             }
+        }
+        OperationPayload::SetResistorBands {
+            instance_id,
+            band_count,
+        } => {
+            let instance = next
+                .design
+                .components
+                .get_mut(instance_id)
+                .ok_or(OperationError::InstanceNotFound)?;
+            let is_resistor = next
+                .design
+                .component_definitions
+                .get(&instance.definition_id)
+                .is_some_and(|definition| definition.value_kind == ValueKind::Resistance);
+            if !is_resistor {
+                return Err(OperationError::NotAResistor);
+            }
+            instance.band_count = *band_count;
+            affected.insert(*instance_id);
+            format!(
+                "Gave {} a {}-band colour code",
+                instance.name,
+                match band_count {
+                    BandCount::Four => 4,
+                    BandCount::Five => 5,
+                }
+            )
         }
         OperationPayload::SetPinLabel {
             instance_id,
@@ -1755,6 +1794,7 @@ mod tests {
             notes: String::new(),
             shunted: false,
             component_side: false,
+            band_count: BandCount::Five,
             pin_labels: BTreeMap::new(),
         }
     }

@@ -5,7 +5,7 @@
  * in the UI without Tauri. Anything else is kept as typed. The real rules
  * live in `crates/core/src/value.rs`.
  */
-import type { ValueReading } from "../api/project";
+import type { Band, BandCount, ValueReading } from "../api/project";
 
 const KNOWN: Record<string, ValueReading> = {
   "10k": {
@@ -25,6 +25,13 @@ const KNOWN: Record<string, ValueReading> = {
   "10u": { display: "10 µF" },
 };
 
+/** The same resistors' four-band codes. */
+const FOUR_BANDS: Record<string, Band[]> = {
+  "10 kΩ": ["brown", "black", "orange", "gold"],
+  "4.7 kΩ": ["yellow", "violet", "red", "gold"],
+  "220 Ω": ["red", "red", "brown", "gold"],
+};
+
 const BY_DISPLAY = new Map(
   Object.values(KNOWN).map((reading) => [reading.display, reading]),
 );
@@ -38,8 +45,18 @@ export function mockNormalizeValue(input: string): string {
 /** How the mock reads a stored value. */
 export function mockReadValue(
   stored: string | undefined,
+  bandCount: BandCount = "five",
 ): ValueReading | undefined {
   const text = stored?.trim();
   if (!text) return undefined;
-  return BY_DISPLAY.get(text) ?? { display: text };
+  const reading = BY_DISPLAY.get(text);
+  if (!reading) return { display: text };
+  if (!reading.bands || reading.bands.length < 2) return reading;
+  if (bandCount === "four") {
+    const bands = FOUR_BANDS[text];
+    return bands
+      ? { display: text, bands, tolerance: "5%" }
+      : { display: text };
+  }
+  return { ...reading, tolerance: "1%" };
 }

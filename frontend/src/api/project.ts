@@ -91,11 +91,18 @@ export type Band =
   | "white"
   | "gold"
   | "silver";
+/** How many colour bands a resistor's code has: five (1%, the default) or
+ * four (5%). Chosen per resistor. */
+export type BandCount = "four" | "five";
 /** How a part's value reads, as derived by the Rust engine. */
 export interface ValueReading {
   display: string;
-  /** Five bands at 1% tolerance, or one black band for a zero-ohm link. */
+  /** Five bands at 1% or four at 5%, as the part's band count says, or one
+   * black band for a zero-ohm link. */
   bands?: Band[];
+  /** What the last band stands for, such as `1%`; absent for a zero-ohm
+   * link. */
+  tolerance?: string;
   /** The three-digit capacitor code, such as `104`. */
   code?: string;
 }
@@ -201,6 +208,8 @@ export interface ComponentInstance {
   /** A `bridge` made on the component side, by laying a part's lead across
    * the holes, instead of a solder-side link. */
   component_side?: boolean;
+  /** A resistor's colour code: four or five bands; absent means five. */
+  band_count?: BandCount;
   /** This part's own names for some of its pins, keyed by pin id. They
    * replace the definition's pin names for this part only. */
   pin_labels?: Record<string, string>;
@@ -462,6 +471,7 @@ export type OperationPayload =
   | { type: "set_jumper_shunt"; instance_id: string; shunted: boolean }
   | { type: "set_bridge_side"; instance_id: string; side: Side }
   | { type: "set_component_value"; instance_id: string; value: string }
+  | { type: "set_resistor_bands"; instance_id: string; band_count: BandCount }
   | {
       type: "set_pin_label";
       instance_id: string;

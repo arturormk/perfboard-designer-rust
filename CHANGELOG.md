@@ -9,6 +9,14 @@ commit count. Releases (even minor versions) get a section here. See
 
 Development line `v0.1.x`: the first public development builds.
 
+- Each resistor can show a 4-band (5%) or 5-band (1%) colour code, to match
+  the parts in hand: choose it under the value in the inspector. Five stays
+  the default. The board, Assembly and Breadboard views, the colour-code card
+  and the assembly plan's "Check the colour bands" line all follow it, and
+  the parts list keeps 4- and 5-band parts of one value apart. A value that
+  needs three digits (such as 4.99 kΩ) has no 4-band code and is shown as
+  text. Agents set it with the `set_resistor_bands` operation.
+
 - On the solder side, a pin whose lead is laid across component-side
   bridges no longer shows a joint in its own hole, since the lead does not go
   in there. The joint is drawn instead at the far end of the run, where the

@@ -48,6 +48,7 @@ fn add(document: &mut ProjectDocument, position: HolePos) -> ComponentInstanceId
             notes: String::new(),
             shunted: false,
             component_side: false,
+            band_count: perfboard_core::BandCount::Five,
             pin_labels: BTreeMap::new(),
         },
         definition,

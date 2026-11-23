@@ -315,6 +315,7 @@ mod tests {
             notes: String::new(),
             shunted: false,
             component_side: false,
+            band_count: crate::BandCount::Five,
             pin_labels: BTreeMap::new(),
         }
     }

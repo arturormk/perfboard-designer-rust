@@ -116,7 +116,8 @@ pub fn value_readings(design: &Design) -> BTreeMap<ComponentInstanceId, ValueRea
                 .get(&instance.definition_id)
                 .map(|definition| definition.value_kind)
                 .unwrap_or_default();
-            read_value(kind, &instance.value).map(|reading| (instance.id, reading))
+            read_value(kind, &instance.value, instance.band_count)
+                .map(|reading| (instance.id, reading))
         })
         .collect()
 }

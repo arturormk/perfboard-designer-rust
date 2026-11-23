@@ -834,7 +834,7 @@ impl<'a> Planner<'a> {
 
     fn value(&self, instance: &ComponentInstance) -> Option<ValueReading> {
         let kind = self.definition(instance)?.value_kind;
-        read_value(kind, &instance.value)
+        read_value(kind, &instance.value, instance.band_count)
     }
 
     fn pin_label(&self, pin: &PinRef) -> String {

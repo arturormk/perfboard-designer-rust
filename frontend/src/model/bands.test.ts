@@ -41,6 +41,18 @@ describe("resistor bands", () => {
     expect(gaps[3]).toBeGreaterThan(gaps[0]! * 1.5);
   });
 
+  it("groups a four-band code the same way", () => {
+    const fourBand: Band[] = ["brown", "black", "orange", "gold"];
+    const centres = bandRects(fourBand, LYING, "deg0").map(
+      (rect) => rect.x + rect.width / 2,
+    );
+    expect(centres).toHaveLength(4);
+    const gaps = centres
+      .slice(1)
+      .map((value, index) => value - centres[index]!);
+    expect(gaps[2]).toBeGreaterThan(gaps[0]! * 1.5);
+  });
+
   it("draws a zero-ohm link as one centred band", () => {
     const [rect] = bandRects(["black"], LYING, "deg0");
     expect(rect!.x + rect!.width / 2).toBeCloseTo(LYING.x + LYING.width / 2);
